@@ -39,6 +39,7 @@ export interface Category {
 export interface StockMovement {
   id: string
   businessId: string
+  locationId: string
   productId: string
   type: 'in' | 'out' | 'adjustment' | 'transfer' | 'inventory'
   quantity: number
@@ -92,6 +93,7 @@ export interface SaleItem {
 export interface Sale {
   id: string
   businessId: string
+  locationId: string
   invoiceNumber: string
   customerId?: string
   customerName?: string
@@ -112,6 +114,7 @@ export interface Sale {
 export interface Purchase {
   id: string
   businessId: string
+  locationId: string
   supplierId?: string
   supplierName?: string
   items: SaleItem[]

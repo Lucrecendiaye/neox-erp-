@@ -68,6 +68,7 @@ export default function StockPage() {
     const movement = {
       id: generateId(),
       businessId: 'biz-default',
+      locationId: 'loc-shop',
       productId: moveForm.productId,
       type: moveForm.type,
       quantity: moveForm.type === 'out' ? -Math.abs(moveForm.quantity) : moveForm.quantity,

@@ -3,8 +3,18 @@ import type { Session, AuthChangeEvent } from '@supabase/supabase-js'
 
 const SESSION_KEY = 'neox-session-ready'
 
-export async function signIn(email: string, password: string) {
+export async function signIn(identifier: string, password: string) {
   if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
+
+  const isPhone = /^[\d\s\+\-\(\)]{6,}$/.test(identifier)
+  let email = identifier
+
+  if (isPhone) {
+    const { data } = await supabase.rpc('public_lookup_email_by_phone', { phone: identifier })
+    if (!data || data.length === 0) throw new Error('Aucun compte trouvé avec ce numéro')
+    email = data[0].email
+  }
+
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
   localStorage.setItem(SESSION_KEY, 'true')

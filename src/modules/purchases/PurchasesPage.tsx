@@ -111,6 +111,7 @@ export default function PurchasesPage() {
     const purchase: Purchase = {
       id: editing ? editing.id : generateId(),
       businessId: 'biz-default',
+      locationId: 'loc-shop',
       supplierId: supplierId || undefined,
       supplierName: supplier?.name || 'Fournisseur inconnu',
       items: items.map(i => ({
@@ -140,7 +141,8 @@ export default function PurchasesPage() {
       } else {
         if (isCloud) { await sb.insert('purchases', purchase) } else { await db.purchases.add(purchase) }
         for (const item of items) {
-          if (isCloud) { await sb.insert('stock_movements', { id: generateId(), businessId: 'biz-default', productId: item.productId, type: 'in', quantity: item.quantity, unitPrice: item.unitPrice, reference: `ACHAT-${purchase.id}`, note: `Achat: ${supplier?.name || 'N/A'}`, createdAt: now, userId: 'admin' }) } else { await db.stockMovements.add({ id: generateId(), businessId: 'biz-default', productId: item.productId, type: 'in', quantity: item.quantity, unitPrice: item.unitPrice, reference: `ACHAT-${purchase.id}`, note: `Achat: ${supplier?.name || 'N/A'}`, createdAt: now, userId: 'admin' }) }
+          const sm = { id: generateId(), businessId: 'biz-default', locationId: 'loc-shop', productId: item.productId, type: 'in' as const, quantity: item.quantity, unitPrice: item.unitPrice, reference: `ACHAT-${purchase.id}`, note: `Achat: ${supplier?.name || 'N/A'}`, createdAt: now, userId: 'admin' }
+          if (isCloud) { await sb.insert('stock_movements', sm) } else { await db.stockMovements.add(sm) }
           if (isCloud) { await sb.insert('audit_logs', { id: generateId(), businessId: 'biz-default', userId: 'admin', action: 'create', entity: 'purchase', entityId: purchase.id, details: `Achat créé: ${totals.total}`, createdAt: now }) } else { await db.auditLogs.add({ id: generateId(), businessId: 'biz-default', userId: 'admin', action: 'create', entity: 'purchase', entityId: purchase.id, details: `Achat créé: ${totals.total}`, createdAt: now }) }
           if (isCloud) { await sb.insert('accounting_entries', { id: generateId(), businessId: 'biz-default', date: now, type: 'expense', accountId: 'acc-expense', accountName: 'Dépenses', amount: item.unitPrice * item.quantity, direction: 'debit', reference: `ACHAT-${purchase.id}`, description: `Achat: ${item.productName} x${item.quantity}`, createdAt: now, userId: 'admin' }) } else { await db.accountingEntries.add({ id: generateId(), businessId: 'biz-default', date: now, type: 'expense', accountId: 'acc-expense', accountName: 'Dépenses', amount: item.unitPrice * item.quantity, direction: 'debit', reference: `ACHAT-${purchase.id}`, description: `Achat: ${item.productName} x${item.quantity}`, createdAt: now, userId: 'admin' }) }
         }

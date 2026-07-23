@@ -8,6 +8,7 @@ const iconMap: Record<string, React.ReactNode> = {
   '/products': <Package className="w-5 h-5" />,
   '/stock': <ClipboardList className="w-5 h-5" />,
   '/pos': <ShoppingCart className="w-5 h-5" />,
+  '/depots': <Building2 className="w-5 h-5" />,
   '/customers': <Users className="w-5 h-5" />,
   '/suppliers': <Truck className="w-5 h-5" />,
   '/purchases': <ArrowDownToLine className="w-5 h-5" />,
@@ -33,6 +34,7 @@ const iconMap: Record<string, React.ReactNode> = {
 const navItems = [
   { to: '/', label: 'Tableau de bord' },
   { to: '/pos', label: 'Point de Vente' },
+  { to: '/depots', label: 'Dépôts' },
   { to: '/products', label: 'Produits' },
   { to: '/stock', label: 'Stock' },
   { to: '/customers', label: 'Clients' },

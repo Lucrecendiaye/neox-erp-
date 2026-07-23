@@ -398,12 +398,12 @@ begin
 end;
 $$;
 
--- Auto-create profile on signup
+-- Auto-create profile on signup (inclut phone)
 create or replace function handle_new_user()
 returns trigger as $$
 begin
-  insert into public.profiles (auth_user_id, name, email, role)
-  values (new.id, coalesce(new.raw_user_meta_data->>'name', 'Utilisateur'), new.email, 'staff');
+  insert into public.profiles (auth_user_id, name, email, phone, role)
+  values (new.id, coalesce(new.raw_user_meta_data->>'name', 'Utilisateur'), new.email, new.raw_user_meta_data->>'phone', 'staff');
   return new;
 end;
 $$ language plpgsql security definer;
@@ -411,3 +411,11 @@ $$ language plpgsql security definer;
 create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure handle_new_user();
+
+-- Fonction publique pour chercher un email par téléphone (sans auth)
+create or replace function public_lookup_email_by_phone(phone text)
+returns table(email text) as $$
+begin
+  return query select p.email from profiles p where p.phone = phone limit 1;
+end;
+$$ language plpgsql security definer;

@@ -98,6 +98,7 @@ export default function POSPage() {
     const sale = {
       id: generateId(),
       businessId: 'biz-default',
+      locationId: 'loc-shop',
       invoiceNumber: invNum,
       customerId: customerId || undefined,
       customerName: customer?.name,
@@ -114,7 +115,8 @@ export default function POSPage() {
     if (isCloud) { await sb.insert('sales', sale) } else { await db.sales.add(sale) }
 
     for (const item of cart) {
-      if (isCloud) { await sb.insert('stock_movements', { id: generateId(), businessId: 'biz-default', productId: item.productId, type: 'out', quantity: -item.quantity, unitPrice: item.unitPrice, reference: invNum, createdAt: now, userId: 'admin' }) } else { await db.stockMovements.add({ id: generateId(), businessId: 'biz-default', productId: item.productId, type: 'out', quantity: -item.quantity, unitPrice: item.unitPrice, reference: invNum, createdAt: now, userId: 'admin' }) }
+      const sm = { id: generateId(), businessId: 'biz-default', locationId: 'loc-shop', productId: item.productId, type: 'out' as const, quantity: -item.quantity, unitPrice: item.unitPrice, reference: invNum, createdAt: now, userId: 'admin' }
+      if (isCloud) { await sb.insert('stock_movements', sm) } else { await db.stockMovements.add(sm) }
     }
 
     if (customerId && paymentMethod === 'credit') {

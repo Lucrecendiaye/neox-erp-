@@ -5,6 +5,10 @@ import type {
   Credit, AuditLog, User, CompanySettings, Notification, Business,
   Employee, Attendance, Payroll, CashBookEntry, Lead, BusinessCard,
 } from '@/types'
+import type {
+  Location, ProductStock, ProductHistory,
+  SupplierInvoice, SupplierPayment, Compensation, Transfer,
+} from '@/engine/types'
 
 const BIZ = 'biz-default'
 const USER = 'admin'
@@ -32,17 +36,24 @@ class NeoXDB extends Dexie {
   cashBook!: EntityTable<CashBookEntry, 'id'>
   leads!: EntityTable<Lead, 'id'>
   businessCards!: EntityTable<BusinessCard, 'id'>
+  locations!: EntityTable<Location, 'id'>
+  productStocks!: EntityTable<ProductStock, 'id'>
+  productHistory!: EntityTable<ProductHistory, 'id'>
+  supplierInvoices!: EntityTable<SupplierInvoice, 'id'>
+  supplierPayments!: EntityTable<SupplierPayment, 'id'>
+  compensations!: EntityTable<Compensation, 'id'>
+  transfers!: EntityTable<Transfer, 'id'>
 
   constructor() {
     super('neox_erp')
-    this.version(2).stores({
+    this.version(3).stores({
       products: 'id, businessId, name, barcode, categoryId, supplierId, status',
       categories: 'id, businessId, name, parentId',
-      stockMovements: 'id, businessId, productId, type, createdAt',
+      stockMovements: 'id, businessId, locationId, productId, type, createdAt',
       customers: 'id, businessId, name, phone, email',
       suppliers: 'id, businessId, name, phone, email',
-      sales: 'id, businessId, invoiceNumber, customerId, status, createdAt',
-      purchases: 'id, businessId, supplierId, status, createdAt',
+      sales: 'id, businessId, locationId, invoiceNumber, customerId, status, createdAt',
+      purchases: 'id, businessId, locationId, supplierId, status, createdAt',
       invoices: 'id, businessId, number, partyId, type, status, createdAt',
       accountingEntries: 'id, businessId, accountId, type, date, reference',
       accounts: 'id, businessId, code, name, type',
@@ -58,6 +69,13 @@ class NeoXDB extends Dexie {
       cashBook: 'id, businessId, date, type, category',
       leads: 'id, businessId, name, phone, status, source',
       businessCards: 'id, businessId, name, design',
+      locations: 'id, businessId, type, isActive',
+      productStocks: 'id, businessId, productId, locationId',
+      productHistory: 'id, businessId, productId, locationId, action, createdAt',
+      supplierInvoices: 'id, businessId, supplierId, number, status, createdAt',
+      supplierPayments: 'id, businessId, invoiceId, date',
+      compensations: 'id, businessId, partyId, direction, status',
+      transfers: 'id, businessId, fromLocationId, toLocationId, status, createdAt',
     })
   }
 }
@@ -80,6 +98,14 @@ export async function initDB() {
       address: 'Ouagadougou, Burkina Faso', isActive: true,
       createdAt: new Date().toISOString(),
     })
+  }
+
+  if ((await db.locations.count()) === 0) {
+    const now = new Date().toISOString()
+    await db.locations.bulkAdd([
+      { id: 'loc-shop', businessId: BIZ, name: 'Boutique Principale', type: 'shop', address: 'Ouagadougou', phone: '+226 70 00 00 00', isActive: true, createdAt: now, updatedAt: now },
+      { id: 'loc-warehouse1', businessId: BIZ, name: 'Dépôt Principal', type: 'warehouse', address: 'Zone Industrielle', phone: '+226 70 00 00 01', isActive: true, createdAt: now, updatedAt: now },
+    ])
   }
 
   if ((await db.settings.count()) === 0) {
@@ -210,13 +236,28 @@ async function seedDemoData() {
 
   // ─── STOCK MOVEMENTS ───
   const stockMovements: StockMovement[] = [
-    { id: 'sm1', businessId: BIZ, productId: 'p1', type: 'in', quantity: 100, unitPrice: 2800, reference: 'CMD-001', note: 'Commande initiale', createdAt: daysAgo(30), userId: USER },
-    { id: 'sm2', businessId: BIZ, productId: 'p2', type: 'in', quantity: 80, unitPrice: 1200, reference: 'CMD-001', note: '', createdAt: daysAgo(30), userId: USER },
-    { id: 'sm3', businessId: BIZ, productId: 'p3', type: 'in', quantity: 50, unitPrice: 500, reference: 'CMD-002', note: '', createdAt: daysAgo(25), userId: USER },
-    { id: 'sm4', businessId: BIZ, productId: 'p6', type: 'in', quantity: 200, unitPrice: 200, reference: 'CMD-003', note: 'Boissons', createdAt: daysAgo(20), userId: USER },
-    { id: 'sm5', businessId: BIZ, productId: 'p1', type: 'out', quantity: 15, unitPrice: 3500, reference: 'VENTE-001', note: 'Vente à Aminata', createdAt: daysAgo(15), userId: USER },
+    { id: 'sm1', businessId: BIZ, locationId: 'loc-shop', productId: 'p1', type: 'in', quantity: 100, unitPrice: 2800, reference: 'CMD-001', note: 'Commande initiale', createdAt: daysAgo(30), userId: USER },
+    { id: 'sm2', businessId: BIZ, locationId: 'loc-shop', productId: 'p2', type: 'in', quantity: 80, unitPrice: 1200, reference: 'CMD-001', note: '', createdAt: daysAgo(30), userId: USER },
+    { id: 'sm3', businessId: BIZ, locationId: 'loc-shop', productId: 'p3', type: 'in', quantity: 50, unitPrice: 500, reference: 'CMD-002', note: '', createdAt: daysAgo(25), userId: USER },
+    { id: 'sm4', businessId: BIZ, locationId: 'loc-shop', productId: 'p6', type: 'in', quantity: 200, unitPrice: 200, reference: 'CMD-003', note: 'Boissons', createdAt: daysAgo(20), userId: USER },
+    { id: 'sm5', businessId: BIZ, locationId: 'loc-shop', productId: 'p1', type: 'out', quantity: 15, unitPrice: 3500, reference: 'VENTE-001', note: 'Vente à Aminata', createdAt: daysAgo(15), userId: USER },
   ]
   await db.stockMovements.bulkAdd(stockMovements)
+
+  // ─── INITIAL PRODUCT STOCKS ───
+  const now2 = new Date().toISOString()
+  const initialStocks = products.map(p => ({
+    id: `stock-${p.id}-shop`,
+    businessId: BIZ,
+    productId: p.id,
+    locationId: 'loc-shop',
+    quantity: 50,
+    stockAlert: p.stockAlert || 10,
+    stockMin: 0,
+    stockMax: 999999,
+    updatedAt: now2,
+  }))
+  await db.productStocks.bulkAdd(initialStocks)
 
   // ─── CREDITS ───
   const credits: Credit[] = [

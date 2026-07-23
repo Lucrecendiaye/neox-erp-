@@ -28,6 +28,10 @@ const InvoicesPage = lazy(() => import('@/modules/invoices/InvoicesPage'))
 const PurchasesPage = lazy(() => import('@/modules/purchases/PurchasesPage'))
 const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage'))
 const CashBookPage = lazy(() => import('@/modules/cashbook/CashBookPage'))
+const DepotsPage = lazy(() => import('@/modules/depots/DepotsPage'))
+const DepotStockPage = lazy(() => import('@/modules/depots/DepotStockPage'))
+const DepotPOSPage = lazy(() => import('@/modules/depots/DepotPOSPage'))
+const DepotStatsPage = lazy(() => import('@/modules/depots/DepotStatsPage'))
 const EmployeesPage = lazy(() => import('@/modules/payroll/EmployeesPage'))
 const AttendancePage = lazy(() => import('@/modules/payroll/AttendancePage'))
 const PayrollPage = lazy(() => import('@/modules/payroll/PayrollPage'))
@@ -173,6 +177,10 @@ export default function App() {
           <Route path="/payroll/employees" element={<EmployeesPage />} />
           <Route path="/payroll/attendance" element={<AttendancePage />} />
           <Route path="/payroll" element={<PayrollPage />} />
+          <Route path="/depots" element={<DepotsPage />} />
+          <Route path="/depots/stock/:locationId" element={<DepotStockPage />} />
+          <Route path="/depots/pos/:locationId" element={<DepotPOSPage />} />
+          <Route path="/depots/stats/:locationId" element={<DepotStatsPage />} />
           <Route path="/crm" element={<LeadsPage />} />
           <Route path="/sms" element={<SmsRemindersPage />} />
           <Route path="/billbook" element={<BillBookPage />} />
