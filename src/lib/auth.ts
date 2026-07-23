@@ -1,5 +1,5 @@
 import { supabase, isSupabaseConfigured } from './supabase'
-import type { Session } from '@supabase/supabase-js'
+import type { Session, AuthChangeEvent } from '@supabase/supabase-js'
 
 const SESSION_KEY = 'neox-session-ready'
 
@@ -36,7 +36,7 @@ export async function getCurrentSession(): Promise<Session | null> {
 }
 
 export function onAuthChange(callback: (session: Session | null) => void) {
-  return supabase.auth.onAuthStateChange((_event, session) => {
+  return supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
     if (session) {
       localStorage.setItem(SESSION_KEY, 'true')
     } else {
