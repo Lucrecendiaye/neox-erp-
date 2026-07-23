@@ -1,5 +1,5 @@
-import { supabase } from './supabase'
-import { isSupabaseConfigured } from './supabase'
+import { supabase, isSupabaseConfigured } from './supabase'
+import { sb } from './supabase-db'
 import db from '@/db'
 
 type SyncTable = {

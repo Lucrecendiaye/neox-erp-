@@ -84,6 +84,7 @@ export default function App() {
           businessId: 'biz-default',
           name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Utilisateur',
           email: session.user.email || '',
+          passwordHash: '',
           role: 'admin' as const,
           permissions: ['*'],
           isActive: true,
@@ -100,7 +101,7 @@ export default function App() {
 
     window.addEventListener('online', () => useAppStore.getState().setIsOnline(true))
     window.addEventListener('offline', () => useAppStore.getState().setIsOnline(false))
-    return () => unsub.data?.unsubscribe()
+    return () => unsub.data?.subscription.unsubscribe()
   }, [])
 
   if (locked && initialized && isLoggedIn()) {

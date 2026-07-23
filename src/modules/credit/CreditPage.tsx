@@ -1,41 +1,54 @@
 import { useState } from 'react'
-import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, StatCard, Pagination } from '@/components/ui'
+import { Card, Badge, StatCard, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { usePagination } from '@/hooks/usePagination'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import db from '@/db'
-import { generateId, formatCurrency, formatDate } from '@/lib/utils'
+import { formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { Search, AlertTriangle, Clock, CheckCircle, MessageSquare, CreditCard } from 'lucide-react'
 
 export default function CreditPage() {
   const isCloud = isSupabaseConfigured()
   const dexieCredits = useLiveQuery(() => db.credits.orderBy('createdAt').reverse().toArray(), [])
-  const dexieCustomers = useLiveQuery(() => db.customers.toArray(), [])
   const { data: supabaseCredits } = useSupabaseQuery<any>('credits', (q) => q.order('createdAt', { ascending: false }), [])
-  const { data: supabaseCustomers } = useSupabaseQuery<any>('customers', undefined, [])
-  const credits = isCloud ? supabaseCredits : dexieCredits
-  const customers = isCloud ? supabaseCustomers : dexieCustomers
+  const credits = isCloud ? (supabaseCredits as any[]) : (dexieCredits as any[])
   const [search, setSearch] = useState('')
 
-  const totalOutstanding = credits?.reduce((s, x) => s + x.balance, 0) || 0
-  const overdue = credits?.filter(c => c.status === 'overdue' || (c.status === 'active' && new Date(c.dueDate) < new Date())) || []
-  const totalOverdue = overdue.reduce((s, x) => s + x.balance, 0)
+  const totalOutstanding = credits?.reduce((s: number, x: any) => s + x.balance, 0) || 0
+  const overdue = credits?.filter((c: any) => c.status === 'overdue' || (c.status === 'active' && new Date(c.dueDate) < new Date())) || []
+  const totalOverdue = overdue.reduce((s: number, x: any) => s + x.balance, 0)
 
-  const filtered = credits?.filter(c =>
-    c.customerName.toLowerCase().includes(search.toLowerCase())
+  const filtered = credits?.filter((c: any) =>
+    c.customerName?.toLowerCase().includes(search.toLowerCase())
   )
-  const { paginatedItems, ...pag } = usePagination(filtered, 10)
+  const { paginatedItems, ...pag } = usePagination(filtered, 10) as any
 
-export default function CreditPage() {
-  const isCloud = isSupabaseConfigured()
-  const dexieCredits = useLiveQuery(() => db.credits.orderBy('createdAt').reverse().toArray(), [])
-  const dexieCustomers = useLiveQuery(() => db.customers.toArray(), [])
-  const { data: supabaseCredits } = useSupabaseQuery<any>('credits', (q) => q.order('createdAt', { ascending: false }), [])
-  const { data: supabaseCustomers } = useSupabaseQuery<any>('customers', undefined, [])
-  const credits = isCloud ? supabaseCredits : dexieCredits
-  const customers = isCloud ? supabaseCustomers : dexieCustomers
+  const sendReminder = async (id: string) => {
+    try {
+      if (isCloud) {
+        await sb.update('credits', id, { lastReminderSent: new Date().toISOString() })
+      }
+      toast('Rappel envoyé', 'success')
+    } catch {
+      toast('Erreur rappel', 'error')
+    }
+  }
+
+  const markAsPaid = async (id: string) => {
+    try {
+      if (isCloud) {
+        await sb.update('credits', id, { status: 'paid', balance: 0, paid: (credits?.find((c: any) => c.id === id) as any)?.amount || 0 })
+      } else {
+        const c = await db.credits.get(id)
+        if (c) await db.credits.update(id, { status: 'paid', balance: 0, paid: c.amount })
+      }
+      toast('Crédit marqué comme payé', 'success')
+    } catch {
+      toast('Erreur', 'error')
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -47,7 +60,7 @@ export default function CreditPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard title="Encours total" value={formatCurrency(totalOutstanding)} icon={<CreditCard className="w-5 h-5" />} color="warning" />
         <StatCard title="Créances échues" value={formatCurrency(totalOverdue)} icon={<AlertTriangle className="w-5 h-5" />} color="danger" />
-        <StatCard title="Crédits actifs" value={credits?.filter(c => c.status === 'active').length || 0} icon={<Clock className="w-5 h-5" />} color="info" />
+        <StatCard title="Crédits actifs" value={credits?.filter((c: any) => c.status === 'active').length || 0} icon={<Clock className="w-5 h-5" />} color="info" />
       </div>
 
       <div className="relative w-full sm:w-72">
@@ -71,7 +84,7 @@ export default function CreditPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
-              {paginatedItems?.map((c) => {
+              {paginatedItems?.map((c: any) => {
                 const isOverdue = new Date(c.dueDate) < new Date() && c.status === 'active'
                 return (
                   <tr key={c.id} className="hover:bg-surface-50 transition-colors">

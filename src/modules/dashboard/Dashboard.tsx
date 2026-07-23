@@ -19,12 +19,12 @@ export default function Dashboard() {
   const dexieExpenses = useLiveQuery(() => db.accountingEntries.where('type').equals('expense').toArray(), [])
   const dexieCredits = useLiveQuery(() => db.credits.where('status').equals('active').or('status').equals('overdue').toArray(), [])
   const dexieStockMovements = useLiveQuery(() => db.stockMovements.toArray(), [])
-  const { data: supabaseProducts } = useSupabaseQuery<any[]>('products', undefined, [])
-  const { data: supabaseSales } = useSupabaseQuery<any[]>('sales', q => q.eq('status', 'completed'), [])
-  const { data: supabaseCustomers } = useSupabaseQuery<any[]>('customers', undefined, [])
-  const { data: supabaseEntries } = useSupabaseQuery<any[]>('accounting_entries', q => q.eq('type', 'expense'), [])
-  const { data: supabaseCredits } = useSupabaseQuery<any[]>('credits', q => q.in('status', ['active', 'overdue']), [])
-  const { data: supabaseStockMovements } = useSupabaseQuery<any[]>('stock_movements', undefined, [])
+  const { data: supabaseProducts } = useSupabaseQuery<any>('products', undefined, [])
+  const { data: supabaseSales } = useSupabaseQuery<any>('sales', q => q.eq('status', 'completed'), [])
+  const { data: supabaseCustomers } = useSupabaseQuery<any>('customers', undefined, [])
+  const { data: supabaseEntries } = useSupabaseQuery<any>('accounting_entries', q => q.eq('type', 'expense'), [])
+  const { data: supabaseCredits } = useSupabaseQuery<any>('credits', q => q.in('status', ['active', 'overdue']), [])
+  const { data: supabaseStockMovements } = useSupabaseQuery<any>('stock_movements', undefined, [])
 
   const products = isCloud ? supabaseProducts : dexieProducts
   const sales = isCloud ? supabaseSales : dexieSales
@@ -43,7 +43,7 @@ export default function Dashboard() {
     const monthRevenue = monthSales.reduce((s, x) => s + x.total, 0)
     const lowStock = products?.filter(p => p.stockAlert && p.stockAlert > 0) || []
     const productSales = new Map<string, number>()
-    sales?.forEach(s => s.items.forEach(i => productSales.set(i.productName, (productSales.get(i.productName) || 0) + i.quantity)))
+    sales?.forEach((s: any) => s.items.forEach((i: any) => productSales.set(i.productName, (productSales.get(i.productName) || 0) + i.quantity)))
     const topProducts = [...productSales.entries()].sort((a, b) => b[1] - a[1]).slice(0, 5)
     return { totalSales, totalExpenses, profit: totalSales - totalExpenses, totalCredits, todayRevenue, monthRevenue, lowStockCount: lowStock.length, customerCount: customers?.length || 0, topProducts }
   }, [sales, expenses, credits, products, customers])

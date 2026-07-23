@@ -8,9 +8,9 @@ export type TableName =
   | 'accounting_entries' | 'accounts' | 'credits' | 'audit_logs'
   | 'profiles' | 'notifications' | 'businesses'
   | 'employees' | 'attendance' | 'payrolls' | 'cash_book'
-  | 'leads' | 'business_cards'
+  | 'leads' | 'business_cards' | 'settings'
 
-type QueryBuilder = ReturnType<typeof supabase.from>
+type QueryBuilder = any
 
 export function useSupabaseQuery<T>(
   table: TableName,
@@ -96,14 +96,14 @@ export const sb = {
 
   insert: async <T>(table: TableName, record: Partial<T>) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
-    const { data, error } = await supabase.from(table).insert(record).select().single()
+    const { data, error } = await supabase.from(table).insert(record as any).select().single()
     if (error) throw error
     return data as T
   },
 
   update: async <T>(table: TableName, id: string, updates: Partial<T>) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
-    const { data, error } = await supabase.from(table).update(updates).eq('id', id).select().single()
+    const { data, error } = await supabase.from(table).update(updates as any).eq('id', id).select().single()
     if (error) throw error
     return data as T
   },
