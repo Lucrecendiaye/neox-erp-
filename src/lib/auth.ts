@@ -4,6 +4,7 @@ import type { Session } from '@supabase/supabase-js'
 const SESSION_KEY = 'neox-session-ready'
 
 export async function signIn(email: string, password: string) {
+  if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
   const { data, error } = await supabase.auth.signInWithPassword({ email, password })
   if (error) throw error
   localStorage.setItem(SESSION_KEY, 'true')
@@ -11,6 +12,7 @@ export async function signIn(email: string, password: string) {
 }
 
 export async function signUp(email: string, password: string, userData?: { name?: string; phone?: string }) {
+  if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
   const { data, error } = await supabase.auth.signUp({
     email,
     password,
@@ -22,11 +24,13 @@ export async function signUp(email: string, password: string, userData?: { name?
 
 export async function signOut() {
   localStorage.removeItem(SESSION_KEY)
-  const { error } = await supabase.auth.signOut()
-  if (error) throw error
+  if (isSupabaseConfigured()) {
+    await supabase.auth.signOut()
+  }
 }
 
 export async function getCurrentSession(): Promise<Session | null> {
+  if (!isSupabaseConfigured()) return null
   const { data } = await supabase.auth.getSession()
   return data.session
 }
