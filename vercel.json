@@ -1,6 +1,5 @@
 {
   "name": "neox-erp",
-  "version": "2.0.0",
   "description": "NeoX ERP — Application de gestion nouvelle génération",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
