@@ -56,42 +56,50 @@
 }
 
 /* ════════════════════════════════════════
-   ToolboxAI Theme — moderne, SaaS, épuré
+   NEXUS PREMIUM Theme — unique, luxueux, futuriste
    ════════════════════════════════════════ */
 :root {
-  --primary-50: #eff6ff;
-  --primary-100: #dbeafe;
-  --primary-200: #bfdbfe;
-  --primary-300: #93c5fd;
-  --primary-400: #60a5fa;
-  --primary-500: #3b82f6;
-  --primary-600: #2563eb;
-  --primary-700: #1d4ed8;
-  --primary-800: #1e40af;
-  --primary-900: #1e3a8a;
+  --primary-50: #eef2ff;
+  --primary-100: #e0e7ff;
+  --primary-200: #c7d2fe;
+  --primary-300: #a5b4fc;
+  --primary-400: #818cf8;
+  --primary-500: #6366f1;
+  --primary-600: #4f46e5;
+  --primary-700: #4338ca;
+  --primary-800: #3730a3;
+  --primary-900: #312e81;
 
-  --surface-50: #f8fafc;
-  --surface-100: #f1f5f9;
-  --surface-200: #e2e8f0;
-  --surface-300: #cbd5e1;
-  --surface-400: #94a3b8;
-  --surface-500: #64748b;
-  --surface-600: #475569;
-  --surface-700: #334155;
-  --surface-800: #1e293b;
-  --surface-900: #0f172a;
-  --surface-950: #020617;
+  --surface-50: #f7f8fc;
+  --surface-100: #eff1f6;
+  --surface-200: #e2e4ed;
+  --surface-300: #c8ccd9;
+  --surface-400: #9da2b5;
+  --surface-500: #6d7387;
+  --surface-600: #4f5567;
+  --surface-700: #363b4a;
+  --surface-800: #202433;
+  --surface-900: #111527;
+  --surface-950: #080a14;
 
-  --success: #10b981;
-  --warning: #f59e0b;
-  --danger: #ef4444;
-  --info: #06b6d4;
+  --success: #06d6a0;
+  --warning: #fb923c;
+  --danger: #ff4757;
+  --info: #38bdf8;
+
+  --accent-rose: #ff3b8d;
+  --accent-orange: #ff8c42;
+  --accent-gold: #f0c040;
+  --accent-cyan: #22d3ee;
 
   --radius: 0.75rem;
 }
 
 body {
   background: var(--surface-50);
+  background-image:
+    radial-gradient(ellipse at 20% 0%, rgba(99, 102, 241, 0.03) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(56, 189, 248, 0.03) 0%, transparent 50%);
 }
 
 /* ── Body base styles ── */
