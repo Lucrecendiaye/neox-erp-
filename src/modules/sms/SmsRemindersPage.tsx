@@ -6,11 +6,13 @@ import db from '@/db'
 import { generateId, formatCurrency, formatDate, openWhatsApp } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { Search, MessageSquare, Send, CheckCircle, Clock, AlertTriangle, History } from 'lucide-react'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import type { Credit } from '@/types'
 
 export default function SmsRemindersPage() {
-  const credits = useLiveQuery(() => db.credits.orderBy('createdAt').reverse().toArray(), [])
-  const customers = useLiveQuery(() => db.customers.toArray(), [])
+  const businessId = useBusinessId()
+  const credits = useLiveQuery(() => db.credits.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId])
+  const customers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId])
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [historyCredit, setHistoryCredit] = useState<Credit | null>(null)
@@ -92,7 +94,7 @@ export default function SmsRemindersPage() {
   const overdueCount = outstanding.filter(c => c.status === 'overdue' || (c.status === 'active' && new Date(c.dueDate) < new Date())).length
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Rappels SMS</h1>

@@ -8,16 +8,20 @@ import { toast } from '@/lib/toast'
 import { Search, DollarSign, CheckCircle, Clock, AlertTriangle, FileText } from 'lucide-react'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { useAppStore } from '@/stores/appStore'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import type { Purchase, Supplier, AccountingEntry } from '@/types'
 
 export default function SupplierPaymentsPage() {
   const isCloud = isSupabaseConfigured()
-  const dexiePurchases = useLiveQuery(() => db.purchases.orderBy('createdAt').reverse().toArray(), [])
+  const businessId = useBusinessId()
+  const dexiePurchases = useLiveQuery(() => db.purchases.where('businessId').equals(businessId).sortBy('createdAt').then(arr => arr.reverse()), [])
   const { data: supabasePurchases } = useSupabaseQuery<Purchase>('purchases', undefined, [])
   const purchases = isCloud ? (supabasePurchases || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : dexiePurchases
-  const dexieSuppliers = useLiveQuery(() => db.suppliers.toArray(), [])
+  const dexieSuppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [])
   const { data: supabaseSuppliers } = useSupabaseQuery<Supplier>('suppliers', undefined, [])
   const suppliers = isCloud ? supabaseSuppliers : dexieSuppliers
+  const userId = useAppStore(s => s.user?.id || '')
   const [search, setSearch] = useState('')
   const [payModal, setPayModal] = useState(false)
   const [selectedPurchase, setSelectedPurchase] = useState<string | null>(null)
@@ -55,7 +59,6 @@ export default function SupplierPaymentsPage() {
 
     try {
       if (isCloud) { await sb.update('purchases', selectedPurchase, { paid: newPaid, status: newStatus }) } else { await db.purchases.update(selectedPurchase, { paid: newPaid, status: newStatus }) }
-      if (isCloud) { await sb.insert('accounting_entries', { id: generateId(), businessId: 'biz-default', date: new Date().toISOString(), type: 'expense', accountId: 'acc-expense', accountName: 'Dépenses', amount: payAmount, direction: 'debit', reference: `PAY-${purchase.id}`, description: `Paiement fournisseur: ${purchase.supplierName || 'N/A'} - ${purchase.id}`, createdAt: new Date().toISOString(), userId: 'admin' }) } else { await db.accountingEntries.add({ id: generateId(), businessId: 'biz-default', date: new Date().toISOString(), type: 'expense', accountId: 'acc-expense', accountName: 'Dépenses', amount: payAmount, direction: 'debit', reference: `PAY-${purchase.id}`, description: `Paiement fournisseur: ${purchase.supplierName || 'N/A'} - ${purchase.id}`, createdAt: new Date().toISOString(), userId: 'admin' }) }
       toast('Paiement enregistré avec succès', 'success')
       setPayModal(false)
       setPayAmount(0)
@@ -66,7 +69,7 @@ export default function SupplierPaymentsPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold text-surface-900">Paiements fournisseurs</h1>
         <p className="text-surface-500 text-sm mt-1">{unpaid.length} fournisseur{unpaid.length > 1 ? 's' : ''} avec solde impayé</p>

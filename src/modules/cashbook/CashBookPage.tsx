@@ -1,7 +1,9 @@
 import { useState, useMemo } from 'react'
 import { Card, CardTitle, StatCard, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
+import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
 import { generateId, formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from '@/lib/toast'
@@ -9,6 +11,7 @@ import { Wallet, ArrowUpRight, ArrowDownRight, Plus, Trash2, Search, Filter, Cal
 import type { CashBookEntry } from '@/types'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { softDelete } from '@/lib/softDelete'
 
 const categories = ['Ventes', 'Achats', 'Salaires', 'Loyer', 'Transport', 'Marketing', 'Fournisseurs', 'Autre']
 
@@ -68,7 +71,8 @@ function getDateRange(range: string): { start: string; end: string } | null {
 
 export default function CashBookPage() {
   const isCloud = isSupabaseConfigured()
-  const dexieEntries = useLiveQuery(() => db.cashBook.orderBy('date').reverse().toArray(), [])
+  const businessId = useBusinessId()
+  const dexieEntries = useLiveQuery(() => db.cashBook.where('businessId').equals(businessId).reverse().sortBy('date'), [businessId])
   const { data: supabaseEntries } = useSupabaseQuery<CashBookEntry>('cash_book', undefined, [])
   const entries = isCloud ? (supabaseEntries || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : dexieEntries
 
@@ -163,7 +167,7 @@ export default function CashBookPage() {
 
     const entry: CashBookEntry = {
       id: generateId(),
-      businessId: 'biz-default',
+      businessId,
       date: formDate,
       type: formType,
       category: formCategory,
@@ -173,7 +177,7 @@ export default function CashBookPage() {
       paymentMethod: formPaymentMethod as CashBookEntry['paymentMethod'],
       reference: formReference || undefined,
       createdAt: new Date().toISOString(),
-      userId: 'admin',
+      userId: useAppStore.getState().user?.id || '',
     }
 
     try {
@@ -189,6 +193,8 @@ export default function CashBookPage() {
   async function handleDelete(id: string) {
     if (!confirm('Supprimer cette écriture ?')) return
     try {
+      const entry = entries?.find(e => e.id === id)
+      if (entry) await softDelete('cashBook', id, entry as any, entry.description)
       if (isCloud) { await sb.remove('cash_book', id) } else { await db.cashBook.delete(id) }
       toast('Écriture supprimée', 'success')
     } catch {
@@ -197,7 +203,7 @@ export default function CashBookPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Caisse</h1>

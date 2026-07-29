@@ -1,55 +1,58 @@
 import { useEffect, useState, lazy, Suspense } from 'react'
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { ThemeProvider } from '@/providers/theme-provider'
 import ToastContainer from '@/components/ui/ToastContainer'
+import OfflineBanner from '@/components/ui/OfflineBanner'
 import AppLayout from '@/components/layout/AppLayout'
+import PermissionRoute from '@/components/layout/PermissionRoute'
 import Dashboard from '@/modules/dashboard/Dashboard'
 import SettingsPage from '@/modules/settings/SettingsPage'
+import TrashPage from '@/modules/trash/TrashPage'
 import LoginPage from '@/modules/auth/LoginPage'
 import RegisterPage from '@/modules/auth/RegisterPage'
-import LockScreen from '@/modules/lock/LockScreen'
-import { useAppStore } from '@/stores/appStore'
+import { useAppStore, useSyncStore } from '@/stores/appStore'
 import { initDB } from '@/db'
 import { isLoggedIn, getCurrentSession, onAuthChange } from '@/lib/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { registerSW } from '@/lib/pwa'
+import { startNotificationEngine } from '@/engine/notifications'
+import { subscribeAll } from '@/lib/realtime'
+import { syncAll } from '@/lib/syncEngine'
+import { scheduleAutoBackup } from '@/lib/autoBackup'
 registerSW()
 
 const ProductsPage = lazy(() => import('@/modules/products/ProductsPage'))
+const ProductDetailPage = lazy(() => import('@/modules/products/ProductDetailPage'))
 const StockPage = lazy(() => import('@/modules/stock/StockPage'))
 const POSPage = lazy(() => import('@/modules/pos/POSPage'))
 const CustomersPage = lazy(() => import('@/modules/customers/CustomersPage'))
 const SuppliersPage = lazy(() => import('@/modules/suppliers/SuppliersPage'))
-const AccountingPage = lazy(() => import('@/modules/accounting/AccountingPage'))
+const SupplierDetailPage = lazy(() => import('@/modules/suppliers/SupplierDetailPage'))
 const CreditPage = lazy(() => import('@/modules/credit/CreditPage'))
 const SupplierPaymentsPage = lazy(() => import('@/modules/payments/SupplierPaymentsPage'))
-const AuditPage = lazy(() => import('@/modules/audit/AuditPage'))
-const NotificationsPage = lazy(() => import('@/modules/notifications/NotificationsPage'))
 const InvoicesPage = lazy(() => import('@/modules/invoices/InvoicesPage'))
+const SalesPage = lazy(() => import('@/modules/sales/SalesPage'))
 const PurchasesPage = lazy(() => import('@/modules/purchases/PurchasesPage'))
 const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage'))
-const CashBookPage = lazy(() => import('@/modules/cashbook/CashBookPage'))
 const DepotsPage = lazy(() => import('@/modules/depots/DepotsPage'))
 const DepotStockPage = lazy(() => import('@/modules/depots/DepotStockPage'))
 const DepotPOSPage = lazy(() => import('@/modules/depots/DepotPOSPage'))
 const DepotStatsPage = lazy(() => import('@/modules/depots/DepotStatsPage'))
-const EmployeesPage = lazy(() => import('@/modules/payroll/EmployeesPage'))
-const AttendancePage = lazy(() => import('@/modules/payroll/AttendancePage'))
-const PayrollPage = lazy(() => import('@/modules/payroll/PayrollPage'))
-const LeadsPage = lazy(() => import('@/modules/crm/LeadsPage'))
-const SmsRemindersPage = lazy(() => import('@/modules/sms/SmsRemindersPage'))
-const BillBookPage = lazy(() => import('@/modules/billbook/BillBookPage'))
+const DepotGlobalPOSPage = lazy(() => import('@/modules/depots/DepotGlobalPOSPage'))
+const DepotHistoryPage = lazy(() => import('@/modules/depots/DepotHistoryPage'))
+const DepotGlobalStockPage = lazy(() => import('@/modules/depots/DepotGlobalStockPage'))
 const UsersPage = lazy(() => import('@/modules/users/UsersPage'))
-const AppLockPage = lazy(() => import('@/modules/lock/AppLockPage'))
-const BusinessesPage = lazy(() => import('@/modules/businesses/BusinessesPage'))
+
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { session } = useAppStore()
+  const { session, initialized } = useAppStore()
+  if (!initialized) return null
   if (!session && !isLoggedIn()) return <Navigate to="/login" replace />
   return <>{children}</>
 }
 
 export default function App() {
-  const { initialized, init, locked, setLocked, setUser, setSession } = useAppStore()
+  const { initialized, init, setUser, setSession } = useAppStore()
   const [error, setError] = useState<string | null>(null)
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured())
 
@@ -59,58 +62,87 @@ export default function App() {
         await init()
         if (isSupabaseConfigured()) {
           const session = await getCurrentSession()
-          if (session) {
-            setSession(session)
-            setAuthReady(true)
-          } else {
-            setAuthReady(true)
-          }
+          if (session) setSession(session)
         } else {
           const uid = localStorage.getItem('neox-user-id')
           if (uid) {
             const u = await (await import('@/db')).default.users.get(uid)
             if (u) setUser(u)
           }
-          setAuthReady(true)
         }
+        setAuthReady(true)
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err)
         setError(msg)
         setAuthReady(true)
       })
+    startNotificationEngine()
+    if (isSupabaseConfigured()) {
+      subscribeAll()
+    }
 
-    const unsub = onAuthChange((session) => {
+    const unsub = onAuthChange(async (session) => {
       setSession(session)
       if (session?.user) {
-        const u = {
-          id: session.user.id,
-          businessId: 'biz-default',
-          name: session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Utilisateur',
-          email: session.user.email || '',
-          passwordHash: '',
-          role: 'admin' as const,
-          permissions: ['*'],
-          isActive: true,
-          createdAt: session.user.created_at || new Date().toISOString(),
+        try {
+          const { supabase } = await import('@/lib/supabase')
+          const { data: profile } = await supabase.from('profiles').select('*, businesses(*)').eq('auth_user_id', session.user.id).single()
+          const u = {
+            id: session.user.id,
+            businessId: profile?.business_id || '',
+            name: profile?.name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Utilisateur',
+            email: session.user.email || '',
+            loginId: session.user.email || '',
+            passwordHash: '',
+            role: (profile?.role || 'staff') as 'admin' | 'manager' | 'staff' | 'viewer',
+            permissions: profile?.permissions?.length ? profile.permissions : ['*'],
+            isActive: profile?.is_active ?? true,
+            isPrimaryAdmin: profile?.is_primary_admin ?? false,
+            createdAt: profile?.created_at || session.user.created_at || new Date().toISOString(),
+          }
+          setUser(u)
+          if (profile?.businesses) {
+            useAppStore.getState().setCurrentBusiness({
+              id: profile.businesses.id,
+              name: profile.businesses.name,
+              currency: profile.businesses.currency,
+              currencySymbol: profile.businesses.currency_symbol,
+              phone: profile.businesses.phone,
+              email: profile.businesses.email,
+              address: profile.businesses.address,
+              taxId: profile.businesses.tax_id,
+              isActive: profile.businesses.is_active,
+              createdAt: profile.businesses.created_at,
+            })
+          }
+        } catch {
+          setUser(null)
         }
-        setUser(u)
       } else {
         setUser(null)
       }
     })
 
-    const lockEnabled = localStorage.getItem('neox-pin-enabled') === 'true'
-    if (lockEnabled) setLocked(true)
-
-    window.addEventListener('online', () => useAppStore.getState().setIsOnline(true))
+    window.addEventListener('online', () => {
+      useAppStore.getState().setIsOnline(true)
+      syncAll().catch(() => {})
+    })
     window.addEventListener('offline', () => useAppStore.getState().setIsOnline(false))
-    return () => unsub.data?.subscription.unsubscribe()
-  }, [])
 
-  if (locked && initialized && isLoggedIn()) {
-    return <LockScreen onUnlock={() => setLocked(false)} />
-  }
+    if (isSupabaseConfigured()) {
+      syncAll().catch(() => {})
+    }
+    const interval = setInterval(() => {
+      if (isSupabaseConfigured()) syncAll().catch(() => {})
+    }, 60000)
+    scheduleAutoBackup()
+
+    return () => {
+      unsub.data?.subscription.unsubscribe()
+      clearInterval(interval)
+    }
+  }, [])
 
   if (error) {
     return (
@@ -146,6 +178,8 @@ export default function App() {
 
   return (
     <>
+      <ThemeProvider>
+      <OfflineBanner />
       <ToastContainer />
       <BrowserRouter>
       <Routes>
@@ -159,37 +193,33 @@ export default function App() {
           </ProtectedRoute>
         }>
           <Route path="/" element={<Dashboard />} />
-          <Route path="/products" element={<ProductsPage />} />
-          <Route path="/stock" element={<StockPage />} />
-          <Route path="/pos" element={<POSPage />} />
-          <Route path="/customers" element={<CustomersPage />} />
-          <Route path="/suppliers" element={<SuppliersPage />} />
-          <Route path="/accounting" element={<AccountingPage />} />
-          <Route path="/credit" element={<CreditPage />} />
-          <Route path="/payments" element={<SupplierPaymentsPage />} />
-          <Route path="/audit" element={<AuditPage />} />
-          <Route path="/notifications" element={<NotificationsPage />} />
-          <Route path="/invoices" element={<InvoicesPage />} />
-          <Route path="/purchases" element={<PurchasesPage />} />
-          <Route path="/reports" element={<ReportsPage />} />
-          <Route path="/settings" element={<SettingsPage />} />
-          <Route path="/cashbook" element={<CashBookPage />} />
-          <Route path="/payroll/employees" element={<EmployeesPage />} />
-          <Route path="/payroll/attendance" element={<AttendancePage />} />
-          <Route path="/payroll" element={<PayrollPage />} />
-          <Route path="/depots" element={<DepotsPage />} />
-          <Route path="/depots/stock/:locationId" element={<DepotStockPage />} />
-          <Route path="/depots/pos/:locationId" element={<DepotPOSPage />} />
-          <Route path="/depots/stats/:locationId" element={<DepotStatsPage />} />
-          <Route path="/crm" element={<LeadsPage />} />
-          <Route path="/sms" element={<SmsRemindersPage />} />
-          <Route path="/billbook" element={<BillBookPage />} />
-          <Route path="/users" element={<UsersPage />} />
-          <Route path="/lock" element={<AppLockPage />} />
-          <Route path="/businesses" element={<BusinessesPage />} />
+          <Route path="/products" element={<PermissionRoute module="products"><ProductsPage /></PermissionRoute>} />
+          <Route path="/products/:productId" element={<PermissionRoute module="products"><ProductDetailPage /></PermissionRoute>} />
+          <Route path="/stock" element={<PermissionRoute module="stock"><StockPage /></PermissionRoute>} />
+          <Route path="/pos" element={<PermissionRoute module="pos"><POSPage /></PermissionRoute>} />
+          <Route path="/customers" element={<PermissionRoute module="customers"><CustomersPage /></PermissionRoute>} />
+          <Route path="/suppliers" element={<PermissionRoute module="suppliers"><SuppliersPage /></PermissionRoute>} />
+          <Route path="/suppliers/:supplierId" element={<PermissionRoute module="suppliers"><SupplierDetailPage /></PermissionRoute>} />
+          <Route path="/credit" element={<PermissionRoute module="credit"><CreditPage /></PermissionRoute>} />
+          <Route path="/payments" element={<PermissionRoute module="payments"><SupplierPaymentsPage /></PermissionRoute>} />
+          <Route path="/invoices" element={<PermissionRoute module="invoices"><InvoicesPage /></PermissionRoute>} />
+          <Route path="/sales" element={<PermissionRoute module="sales"><SalesPage /></PermissionRoute>} />
+          <Route path="/purchases" element={<PermissionRoute module="purchases"><PurchasesPage /></PermissionRoute>} />
+          <Route path="/reports" element={<PermissionRoute module="reports"><ReportsPage /></PermissionRoute>} />
+          <Route path="/settings" element={<PermissionRoute module="settings"><SettingsPage /></PermissionRoute>} />
+          <Route path="/depots" element={<PermissionRoute module="depots"><DepotsPage /></PermissionRoute>} />
+          <Route path="/depots/stock/:locationId" element={<PermissionRoute module="depots"><DepotStockPage /></PermissionRoute>} />
+          <Route path="/depots/pos/:locationId" element={<PermissionRoute module="depots"><DepotPOSPage /></PermissionRoute>} />
+          <Route path="/depots/stats/:locationId" element={<PermissionRoute module="depots"><DepotStatsPage /></PermissionRoute>} />
+          <Route path="/depots/vente" element={<PermissionRoute module="depots"><DepotGlobalPOSPage /></PermissionRoute>} />
+          <Route path="/depots/history/:locationId" element={<PermissionRoute module="depots"><DepotHistoryPage /></PermissionRoute>} />
+          <Route path="/depots/stock-global" element={<PermissionRoute module="depots"><DepotGlobalStockPage /></PermissionRoute>} />
+          <Route path="/users" element={<PermissionRoute module="users"><UsersPage /></PermissionRoute>} />
+          <Route path="/trash" element={<TrashPage />} />
         </Route>
       </Routes>
     </BrowserRouter>
+    </ThemeProvider>
     </>
   )
 }

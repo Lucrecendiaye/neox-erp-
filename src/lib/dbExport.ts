@@ -1,15 +1,19 @@
 import db from '@/db'
 
-export async function exportDBToJSON(): Promise<string> {
-  const tables = [
-    'products', 'categories', 'stockMovements', 'customers',
-    'suppliers', 'sales', 'purchases', 'invoices',
-    'accountingEntries', 'accounts', 'credits', 'auditLogs',
-    'users', 'settings', 'notifications',
-  ] as const
+const ALL_TABLES = [
+  'products', 'categories', 'stockMovements', 'customers',
+  'suppliers', 'sales', 'purchases', 'invoices',
+  'credits', 'auditLogs',
+  'users', 'settings', 'notifications', 'businesses',
+  'employees', 'attendance', 'payrolls', 'cashBook',
+  'leads', 'businessCards', 'locations', 'productStocks',
+  'productHistory', 'supplierInvoices', 'supplierPayments',
+  'compensations', 'transfers',
+] as const
 
+export async function exportDBToJSON(): Promise<string> {
   const data: Record<string, unknown> = {}
-  for (const table of tables) {
+  for (const table of ALL_TABLES) {
     data[table] = await (db as any)[table].toArray()
   }
   return JSON.stringify(data, null, 2)
@@ -19,14 +23,7 @@ export async function importDBFromJSON(json: string): Promise<number> {
   const data = JSON.parse(json)
   let total = 0
 
-  const tables = [
-    'products', 'categories', 'stockMovements', 'customers',
-    'suppliers', 'sales', 'purchases', 'invoices',
-    'accountingEntries', 'accounts', 'credits', 'auditLogs',
-    'users', 'settings', 'notifications',
-  ] as const
-
-  for (const table of tables) {
+  for (const table of ALL_TABLES) {
     const items = data[table]
     if (!Array.isArray(items)) continue
     await (db as any)[table].clear()

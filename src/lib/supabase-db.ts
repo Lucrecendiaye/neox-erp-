@@ -1,31 +1,43 @@
 import { useEffect, useState } from 'react'
 import { supabase, isSupabaseConfigured } from './supabase'
+import { useBusinessId } from '@/hooks/useBusinessId'
+import { useAppStore } from '@/stores/appStore'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 
 export type TableName =
   | 'products' | 'categories' | 'stock_movements' | 'customers'
   | 'suppliers' | 'sales' | 'purchases' | 'invoices'
-  | 'accounting_entries' | 'accounts' | 'credits' | 'audit_logs'
+  | 'credits' | 'audit_logs'
   | 'profiles' | 'notifications' | 'businesses'
   | 'employees' | 'attendance' | 'payrolls' | 'cash_book'
   | 'leads' | 'business_cards' | 'settings'
+  | 'locations' | 'product_stocks' | 'product_history'
+  | 'supplier_invoices' | 'supplier_payments' | 'compensations' | 'transfers'
 
 type QueryBuilder = any
+
+const TENANT_TABLES: Set<TableName> = new Set([
+  'products', 'categories', 'stock_movements', 'customers',
+  'suppliers', 'sales', 'purchases', 'invoices',
+  'credits', 'audit_logs',
+  'employees', 'attendance', 'payrolls', 'cash_book',
+  'leads', 'business_cards', 'locations', 'product_stocks',
+  'product_history', 'supplier_invoices', 'supplier_payments',
+  'compensations', 'transfers', 'notifications',
+])
 
 export function useSupabaseQuery<T>(
   table: TableName,
   queryFn?: (q: QueryBuilder) => any,
   deps: unknown[] = []
 ): { data: T[] | undefined; loading: boolean; error: string | null } {
+  const businessId = useBusinessId()
   const [data, setData] = useState<T[] | undefined>(undefined)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    if (!isSupabaseConfigured()) {
-      setLoading(false)
-      return
-    }
+    if (!isSupabaseConfigured()) { setLoading(false); return }
 
     let cancelled = false
 
@@ -33,6 +45,9 @@ export function useSupabaseQuery<T>(
       try {
         setLoading(true)
         let q = supabase.from(table).select('*') as any
+        if (businessId && TENANT_TABLES.has(table)) {
+          q = q.eq('businessId', businessId)
+        }
         if (queryFn) q = queryFn(q as QueryBuilder)
         const { data: result, error: err } = await q
         if (cancelled) return
@@ -41,7 +56,9 @@ export function useSupabaseQuery<T>(
         setError(null)
       } catch (err: unknown) {
         if (!cancelled) {
-          setError(err instanceof Error ? err.message : 'Erreur de requête')
+          const msg = err instanceof Error ? err.message : 'Erreur de requête'
+          setError(msg)
+          console.error(`[Supabase] ${table}:`, err)
         }
       } finally {
         if (!cancelled) setLoading(false)
@@ -56,6 +73,8 @@ export function useSupabaseQuery<T>(
         { event: '*', schema: 'public', table },
         (payload: RealtimePostgresChangesPayload<any>) => {
           if (cancelled) return
+          const payloadBizId = (payload.new as any)?.businessId || (payload.old as any)?.businessId
+          if (businessId && TENANT_TABLES.has(table) && payloadBizId !== businessId) return
           if (payload.eventType === 'INSERT') {
             setData(prev => prev ? [payload.new as T, ...prev] : [payload.new as T])
           } else if (payload.eventType === 'UPDATE') {
@@ -71,15 +90,22 @@ export function useSupabaseQuery<T>(
       cancelled = true
       supabase.removeChannel(channel)
     }
-  }, [table, ...deps])
+  }, [table, businessId, ...deps])
 
   return { data, loading, error }
 }
 
+function getCurrentBusinessId(): string {
+  const state = useAppStore.getState()
+  return state.currentBusiness?.id || state.user?.businessId || ''
+}
+
 export const sb = {
-  getAll: async <T>(table: TableName, options?: { order?: string; ascending?: boolean; limit?: number }) => {
+  getAll: async <T>(table: TableName, options?: { order?: string; ascending?: boolean; limit?: number; businessId?: string }) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
+    const bizId = options?.businessId || getCurrentBusinessId()
     let q = supabase.from(table).select('*')
+    if (bizId && TENANT_TABLES.has(table)) q = q.eq('businessId', bizId)
     if (options?.order) q = q.order(options.order, { ascending: options.ascending ?? false })
     if (options?.limit) q = q.limit(options.limit)
     const { data, error } = await q
@@ -89,34 +115,60 @@ export const sb = {
 
   getById: async <T>(table: TableName, id: string) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
-    const { data, error } = await supabase.from(table).select('*').eq('id', id).single()
+    const bizId = getCurrentBusinessId()
+    let q = supabase.from(table).select('*').eq('id', id)
+    if (bizId && TENANT_TABLES.has(table)) q = q.eq('businessId', bizId)
+    const { data, error } = await q.single()
     if (error) throw error
     return data as T
   },
 
   insert: async <T>(table: TableName, record: Partial<T>) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
-    const { data, error } = await supabase.from(table).insert(record as any).select().single()
-    if (error) throw error
+    const bizId = getCurrentBusinessId()
+    const enriched = { ...record } as any
+    if (bizId && TENANT_TABLES.has(table) && !enriched.businessId) {
+      enriched.businessId = bizId
+    }
+    const { data, error } = await supabase.from(table).insert(enriched).select().single()
+    if (error) {
+      console.error(`[Supabase] insert ${table}:`, error, enriched)
+      throw error
+    }
     return data as T
   },
 
   update: async <T>(table: TableName, id: string, updates: Partial<T>) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
-    const { data, error } = await supabase.from(table).update(updates as any).eq('id', id).select().single()
-    if (error) throw error
+    const bizId = getCurrentBusinessId()
+    let q = supabase.from(table).update(updates as any).eq('id', id)
+    if (bizId && TENANT_TABLES.has(table)) q = q.eq('businessId', bizId)
+    const { data, error } = await q.select().single()
+    if (error) {
+      console.error(`[Supabase] update ${table}:`, error, updates)
+      throw error
+    }
     return data as T
   },
 
   remove: async (table: TableName, id: string) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
-    const { error } = await supabase.from(table).delete().eq('id', id)
-    if (error) throw error
+    const bizId = getCurrentBusinessId()
+    let q = supabase.from(table).delete().eq('id', id)
+    if (bizId && TENANT_TABLES.has(table)) q = q.eq('businessId', bizId)
+    const { error } = await q
+    if (error) {
+      console.error(`[Supabase] delete ${table}:`, error)
+      throw error
+    }
   },
 
   filter: async <T>(table: TableName, column: string, value: any) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
-    const { data, error } = await supabase.from(table).select('*').eq(column, value)
+    const bizId = getCurrentBusinessId()
+    let q = supabase.from(table).select('*').eq(column, value)
+    if (bizId && TENANT_TABLES.has(table)) q = q.eq('businessId', bizId)
+    const { data, error } = await q
     if (error) throw error
     return data as T[]
   },
@@ -125,5 +177,5 @@ export const sb = {
 export async function syncToSupabase(table: TableName, records: any[]) {
   if (!isSupabaseConfigured() || records.length === 0) return
   const { error } = await supabase.from(table).upsert(records, { onConflict: 'id' })
-  if (error) console.error(`Sync error [${table}]:`, error)
+  if (error) console.error(`[Supabase] sync error [${table}]:`, error)
 }

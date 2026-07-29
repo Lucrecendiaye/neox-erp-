@@ -1,14 +1,18 @@
 import { useState, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
-import { generateId, generateInvoiceNumber, formatCurrency } from '@/lib/utils'
+import { generateId, generateInvoiceNumber, formatCurrency, getProductUnits, convertToMainUnit } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { Search, Plus, Edit2, Trash2, Package, DollarSign, FileText, ChevronDown, ChevronUp, X, Minus, Plus as PlusIcon } from 'lucide-react'
 import type { Purchase, SaleItem, Product, Supplier, StockMovement, AuditLog, AccountingEntry } from '@/types'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { useAppStore } from '@/stores/appStore'
+import { processPurchase, deletePurchase } from '@/engine/operations'
+import type { Location } from '@/engine/types'
 
 const statusColors = {
   pending: 'warning',
@@ -19,23 +23,29 @@ const statusColors = {
 
 export default function PurchasesPage() {
   const isCloud = isSupabaseConfigured()
-  const dexiePurchases = useLiveQuery(() => db.purchases.orderBy('createdAt').reverse().toArray(), [])
+  const businessId = useBusinessId()
+  const dexiePurchases = useLiveQuery(() => db.purchases.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId])
   const { data: supabasePurchases } = useSupabaseQuery<Purchase>('purchases', undefined, [])
   const purchases = isCloud ? (supabasePurchases || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : dexiePurchases
-  const dexieSuppliers = useLiveQuery(() => db.suppliers.toArray(), [])
+  const dexieSuppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId])
   const { data: supabaseSuppliers } = useSupabaseQuery<Supplier>('suppliers', undefined, [])
   const suppliers = isCloud ? supabaseSuppliers : dexieSuppliers
-  const dexieProducts = useLiveQuery(() => db.products.toArray(), [])
+  const dexieProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const { data: supabaseProducts } = useSupabaseQuery<Product>('products', undefined, [])
   const products = isCloud ? supabaseProducts : dexieProducts
+  const dexieLocations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
+  const { data: supabaseLocations } = useSupabaseQuery<Location>('locations', undefined, [])
+  const allLocations = (isCloud ? supabaseLocations : dexieLocations) || []
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Purchase | null>(null)
+  const userId = useAppStore(s => s.user?.id || '')
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const [supplierId, setSupplierId] = useState('')
+  const [locationId, setLocationId] = useState('')
   const [note, setNote] = useState('')
-  const [items, setItems] = useState<{ productId: string; productName: string; quantity: number; unitPrice: number; discount: number; taxRate: number; total: number }[]>([])
+  const [items, setItems] = useState<{ productId: string; productName: string; quantity: number; unitPrice: number; discount: number; taxRate: number; total: number; unitName?: string; unitQuantity?: number }[]>([])
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'mobile' | 'credit' | 'bank'>('cash')
   const [paid, setPaid] = useState(0)
 
@@ -57,6 +67,7 @@ export default function PurchasesPage() {
   function openCreate() {
     setEditing(null)
     setSupplierId('')
+    setLocationId('')
     setNote('')
     setItems([])
     setPaymentMethod('cash')
@@ -68,7 +79,7 @@ export default function PurchasesPage() {
     setEditing(purchase)
     setSupplierId(purchase.supplierId || '')
     setNote(purchase.note || '')
-    setItems(purchase.items.map(i => ({ ...i })))
+    setItems(purchase.items.map(i => ({ ...i, unitName: i.unitName || undefined, unitQuantity: i.unitQuantity || 1 })))
     setPaid(purchase.paid)
     setModalOpen(true)
   }
@@ -89,7 +100,17 @@ export default function PurchasesPage() {
       discount: 0,
       taxRate: product.taxRate,
       total: product.purchasePrice * (1 + product.taxRate / 100),
+      unitName: product.unit,
+      unitQuantity: 1,
     }])
+  }
+
+  function changeItemUnit(productId: string, unitName: string, unitQuantity: number, unitPrice: number) {
+    setItems(items.map(i => {
+      if (i.productId !== productId) return i
+      const newUnitPrice = unitQuantity > 1 ? unitPrice : i.unitPrice
+      return { ...i, unitName, unitQuantity, unitPrice: newUnitPrice, total: i.quantity * newUnitPrice * (1 + i.taxRate / 100) - i.discount }
+    }))
   }
 
   function updateItem(productId: string, field: string, value: number) {
@@ -106,12 +127,13 @@ export default function PurchasesPage() {
   }
 
   async function handleSave() {
+    if (!locationId) { toast('Veuillez sélectionner un emplacement de stockage', 'warning'); return }
     const now = new Date().toISOString()
     const supplier = suppliers?.find(s => s.id === supplierId)
     const purchase: Purchase = {
       id: editing ? editing.id : generateId(),
-      businessId: 'biz-default',
-      locationId: 'loc-shop',
+      businessId,
+      locationId,
       supplierId: supplierId || undefined,
       supplierName: supplier?.name || 'Fournisseur inconnu',
       items: items.map(i => ({
@@ -122,6 +144,8 @@ export default function PurchasesPage() {
         discount: i.discount,
         taxRate: i.taxRate,
         total: i.total,
+        unitName: i.unitName,
+        unitQuantity: i.unitQuantity,
       })),
       subtotal: totals.subtotal,
       discountTotal: totals.discountTotal,
@@ -131,21 +155,16 @@ export default function PurchasesPage() {
       status: editing ? editing.status : 'completed',
       note: note || undefined,
       createdAt: editing ? editing.createdAt : now,
-      userId: 'admin',
+      userId,
     }
 
     try {
       if (editing) {
-        if (isCloud) { await sb.update('purchases', editing.id, { ...purchase }) } else { await db.purchases.update(editing.id, { ...purchase }) }
+        const { editPurchase } = await import('@/engine/operations')
+        await editPurchase(editing.id, purchase)
         toast('Achat mis à jour avec succès', 'success')
       } else {
-        if (isCloud) { await sb.insert('purchases', purchase) } else { await db.purchases.add(purchase) }
-        for (const item of items) {
-          const sm = { id: generateId(), businessId: 'biz-default', locationId: 'loc-shop', productId: item.productId, type: 'in' as const, quantity: item.quantity, unitPrice: item.unitPrice, reference: `ACHAT-${purchase.id}`, note: `Achat: ${supplier?.name || 'N/A'}`, createdAt: now, userId: 'admin' }
-          if (isCloud) { await sb.insert('stock_movements', sm) } else { await db.stockMovements.add(sm) }
-          if (isCloud) { await sb.insert('audit_logs', { id: generateId(), businessId: 'biz-default', userId: 'admin', action: 'create', entity: 'purchase', entityId: purchase.id, details: `Achat créé: ${totals.total}`, createdAt: now }) } else { await db.auditLogs.add({ id: generateId(), businessId: 'biz-default', userId: 'admin', action: 'create', entity: 'purchase', entityId: purchase.id, details: `Achat créé: ${totals.total}`, createdAt: now }) }
-          if (isCloud) { await sb.insert('accounting_entries', { id: generateId(), businessId: 'biz-default', date: now, type: 'expense', accountId: 'acc-expense', accountName: 'Dépenses', amount: item.unitPrice * item.quantity, direction: 'debit', reference: `ACHAT-${purchase.id}`, description: `Achat: ${item.productName} x${item.quantity}`, createdAt: now, userId: 'admin' }) } else { await db.accountingEntries.add({ id: generateId(), businessId: 'biz-default', date: now, type: 'expense', accountId: 'acc-expense', accountName: 'Dépenses', amount: item.unitPrice * item.quantity, direction: 'debit', reference: `ACHAT-${purchase.id}`, description: `Achat: ${item.productName} x${item.quantity}`, createdAt: now, userId: 'admin' }) }
-        }
+        await processPurchase(purchase)
         toast('Achat créé avec succès', 'success')
       }
       setModalOpen(false)
@@ -157,7 +176,7 @@ export default function PurchasesPage() {
   async function handleDelete(id: string) {
     if (!confirm('Voulez-vous vraiment supprimer cet achat ?')) return
     try {
-      if (isCloud) { await sb.remove('purchases', id) } else { await db.purchases.delete(id) }
+      await deletePurchase(id)
       toast('Achat supprimé avec succès', 'success')
     } catch (error) {
       toast('Erreur lors de la suppression de l\'achat', 'error')
@@ -169,7 +188,7 @@ export default function PurchasesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Achats</h1>
@@ -233,7 +252,7 @@ export default function PurchasesPage() {
                     {p.items.map((item, idx) => (
                       <tr key={idx} className="border-t border-surface-50">
                         <td className="py-2 text-surface-900">{item.productName}</td>
-                        <td className="py-2 text-right text-surface-600">{item.quantity}</td>
+                        <td className="py-2 text-right text-surface-600">{item.quantity} {item.unitName || ''}</td>
                         <td className="py-2 text-right text-surface-600">{formatCurrency(item.unitPrice)}</td>
                         <td className="py-2 text-right font-medium">{formatCurrency(item.unitPrice * item.quantity)}</td>
                       </tr>
@@ -275,18 +294,40 @@ export default function PurchasesPage() {
             options={supplierList.map(s => ({ value: s.id, label: `${s.name} (${s.phone})` }))}
             placeholder="Sélectionner un fournisseur"
           />
+          <Select
+            label="Emplacement de stockage *"
+            value={locationId}
+            onChange={(e) => setLocationId(e.target.value)}
+            options={allLocations.map(l => ({ value: l.id, label: `${l.name} (${l.type === 'shop' ? 'Boutique' : 'Dépôt'})` }))}
+            placeholder="Choisir où stocker la marchandise"
+          />
 
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1.5">Produits</label>
             <div className="space-y-2">
               {items.map((item) => {
                 const product = products?.find(p => p.id === item.productId)
+                const units = product ? getProductUnits(product) : [{ name: 'Pièce', quantity: 1 }]
                 return (
                   <div key={item.productId} className="flex items-center gap-2 p-2 bg-surface-50 rounded-xl">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-surface-900 truncate">{item.productName}</p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <select
+                      value={item.unitName || 'Pièce'}
+                      onChange={(e) => {
+                        const val = e.target.value
+                        if (!product) return
+                        const unit = units.find(u => u.name === val) || units[0]
+                        changeItemUnit(item.productId, unit.name, unit.quantity, unit.quantity * product.purchasePrice)
+                      }}
+                      className="text-xs px-2 py-1 rounded-lg border border-surface-200 bg-white"
+                    >
+                      {units.map(u => (
+                        <option key={u.name} value={u.name}>{u.name}</option>
+                      ))}
+                    </select>
+                    <div className="flex items-center gap-1">
                       <button onClick={() => updateItem(item.productId, 'quantity', Math.max(1, item.quantity - 1))} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><Minus className="w-3 h-3" /></button>
                       <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
                       <button onClick={() => updateItem(item.productId, 'quantity', item.quantity + 1)} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><Plus className="w-3 h-3" /></button>

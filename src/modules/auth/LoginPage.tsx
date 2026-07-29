@@ -4,10 +4,12 @@ import { signIn, hashPassword, setSession } from '@/lib/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import db from '@/db'
 import { toast } from '@/lib/toast'
+import { useAppStore } from '@/stores/appStore'
 import { LogIn, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
   const navigate = useNavigate()
+  const settings = useAppStore(s => s.settings)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [showPwd, setShowPwd] = useState(false)
@@ -19,22 +21,40 @@ export default function LoginPage() {
     setLoading(true)
     try {
       if (isSupabaseConfigured()) {
-        await signIn(email, password)
+        const { session } = await signIn(email, password)
+        const { supabase } = await import('@/lib/supabase')
+        const { data: profile } = await supabase.from('profiles').select('*, businesses(*)').eq('auth_user_id', session!.user.id).single()
+        if (profile?.businesses) {
+          useAppStore.getState().setCurrentBusiness({
+            id: profile.businesses.id,
+            name: profile.businesses.name,
+            currency: profile.businesses.currency,
+            currencySymbol: profile.businesses.currency_symbol,
+            phone: profile.businesses.phone,
+            email: profile.businesses.email,
+            address: profile.businesses.address,
+            taxId: profile.businesses.tax_id,
+            isActive: profile.businesses.is_active,
+            createdAt: profile.businesses.created_at,
+          })
+        }
         toast('Connexion réussie', 'success')
         navigate('/')
       } else {
         const hash = await hashPassword(password)
         const users = await db.users
-          .filter(u => (u.email === email || u.phone === email) && u.passwordHash === hash && u.isActive)
+          .filter(u => (u.loginId === email || u.email === email || u.phone === email) && u.passwordHash === hash && u.isActive)
           .toArray()
         if (users.length === 0) {
-          toast('Email/téléphone ou mot de passe incorrect', 'error')
+          toast('Identifiant ou mot de passe incorrect', 'error')
           setLoading(false)
           return
         }
         const user = users[0]
         setSession(user.id)
         await db.users.update(user.id, { lastLogin: new Date().toISOString() })
+        const biz = await db.businesses.get(user.businessId)
+        if (biz) useAppStore.getState().setCurrentBusiness(biz)
         toast(`Bonjour ${user.name}`, 'success')
         navigate('/')
       }
@@ -50,9 +70,13 @@ export default function LoginPage() {
       <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <span className="text-3xl font-bold text-white">N</span>
+            {settings?.logo ? (
+              <img src={settings.logo} alt="" className="w-10 h-10 object-contain" />
+            ) : (
+              <span className="text-3xl font-bold text-white">{(settings?.name || 'N')[0]}</span>
+            )}
           </div>
-          <h1 className="text-2xl font-bold text-white">NeoX ERP</h1>
+          <h1 className="text-2xl font-bold text-white">{settings?.name || 'NeoX ERP'}</h1>
           <p className="text-primary-200 text-sm mt-1">Connectez-vous à votre compte</p>
         </div>
 
@@ -100,7 +124,7 @@ export default function LoginPage() {
           </p>
           {!isSupabaseConfigured() && (
             <p className="text-center text-xs text-surface-300">
-              Première utilisation ? <strong>admin@neoxerp.com</strong> / <strong>admin123</strong>
+              Créez un compte pour commencer
             </p>
           )}
         </form>

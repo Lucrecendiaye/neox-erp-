@@ -6,6 +6,8 @@ import db from '@/db'
 import { generateId, formatCurrency, formatDate } from '@/lib/utils'
 import type { Payroll, Employee, Attendance } from '@/types'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
+import { useBusinessId } from '@/hooks/useBusinessId'
+import { useAppStore } from '@/stores/appStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { Wallet, DollarSign, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
 import { toast } from '@/lib/toast'
@@ -24,18 +26,19 @@ const statusLabels: Record<string, string> = {
 
 export default function PayrollPage() {
   const isCloud = isSupabaseConfigured()
+  const businessId = useBusinessId()
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
   const [year, setYear] = useState(now.getFullYear())
   const [generating, setGenerating] = useState(false)
 
-  const dexieEmployees = useLiveQuery(() => db.employees.filter(e => e.status === 'active').toArray(), [])
+  const dexieEmployees = useLiveQuery(() => db.employees.where('businessId').equals(businessId).filter(e => e.status === 'active').toArray(), [])
   const { data: supabaseEmployeesAll } = useSupabaseQuery<Employee>('employees', undefined, [])
   const employees = isCloud ? (supabaseEmployeesAll || []).filter(e => e.status === 'active') : dexieEmployees
-  const dexiePayrolls = useLiveQuery(() => db.payrolls.toArray(), [])
+  const dexiePayrolls = useLiveQuery(() => db.payrolls.where('businessId').equals(businessId).toArray(), [])
   const { data: supabasePayrolls } = useSupabaseQuery<Payroll>('payrolls', undefined, [])
   const payrolls = isCloud ? supabasePayrolls : dexiePayrolls
-  const dexieAllAttendance = useLiveQuery(() => db.attendance.toArray(), [])
+  const dexieAllAttendance = useLiveQuery(() => db.attendance.where('businessId').equals(businessId).toArray(), [])
   const { data: supabaseAllAttendance } = useSupabaseQuery<Attendance>('attendance', undefined, [])
   const allAttendance = isCloud ? supabaseAllAttendance : dexieAllAttendance
 
@@ -104,7 +107,7 @@ export default function PayrollPage() {
 
         toCreate.push({
           id: generateId(),
-          businessId: 'biz-default',
+          businessId,
           employeeId: emp.id,
           employeeName: emp.name,
           periodStart,
@@ -117,7 +120,7 @@ export default function PayrollPage() {
           daysWorked,
           status: 'draft',
           createdAt: nowStr,
-          userId: 'admin',
+          userId: useAppStore.getState().user?.id || '',
         })
       }
 
@@ -139,7 +142,7 @@ export default function PayrollPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold text-surface-900">Paie</h1>
         <p className="text-surface-500 text-sm mt-1">Gérez les fiches de paie</p>

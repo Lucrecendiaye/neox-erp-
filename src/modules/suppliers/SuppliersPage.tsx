@@ -1,18 +1,24 @@
 import { useState } from 'react'
 import { Card, Button, Input, Modal, Pagination } from '@/components/ui'
+import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { usePagination } from '@/hooks/usePagination'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import db from '@/db'
-import { generateId, openWhatsApp } from '@/lib/utils'
+import { generateId, openWhatsApp, pickContact } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import PinConfirmModal from '@/components/ui/PinConfirmModal'
+import { softDelete } from '@/lib/softDelete'
 import { Search, Plus, Edit2, Trash2, Truck, Phone, Mail, MapPin, MessageSquare } from 'lucide-react'
 import type { Supplier } from '@/types'
 
 export default function SuppliersPage() {
+  const navigate = useNavigate()
   const isCloud = isSupabaseConfigured()
-  const dexieSuppliers = useLiveQuery(() => db.suppliers.toArray(), [])
+  const businessId = useBusinessId()
+  const dexieSuppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId])
   const { data: supabaseSuppliers } = useSupabaseQuery<Supplier>('suppliers', undefined, [])
 
   const suppliers = isCloud ? supabaseSuppliers : dexieSuppliers
@@ -21,6 +27,8 @@ export default function SuppliersPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Supplier | null>(null)
   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', notes: '' })
+  const [pinModalOpen, setPinModalOpen] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
 
   const filtered = suppliers?.filter(s =>
     s.name.toLowerCase().includes(search.toLowerCase()) || s.phone.includes(search)
@@ -53,7 +61,7 @@ export default function SuppliersPage() {
         }
         toast('Fournisseur mis à jour avec succès', 'success')
       } else {
-        const record = { id: generateId(), businessId: 'biz-default', ...form, createdAt: now, updatedAt: now }
+        const record = { id: generateId(), businessId, ...form, createdAt: now, updatedAt: now }
         if (isCloud) {
           await sb.insert('suppliers', record)
         } else {
@@ -68,21 +76,29 @@ export default function SuppliersPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Voulez-vous vraiment supprimer ce fournisseur ?')) return
+    setDeleteTargetId(id)
+    setPinModalOpen(true)
+  }
+
+  async function confirmDeleteSupplier() {
+    if (!deleteTargetId) return
     try {
+      const supplier = suppliers?.find(s => s.id === deleteTargetId)
+      if (supplier) await softDelete('suppliers', deleteTargetId, supplier as any, supplier.name)
       if (isCloud) {
-        await sb.remove('suppliers', id)
+        await sb.remove('suppliers', deleteTargetId)
       } else {
-        await db.suppliers.delete(id)
+        await db.suppliers.delete(deleteTargetId)
       }
       toast('Fournisseur supprimé avec succès', 'success')
     } catch {
       toast('Erreur lors de la suppression du fournisseur', 'error')
     }
+    setDeleteTargetId(null)
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Fournisseurs</h1>
@@ -102,7 +118,7 @@ export default function SuppliersPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {paginatedItems?.map((s) => (
-          <Card key={s.id} className="relative group">
+          <Card key={s.id} className="relative group cursor-pointer" onClick={() => navigate(`/suppliers/${s.id}`)}>
             <div className="flex items-start gap-3">
               <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600">
                 <Truck className="w-6 h-6" />
@@ -117,13 +133,13 @@ export default function SuppliersPage() {
               </div>
             </div>
             <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={() => openWhatsApp(s.phone)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600">
+              <button onClick={(e) => { e.stopPropagation(); openWhatsApp(s.phone) }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600">
                 <MessageSquare className="w-4 h-4" />
               </button>
-              <button onClick={() => openEdit(s)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
+              <button onClick={(e) => { e.stopPropagation(); openEdit(s) }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
                 <Edit2 className="w-4 h-4" />
               </button>
-              <button onClick={() => handleDelete(s.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger">
+              <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id) }} className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>
@@ -144,7 +160,10 @@ export default function SuppliersPage() {
           <Input label="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
           <Input label="Adresse" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
           <Input label="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          <Button variant="outline" className="w-full" onClick={() => alert('Import depuis contacts (Capacitor)')}>
+          <Button variant="outline" className="w-full" onClick={async () => {
+            const contact = await pickContact()
+            if (contact) { setForm(f => ({ ...f, name: contact.name, phone: contact.tel })); toast('Contact importé', 'success') }
+          }}>
             <Plus className="w-4 h-4" /> Importer depuis les contacts
           </Button>
         </div>
@@ -153,6 +172,15 @@ export default function SuppliersPage() {
           <Button onClick={handleSave}>{editing ? 'Mettre à jour' : 'Créer'}</Button>
         </div>
       </Modal>
+
+      <PinConfirmModal
+        open={pinModalOpen}
+        onClose={() => { setPinModalOpen(false); setDeleteTargetId(null) }}
+        onConfirm={confirmDeleteSupplier}
+        title="Suppression fournisseur"
+        description="Cette action est protégée. Entrez votre code PIN de sécurité pour continuer."
+        actionLabel="Supprimer"
+      />
     </div>
   )
 }

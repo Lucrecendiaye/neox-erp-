@@ -1,18 +1,23 @@
 import { useState, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { usePagination } from '@/hooks/usePagination'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { useAppStore } from '@/stores/appStore'
+import { adjustStockPublic, processStockRemoval } from '@/engine/operations'
 import db from '@/db'
 import { generateId, formatCurrency } from '@/lib/utils'
 import { Search, Plus, Package, AlertTriangle, TrendingUp, TrendingDown, ClipboardList, BarChart3 } from 'lucide-react'
+import { toast } from '@/lib/toast'
 
 export default function StockPage() {
   const isCloud = isSupabaseConfigured()
+  const businessId = useBusinessId()
   const [tab, setTab] = useState<'movements' | 'valuation' | 'inventory'>('movements')
-  const dexieMovements = useLiveQuery(() => db.stockMovements.orderBy('createdAt').reverse().limit(100).toArray(), [])
-  const dexieProducts = useLiveQuery(() => db.products.toArray(), [])
+  const dexieMovements = useLiveQuery(() => db.stockMovements.where('businessId').equals(businessId).reverse().sortBy('createdAt').then(r => r.slice(0, 100)), [businessId])
+  const dexieProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const { data: supabaseMovements } = useSupabaseQuery<any>('stock_movements', (q) => q.order('createdAt', { ascending: false }).limit(100), [])
   const { data: supabaseProducts } = useSupabaseQuery<any>('products', undefined, [])
   const movements = isCloud ? supabaseMovements : dexieMovements
@@ -20,6 +25,7 @@ export default function StockPage() {
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [moveForm, setMoveForm] = useState({ productId: '', type: 'in' as 'in' | 'out' | 'adjustment', quantity: 1, unitPrice: 0, note: '' })
+  const userId = useAppStore(s => s.user?.id || '')
 
   const productStock = useMemo(() => {
     const map = new Map<string, number>()
@@ -33,17 +39,19 @@ export default function StockPage() {
     return map
   }, [movements])
 
+  const dexieStocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
+  const stocks = isCloud ? [] : dexieStocks || []
+
   const valuation = useMemo(() => {
     let totalValue = 0
     let totalCost = 0
     const details: { product: string; qty: number; avgPrice: number; value: number }[] = []
 
     products?.forEach(p => {
-      const qty = productStock.get(p.id) || 0
+      const stockEntries = stocks.filter(s => s.productId === p.id)
+      const qty = stockEntries.reduce((s, x) => s + x.quantity, 0)
       if (qty <= 0) return
-      const productMoves = movements?.filter(m => m.productId === p.id && m.type === 'in') || []
-      const totalQty = productMoves.reduce((s, m) => s + m.quantity, 0)
-      const avgPrice = totalQty > 0 ? productMoves.reduce((s, m) => s + (m.unitPrice || 0) * m.quantity, 0) / totalQty : p.purchasePrice
+      const avgPrice = p.purchasePrice || 0
       const value = qty * avgPrice
       totalValue += value
       totalCost += qty * p.purchasePrice
@@ -51,7 +59,7 @@ export default function StockPage() {
     })
 
     return { totalValue, totalCost, details, profit: totalValue - totalCost }
-  }, [products, productStock, movements])
+  }, [products, stocks])
 
   const lowStock = products?.filter(p => p.stockAlert && (productStock.get(p.id) || 0) <= p.stockAlert) || []
 
@@ -62,33 +70,27 @@ export default function StockPage() {
   })
   const { paginatedItems, ...pag } = usePagination(filteredMovements, 15)
 
+  const shopLocation = useLiveQuery(() => db.locations.where('businessId').equals(businessId).filter(l => l.type === 'shop').first(), [businessId])
+
   async function handleMove() {
-    const now = new Date().toISOString()
-    const product = products?.find(p => p.id === moveForm.productId)
-    const movement = {
-      id: generateId(),
-      businessId: 'biz-default',
-      locationId: 'loc-shop',
-      productId: moveForm.productId,
-      type: moveForm.type,
-      quantity: moveForm.type === 'out' ? -Math.abs(moveForm.quantity) : moveForm.quantity,
-      unitPrice: moveForm.unitPrice || undefined,
-      reference: `MANUAL-${Date.now()}`,
-      note: moveForm.note || `${moveForm.type}: ${product?.name || ''}`,
-      createdAt: now,
-      userId: 'admin',
-    }
-    if (isCloud) {
-      await sb.insert('stock_movements', movement)
-    } else {
-      await db.stockMovements.add(movement)
+    if (!moveForm.productId || !shopLocation?.id) { toast('Sélectionnez un produit', 'warning'); return }
+    try {
+      if (moveForm.type === 'out') {
+        await processStockRemoval(moveForm.productId, shopLocation.id, moveForm.quantity, 'manual', moveForm.note || 'Sortie manuelle')
+      } else {
+        const delta = moveForm.type === 'in' ? moveForm.quantity : moveForm.quantity
+        await adjustStockPublic(moveForm.productId, shopLocation.id, delta, 'adjusted', `MANUAL-${Date.now()}`, moveForm.note || `${moveForm.type}`)
+      }
+      toast('Mouvement enregistré', 'success')
+    } catch (e: any) {
+      toast(e.message || 'Erreur', 'error')
     }
     setModalOpen(false)
     setMoveForm({ productId: '', type: 'in', quantity: 1, unitPrice: 0, note: '' })
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold text-surface-900">Gestion du stock</h1>
         <p className="text-surface-500 text-sm mt-1">{products?.length || 0} produits · {formatCurrency(valuation.totalValue)} valorisation</p>

@@ -7,6 +7,7 @@ import { formatDateTime } from '@/lib/utils'
 import { Search, History, User, FileText, ShoppingCart, DollarSign, Package, Truck, AlertTriangle } from 'lucide-react'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import type { AuditLog } from '@/types'
 
 const entityIcons: Record<string, React.ReactNode> = {
@@ -14,7 +15,7 @@ const entityIcons: Record<string, React.ReactNode> = {
   sale: <ShoppingCart className="w-4 h-4" />,
   purchase: <Truck className="w-4 h-4" />,
   invoice: <FileText className="w-4 h-4" />,
-  accounting: <DollarSign className="w-4 h-4" />,
+
   user: <User className="w-4 h-4" />,
 }
 
@@ -28,7 +29,8 @@ const actionColors: Record<string, 'info' | 'success' | 'danger' | 'warning'> = 
 
 export default function AuditPage() {
   const isCloud = isSupabaseConfigured()
-  const dexieLogs = useLiveQuery(() => db.auditLogs.orderBy('createdAt').reverse().limit(200).toArray(), [])
+  const businessId = useBusinessId()
+  const dexieLogs = useLiveQuery(() => db.auditLogs.where('businessId').equals(businessId).reverse().sortBy('createdAt').then(r => r.slice(0, 200)), [businessId])
   const { data: supabaseLogs } = useSupabaseQuery<AuditLog>('audit_logs', undefined, [])
   const logs = isCloud ? (supabaseLogs || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 200) : dexieLogs
   const [search, setSearch] = useState('')
@@ -50,7 +52,7 @@ export default function AuditPage() {
   const entities = [...new Set(logs?.map(l => l.entity) || [])]
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold text-surface-900">Journal d'audit</h1>
         <p className="text-surface-500 text-sm mt-1">{logs?.length || 0} entrées</p>

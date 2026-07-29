@@ -1,6 +1,8 @@
 import { useState, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, Button, Input, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
+import { useAppStore } from '@/stores/appStore'
 import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { generateId, formatCurrency, formatDate } from '@/lib/utils'
@@ -36,7 +38,8 @@ function saveTemplates(templates: InvoiceTemplate[]) {
 }
 
 export default function BillBookPage() {
-  const invoices = useLiveQuery(() => db.invoices.orderBy('createdAt').reverse().toArray(), [])
+  const businessId = useBusinessId()
+  const invoices = useLiveQuery(() => db.invoices.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId])
   const settings = useLiveQuery(() => db.settings.get('default'), [])
   const [search, setSearch] = useState('')
   const [templates, setTemplates] = useState<InvoiceTemplate[]>(loadTemplates)
@@ -110,7 +113,7 @@ export default function BillBookPage() {
     const prefix = settings.invoicePrefix || 'INV-'
     const invoice: Invoice = {
       id: generateId(),
-      businessId: 'biz-default',
+      businessId,
       type: newFromTemplate.type,
       number: `${prefix}${String(nextNum).padStart(5, '0')}`,
       items: newFromTemplate.items.map(i => ({ ...i })),
@@ -121,7 +124,7 @@ export default function BillBookPage() {
       dueDate: newFromTemplate.dueDate,
       status: 'draft',
       createdAt: now,
-      userId: 'admin',
+      userId: useAppStore.getState().user?.id || '',
     }
     try {
       await db.invoices.add(invoice)
@@ -149,7 +152,7 @@ export default function BillBookPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Registre des factures</h1>

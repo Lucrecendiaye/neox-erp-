@@ -7,17 +7,17 @@ interface BadgeProps {
 }
 
 const badgeVariants = {
-  default: 'bg-surface-100 text-surface-700',
-  success: 'bg-emerald-100 text-emerald-700',
-  warning: 'bg-amber-100 text-amber-700',
-  danger: 'bg-red-100 text-red-700',
-  info: 'bg-blue-100 text-blue-700',
+  default: 'premium-badge-default',
+  success: 'premium-badge-success',
+  warning: 'premium-badge-warning',
+  danger: 'premium-badge-danger',
+  info: 'premium-badge-info',
 }
 
 export function Badge({ children, variant = 'default', className }: BadgeProps) {
   return (
     <span className={cn(
-      'inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium',
+      'premium-badge',
       badgeVariants[variant],
       className
     )}>

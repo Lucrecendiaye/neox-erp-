@@ -46,6 +46,10 @@ export async function getCurrentSession(): Promise<Session | null> {
 }
 
 export function onAuthChange(callback: (session: Session | null) => void) {
+  if (!supabase) {
+    callback(null)
+    return { data: { subscription: { unsubscribe: () => {} } } }
+  }
   return supabase.auth.onAuthStateChange((_event: AuthChangeEvent, session: Session | null) => {
     if (session) {
       localStorage.setItem(SESSION_KEY, 'true')
@@ -80,7 +84,9 @@ export function setSession(userId: string) {
 
 export async function hashPassword(password: string): Promise<string> {
   const encoder = new TextEncoder()
-  const data = encoder.encode(password)
+  const salt = 'neox-salt-v1'
+  const data = encoder.encode(password + salt)
   const hash = await crypto.subtle.digest('SHA-256', data)
   return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('')
 }
+

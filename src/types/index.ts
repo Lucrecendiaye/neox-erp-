@@ -1,4 +1,5 @@
 export type ProductStatus = 'active' | 'inactive' | 'discontinued'
+export type ProductUnit = 'piece' | 'dozen' | 'pack'
 
 export interface Product {
   id: string
@@ -11,10 +12,13 @@ export interface Product {
   reference?: string
   categoryId?: string
   brand?: string
-  unit: string
+  unit: ProductUnit
   purchasePrice: number
   sellingPrice: number
   wholesalePrice?: number
+  priceDozen?: number
+  pricePack?: number
+  packSize?: number
   margin: number
   taxRate: number
   stockAlert?: number
@@ -78,7 +82,7 @@ export interface Supplier {
 }
 
 export type SaleStatus = 'pending' | 'completed' | 'cancelled' | 'returned'
-export type PaymentMethod = 'cash' | 'card' | 'mobile' | 'credit' | 'bank'
+export type PaymentMethod = 'cash' | 'card' | 'mobile' | 'credit' | 'bank' | 'split'
 
 export interface SaleItem {
   productId: string
@@ -88,6 +92,13 @@ export interface SaleItem {
   discount: number
   taxRate: number
   total: number
+  unitName?: string
+  unitQuantity?: number
+}
+
+export interface SplitPaymentItem {
+  method: PaymentMethod
+  amount: number
 }
 
 export interface Sale {
@@ -105,6 +116,7 @@ export interface Sale {
   paid: number
   change: number
   paymentMethod: PaymentMethod
+  splitPayments?: SplitPaymentItem[]
   status: SaleStatus
   note?: string
   createdAt: string
@@ -174,6 +186,20 @@ export interface Account {
   createdAt: string
 }
 
+export interface CreditPayment {
+  id: string
+  businessId: string
+  creditId: string
+  saleId?: string
+  customerId: string
+  amount: number
+  method: PaymentMethod
+  date: string
+  note?: string
+  userId: string
+  createdAt: string
+}
+
 export interface Credit {
   id: string
   businessId: string
@@ -193,11 +219,16 @@ export interface AuditLog {
   id: string
   businessId: string
   userId: string
+  userName?: string
+  userLoginId?: string
+  userRole?: string
   action: string
   entity: string
   entityId: string
   details?: string
   ip?: string
+  oldData?: string
+  newData?: string
   createdAt: string
 }
 
@@ -207,11 +238,13 @@ export interface User {
   name: string
   email: string
   phone?: string
+  loginId: string
   passwordHash: string
   role: 'admin' | 'manager' | 'staff' | 'viewer'
   avatar?: string
   permissions: string[]
   isActive: boolean
+  isPrimaryAdmin: boolean
   createdAt: string
   lastLogin?: string
 }
@@ -226,6 +259,7 @@ export interface CurrencyRate {
 export interface CompanySettings {
   id?: string
   name: string
+  slogan?: string
   logo?: string
   currency: string
   currencySymbol: string
@@ -240,6 +274,12 @@ export interface CompanySettings {
   phone?: string
   address?: string
   website?: string
+  ninea?: string
+  rccm?: string
+  managerName?: string
+  accountNumber?: string
+  bankName?: string
+  invoiceNotes?: string
 }
 
 export interface Business {

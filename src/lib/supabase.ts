@@ -16,5 +16,28 @@ if (supabaseUrl && supabaseAnonKey) {
 export { supabase }
 
 export function isSupabaseConfigured(): boolean {
-  return !!(supabaseUrl && supabaseAnonKey)
+  return !!(supabaseUrl && supabaseAnonKey && supabase)
+}
+
+async function checkSupabaseHealth(): Promise<boolean> {
+  if (!supabaseUrl || !supabaseAnonKey || !supabase) return false
+  try {
+    const { error } = await supabase.from('products').select('id').limit(1)
+    if (error) {
+      console.warn('[Supabase] Health check failed:', error.message)
+      return false
+    }
+    console.log('[Supabase] Connected')
+    return true
+  } catch {
+    return false
+  }
+}
+
+export async function waitForSupabase(maxRetries = 10): Promise<boolean> {
+  for (let i = 0; i < maxRetries; i++) {
+    if (await checkSupabaseHealth()) return true
+    await new Promise(r => setTimeout(r, 2000))
+  }
+  return false
 }

@@ -24,7 +24,7 @@ export default function DepotStatsPage() {
   }, [sales])
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center gap-3">
         <button onClick={() => navigate('/depots')} className="p-2 rounded-xl hover:bg-surface-100">
           <ArrowLeft className="w-5 h-5" />

@@ -1,21 +1,29 @@
 {
-  "name": "NeoX ERP",
+  "name": "NeoX ERP - Gestion d'entreprise",
   "short_name": "NeoX",
-  "description": "Application de gestion d'entreprise NeoX ERP",
+  "description": "Application de gestion d'entreprise NeoX ERP - Facturation, Stock, Ventes, Clients",
   "start_url": "/",
   "display": "standalone",
+  "orientation": "portrait-primary",
   "background_color": "#F8FAFC",
   "theme_color": "#7C3AED",
+  "scope": "/",
+  "lang": "fr-FR",
+  "categories": ["business", "productivity", "finance"],
   "icons": [
     {
       "src": "/icon-192.png",
       "sizes": "192x192",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     },
     {
       "src": "/icon-512.png",
       "sizes": "512x512",
-      "type": "image/png"
+      "type": "image/png",
+      "purpose": "any maskable"
     }
-  ]
+  ],
+  "screenshots": [],
+  "prefer_related_applications": false
 }

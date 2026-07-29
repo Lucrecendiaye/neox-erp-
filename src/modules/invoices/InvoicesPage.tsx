@@ -1,12 +1,15 @@
 import { useState, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
+import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
 import { generateId, formatCurrency, formatDate, openWhatsApp } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { Search, Plus, Edit2, Trash2, FileText, Download, Send, ChevronDown, ChevronUp, X, Plus as PlusIcon, Printer } from 'lucide-react'
 import { exportInvoicePDF } from '@/lib/pdf'
+import { softDelete } from '@/lib/softDelete'
 import type { Invoice, SaleItem, Customer, Supplier, Product } from '@/types'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -35,7 +38,8 @@ const typeLabels = {
 
 export default function InvoicesPage() {
   const isCloud = isSupabaseConfigured()
-  const dexieInvoices = useLiveQuery(() => db.invoices.orderBy('createdAt').reverse().toArray(), [])
+  const businessId = useBusinessId()
+  const dexieInvoices = useLiveQuery(() => db.invoices.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId])
   const { data: supabaseInvoices } = useSupabaseQuery<Invoice>('invoices', undefined, [])
   const invoices = isCloud ? (supabaseInvoices || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : dexieInvoices
   const dexieSettings = useLiveQuery(() => db.settings.get('default'), [])
@@ -142,7 +146,7 @@ export default function InvoicesPage() {
     const prefix = settings?.invoicePrefix || 'INV-'
     const invoice: Invoice = {
       id: editing ? editing.id : generateId(),
-      businessId: 'biz-default',
+      businessId,
       type,
       number: editing ? editing.number : `${prefix}${String(nextNum).padStart(5, '0')}`,
       partyId: partyId || undefined,
@@ -163,7 +167,7 @@ export default function InvoicesPage() {
       dueDate: dueDate || undefined,
       status,
       createdAt: editing ? editing.createdAt : now,
-      userId: 'admin',
+      userId: useAppStore.getState().user?.id || '',
     }
 
     try {
@@ -186,6 +190,8 @@ export default function InvoicesPage() {
   async function handleDelete(id: string) {
     if (!confirm('Voulez-vous vraiment supprimer cette facture ?')) return
     try {
+      const invoice = invoices?.find(inv => inv.id === id)
+      if (invoice) await softDelete('invoices', id, invoice as any, invoice.number)
       if (isCloud) { await sb.remove('invoices', id) } else { await db.invoices.delete(id) }
       toast('Facture supprimée avec succès', 'success')
     } catch (error) {
@@ -203,7 +209,7 @@ export default function InvoicesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Factures</h1>

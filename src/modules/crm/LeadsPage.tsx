@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { generateId, formatCurrency, formatDate } from '@/lib/utils'
@@ -9,6 +10,7 @@ import { Search, Plus, Edit2, Trash2, Kanban, LayoutList, Phone, Mail, Building2
 import type { Lead } from '@/types'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { softDelete } from '@/lib/softDelete'
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'danger' | 'info'; badgeClass?: string }> = {
   new: { label: 'Nouveau', variant: 'info' },
@@ -40,7 +42,8 @@ const sourceOptions = [
 
 export default function LeadsPage() {
   const isCloud = isSupabaseConfigured()
-  const dexieLeads = useLiveQuery(() => db.leads.toArray(), [])
+  const businessId = useBusinessId()
+  const dexieLeads = useLiveQuery(() => db.leads.where('businessId').equals(businessId).toArray(), [businessId])
   const { data: supabaseLeads } = useSupabaseQuery<Lead>('leads', undefined, [])
   const leads = isCloud ? supabaseLeads : dexieLeads
   const [search, setSearch] = useState('')
@@ -83,7 +86,7 @@ export default function LeadsPage() {
         if (isCloud) { await sb.update('leads', editing.id, { ...form, updatedAt: now }) } else { await db.leads.update(editing.id, { ...form, updatedAt: now }) }
         toast('Lead mis à jour avec succès', 'success')
       } else {
-        if (isCloud) { await sb.insert('leads', { id: generateId(), businessId: 'biz-default', ...form, createdAt: now, updatedAt: now }) } else { await db.leads.add({ id: generateId(), businessId: 'biz-default', ...form, createdAt: now, updatedAt: now }) }
+        if (isCloud) { await sb.insert('leads', { id: generateId(), businessId, ...form, createdAt: now, updatedAt: now }) } else { await db.leads.add({ id: generateId(), businessId, ...form, createdAt: now, updatedAt: now }) }
         toast('Lead créé avec succès', 'success')
       }
       setModalOpen(false)
@@ -95,6 +98,8 @@ export default function LeadsPage() {
   async function handleDelete(id: string) {
     if (!confirm('Voulez-vous vraiment supprimer ce lead ?')) return
     try {
+      const lead = leads?.find(l => l.id === id)
+      if (lead) await softDelete('leads', id, lead as any, lead.name)
       if (isCloud) { await sb.remove('leads', id) } else { await db.leads.delete(id) }
       toast('Lead supprimé avec succès', 'success')
     } catch {
@@ -118,7 +123,7 @@ export default function LeadsPage() {
   }))
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Leads</h1>

@@ -5,6 +5,7 @@ import db from '@/db'
 import { generateId, formatDate } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { useAppStore } from '@/stores/appStore'
+import { softDelete } from '@/lib/softDelete'
 import { Building2, Plus, Edit2, Trash2, Search, CheckCircle, Globe } from 'lucide-react'
 import type { Business } from '@/types'
 
@@ -73,6 +74,8 @@ export default function BusinessesPage() {
   async function handleDelete(id: string) {
     if (!confirm('Voulez-vous vraiment supprimer cette entreprise ?')) return
     try {
+      const biz = businesses?.find(b => b.id === id)
+      if (biz) await softDelete('businesses', id, biz as any, biz.name)
       await db.businesses.delete(id)
       if (currentBusiness?.id === id) {
         setCurrentBusiness(null)
@@ -100,7 +103,7 @@ export default function BusinessesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Entreprises</h1>

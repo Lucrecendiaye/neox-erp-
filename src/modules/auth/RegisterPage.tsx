@@ -3,11 +3,14 @@ import { useNavigate } from 'react-router-dom'
 import { signUp, hashPassword, setSession } from '@/lib/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import db from '@/db'
+import { generateId } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import { useAppStore } from '@/stores/appStore'
 import { UserPlus, Mail, Lock, User, Phone, Eye, EyeOff } from 'lucide-react'
 
 export default function RegisterPage() {
   const navigate = useNavigate()
+  const settings = useAppStore(s => s.settings)
   const [form, setForm] = useState({ name: '', email: '', phone: '', password: '', confirm: '' })
   const [showPwd, setShowPwd] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -32,20 +35,45 @@ export default function RegisterPage() {
 
         const hash = await hashPassword(form.password)
         const now = new Date().toISOString()
+        const bizId = `biz-${Date.now()}`
+        const userId = `user-${Date.now()}`
+
+        await db.businesses.add({
+          id: bizId,
+          name: `${form.name}'s Shop`,
+          currency: 'XOF',
+          currencySymbol: 'FCFA',
+          phone: form.phone,
+          email: form.email,
+          isActive: true,
+          createdAt: now,
+        })
+
+        await db.locations.bulkAdd([
+          { id: `loc-shop-${bizId}`, businessId: bizId, name: 'Boutique Principale', type: 'shop', address: '', phone: form.phone, isActive: true, createdAt: now, updatedAt: now },
+          { id: `loc-warehouse-${bizId}`, businessId: bizId, name: 'Dépôt Principal', type: 'warehouse', address: '', phone: '', isActive: true, createdAt: now, updatedAt: now },
+        ])
+
         const user = {
-          id: `user-${Date.now()}`,
-          businessId: 'biz-default',
+          id: userId,
+          businessId: bizId,
           name: form.name,
           email: form.email,
+          loginId: form.email,
           phone: form.phone || undefined,
           passwordHash: hash,
           role: 'admin' as const,
           permissions: ['*'],
           isActive: true,
+          isPrimaryAdmin: true,
           createdAt: now,
         }
         await db.users.add(user)
         setSession(user.id)
+
+        const biz = await db.businesses.get(bizId)
+        useAppStore.getState().setCurrentBusiness(biz || null)
+
         toast(`Bienvenue ${form.name} !`, 'success')
         navigate('/')
       }
@@ -61,10 +89,14 @@ export default function RegisterPage() {
       <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-white/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-            <span className="text-3xl font-bold text-white">N</span>
+            {settings?.logo ? (
+              <img src={settings.logo} alt="" className="w-10 h-10 object-contain" />
+            ) : (
+              <span className="text-3xl font-bold text-white">{(settings?.name || 'C')[0]}</span>
+            )}
           </div>
           <h1 className="text-2xl font-bold text-white">Créer un compte</h1>
-          <p className="text-primary-200 text-sm mt-1">NeoX ERP</p>
+          <p className="text-primary-200 text-sm mt-1">{settings?.name || 'NeoX ERP'}</p>
         </div>
 
         <form onSubmit={handleRegister} className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8 space-y-4">

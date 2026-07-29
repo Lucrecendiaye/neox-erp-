@@ -61,9 +61,38 @@ export function calculateTax(amount: number, rate: number): number {
 
 export function openWhatsApp(phone: string, message?: string) {
   const clean = phone.replace(/[^0-9]/g, '')
-  if (!clean) return
   const text = message ? `?text=${encodeURIComponent(message)}` : ''
-  window.open(`https://wa.me/${clean}${text}`, '_blank')
+  if (clean) {
+    window.open(`https://wa.me/${clean}${text}`, '_blank')
+  } else if (text) {
+    window.open(`https://wa.me/${text}`, '_blank')
+  } else {
+    window.open('https://wa.me', '_blank')
+  }
+}
+
+export interface ContactInfo {
+  name: string
+  tel: string
+}
+
+export async function pickContact(): Promise<ContactInfo | null> {
+  try {
+    if ('contacts' in navigator && 'select' in (navigator as any).contacts) {
+      const props = ['name', 'tel'] as const
+      const opts = { multiple: false } as const
+      const contacts = await (navigator as any).contacts.select(props, opts)
+      if (contacts && contacts.length > 0) {
+        const c = contacts[0]
+        return { name: c.name?.[0] || '', tel: c.tel?.[0]?.replace(/[^0-9+]/g, '') || '' }
+      }
+    } else {
+      alert('La sélection de contacts est disponible uniquement sur Chrome Android ou Bureau.')
+    }
+  } catch (e) {
+    console.warn('Contact picker error:', e)
+  }
+  return null
 }
 
 export function debounce<T extends (...args: unknown[]) => unknown>(fn: T, ms: number) {
@@ -72,4 +101,59 @@ export function debounce<T extends (...args: unknown[]) => unknown>(fn: T, ms: n
     clearTimeout(timer)
     timer = setTimeout(() => fn(...args), ms)
   }
+}
+
+export function convertToMainUnit(qty: number, unitQuantity: number): number {
+  return qty * unitQuantity
+}
+
+export function convertFromMainUnit(mainQty: number, unitQuantity: number): { units: number; remainder: number } {
+  return {
+    units: Math.floor(mainQty / unitQuantity),
+    remainder: mainQty % unitQuantity,
+  }
+}
+
+export interface UnitInfo {
+  name: string
+  quantity: number
+}
+
+export function getProductUnits(product: { unit: string; packSize?: number }): UnitInfo[] {
+  const units: UnitInfo[] = [{ name: 'Pièce', quantity: 1 }]
+  if (product.unit === 'dozen' || product.unit === 'pack') {
+    units.push({ name: 'Douzaine', quantity: 12 })
+  }
+  if (product.unit === 'pack' && product.packSize && product.packSize > 0) {
+    units.push({ name: 'Paquet', quantity: product.packSize })
+  }
+  return units
+}
+
+export function getUnitPrice(product: { sellingPrice: number; priceDozen?: number; pricePack?: number }, unitName: string): number {
+  if (unitName === 'Douzaine' && product.priceDozen) return product.priceDozen
+  if (unitName === 'Paquet' && product.pricePack) return product.pricePack
+  return product.sellingPrice
+}
+
+export function getUnitStep(unitName: string): number {
+  if (unitName === 'Douzaine' || unitName === 'Paquet') return 0.5
+  return 1
+}
+
+export function getUnitMinQty(unitName: string): number {
+  if (unitName === 'Douzaine' || unitName === 'Paquet') return 0.5
+  return 1
+}
+
+export function formatUnitQty(qty: number, unitName: string): string {
+  const display = Number.isInteger(qty) ? qty.toString() : qty.toFixed(1).replace('.', ',')
+  const u = unitName || 'Pièce'
+  if (qty >= 0 && qty < 2 && u === 'Douzaine') return `${display} douzaine`
+  if (qty >= 2 && u === 'Douzaine') return `${display} douzaines`
+  if (qty >= 0 && qty < 2 && u === 'Paquet') return `${display} paquet`
+  if (qty >= 2 && u === 'Paquet') return `${display} paquets`
+  if (qty >= 0 && qty < 2) return `${display} pièce`
+  if (qty >= 2) return `${display} pièces`
+  return `${display} ${u.toLowerCase()}`
 }

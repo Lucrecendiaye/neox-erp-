@@ -67,7 +67,7 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white rounded-2xl shadow-2xl border border-surface-200 w-full max-w-lg mx-4 animate-fade-in overflow-hidden">
+      <div className="premium-modal-content relative w-full max-w-lg mx-4 overflow-hidden">
         <div className="flex items-center gap-3 px-4 border-b border-surface-200">
           <Search className="w-5 h-5 text-surface-400 shrink-0" />
           <input

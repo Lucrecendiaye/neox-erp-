@@ -1,19 +1,23 @@
 import { useState } from 'react'
 import { Card, Button, Input, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { usePagination } from '@/hooks/usePagination'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import db from '@/db'
-import { generateId, formatCurrency, openWhatsApp } from '@/lib/utils'
+import { generateId, formatCurrency, openWhatsApp, pickContact } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import PinConfirmModal from '@/components/ui/PinConfirmModal'
+import { softDelete } from '@/lib/softDelete'
 import { Search, Plus, Edit2, Trash2, Users, Phone, Mail, MapPin, CreditCard, MessageSquare } from 'lucide-react'
 import type { Customer } from '@/types'
 
 export default function CustomersPage() {
   const isCloud = isSupabaseConfigured()
-  const dexieCustomers = useLiveQuery(() => db.customers.toArray(), [])
-  const dexieCredits = useLiveQuery(() => db.credits.toArray(), [])
+  const businessId = useBusinessId()
+  const dexieCustomers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId])
+  const dexieCredits = useLiveQuery(() => db.credits.where('businessId').equals(businessId).toArray(), [businessId])
   const { data: supabaseCustomers } = useSupabaseQuery<Customer>('customers', undefined, [])
   const { data: supabaseCredits } = useSupabaseQuery<any>('credits', undefined, [])
 
@@ -24,6 +28,8 @@ export default function CustomersPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Customer | null>(null)
   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', creditLimit: 0, notes: '' })
+  const [pinModalOpen, setPinModalOpen] = useState(false)
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
 
   const filtered = customers?.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -59,7 +65,7 @@ export default function CustomersPage() {
       } else {
         const record = {
           id: generateId(),
-          businessId: 'biz-default',
+          businessId,
           ...form,
           currentBalance: 0,
           createdAt: now, updatedAt: now,
@@ -78,17 +84,25 @@ export default function CustomersPage() {
   }
 
   async function handleDelete(id: string) {
-    if (!confirm('Voulez-vous vraiment supprimer ce client ?')) return
+    setDeleteTargetId(id)
+    setPinModalOpen(true)
+  }
+
+  async function confirmDeleteCustomer() {
+    if (!deleteTargetId) return
     try {
+      const customer = customers?.find(c => c.id === deleteTargetId)
+      if (customer) await softDelete('customers', deleteTargetId, customer as any, customer.name)
       if (isCloud) {
-        await sb.remove('customers', id)
+        await sb.remove('customers', deleteTargetId)
       } else {
-        await db.customers.delete(id)
+        await db.customers.delete(deleteTargetId)
       }
       toast('Client supprimé avec succès', 'success')
     } catch {
       toast('Erreur lors de la suppression du client', 'error')
     }
+    setDeleteTargetId(null)
   }
 
   function handleWhatsApp(phone: string) {
@@ -100,7 +114,7 @@ export default function CustomersPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Clients</h1>
@@ -186,15 +200,27 @@ export default function CustomersPage() {
           </div>
           <Input label="Adresse" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
           <Input label="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
-          <Button variant="outline" className="w-full" onClick={() => alert('Import depuis les contacts (nécessite Capacitor)')}>
-            <Users className="w-4 h-4" /> Importer depuis les contacts
-          </Button>
+<Button variant="outline" className="w-full" onClick={async () => {
+                      const contact = await pickContact()
+                      if (contact) { setForm(f => ({ ...f, name: contact.name, phone: contact.tel })); toast('Contact importé', 'success') }
+                    }}>
+                      <Users className="w-4 h-4" /> Importer depuis les contacts
+                    </Button>
         </div>
         <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
           <Button variant="ghost" onClick={() => setModalOpen(false)}>Annuler</Button>
           <Button onClick={handleSave}>{editing ? 'Mettre à jour' : 'Créer'}</Button>
         </div>
       </Modal>
+
+      <PinConfirmModal
+        open={pinModalOpen}
+        onClose={() => { setPinModalOpen(false); setDeleteTargetId(null) }}
+        onConfirm={confirmDeleteCustomer}
+        title="Suppression client"
+        description="Cette action est protégée. Entrez votre code PIN de sécurité pour continuer."
+        actionLabel="Supprimer"
+      />
     </div>
   )
 }

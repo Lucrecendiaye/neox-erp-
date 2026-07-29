@@ -25,13 +25,10 @@ const Input = forwardRef<HTMLInputElement, InputProps>(
           ref={ref}
           id={id}
           className={cn(
-            'w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm',
-            'placeholder:text-surface-400',
-            'focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500',
-            'transition-all duration-150',
-            'disabled:bg-surface-50 disabled:text-surface-500',
+            'premium-input',
+            'disabled:bg-surface-50 disabled:text-surface-500 disabled:cursor-not-allowed',
             icon && 'pl-10',
-            error && 'border-danger focus:ring-danger',
+            error && '!border-danger !ring-danger',
             className
           )}
           {...props}

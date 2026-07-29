@@ -134,6 +134,7 @@ export interface Transfer {
   fromLocationId: string
   toLocationId: string
   items: TransferItem[]
+  bonNumber?: string
   status: 'pending' | 'completed' | 'cancelled'
   validatedBy?: string
   validatedAt?: string

@@ -7,6 +7,8 @@ import { Bell, BellRing, CheckCheck, Trash2, AlertTriangle, CreditCard, Shopping
 import type { Notification } from '@/types'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { isSupabaseConfigured } from '@/lib/supabase'
+import { useBusinessId } from '@/hooks/useBusinessId'
+import { softDelete } from '@/lib/softDelete'
 
 const typeIcons = {
   stock_alert: AlertTriangle,
@@ -40,7 +42,8 @@ const typeLabels = {
 
 export default function NotificationsPage() {
   const isCloud = isSupabaseConfigured()
-  const dexieNotifications = useLiveQuery(() => db.notifications.orderBy('createdAt').reverse().toArray(), [])
+  const businessId = useBusinessId()
+  const dexieNotifications = useLiveQuery(() => db.notifications.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId])
   const { data: supabaseNotifications } = useSupabaseQuery<Notification>('notifications', undefined, [])
   const notifications = isCloud ? (supabaseNotifications || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : dexieNotifications
 
@@ -56,6 +59,8 @@ export default function NotificationsPage() {
   }
 
   async function deleteNotification(id: string) {
+    const notification = notifications?.find(n => n.id === id)
+    if (notification) await softDelete('notifications', id, notification as any, notification.title)
     if (isCloud) { await sb.remove('notifications', id) } else { await db.notifications.delete(id) }
   }
 
@@ -65,7 +70,7 @@ export default function NotificationsPage() {
   const { paginatedItems, ...pag } = usePagination(allNotifications, 10)
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Notifications</h1>

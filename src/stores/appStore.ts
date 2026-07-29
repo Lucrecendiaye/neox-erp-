@@ -11,7 +11,6 @@ interface AppState {
   notifications: Notification[]
   sidebarOpen: boolean
   isOnline: boolean
-  locked: boolean
   currentBusiness: Business | null
 
   init: () => Promise<void>
@@ -23,7 +22,6 @@ interface AppState {
   addNotification: (n: Notification) => Promise<void>
   markNotificationRead: (id: string) => Promise<void>
   unreadCount: () => number
-  setLocked: (locked: boolean) => void
   setCurrentBusiness: (biz: Business | null) => void
 }
 
@@ -35,25 +33,80 @@ export const useAppStore = create<AppState>((set, get) => ({
   notifications: [],
   sidebarOpen: true,
   isOnline: navigator.onLine,
-  locked: false,
   currentBusiness: null,
 
   init: async () => {
     const settings = await db.settings.get('default') || null
-    const notifications = await db.notifications
-      .orderBy('createdAt')
-      .reverse()
-      .limit(50)
-      .toArray()
+    const uid = localStorage.getItem('neox-user-id')
+    let user: User | null = null
+    if (uid) {
+      user = (await db.users.get(uid)) || null
+    }
+
     const businesses = await db.businesses.toArray()
-    const currentBiz = businesses.find(b => b.isActive) || businesses[0] || null
+    const userBizId = user?.businessId || ''
+    const activeBiz = businesses.find(b => b.isActive) || businesses[0] || null
+    const currentBizId = activeBiz?.id || userBizId
+
+    let notifications: Notification[] = []
+    if (currentBizId) {
+      notifications = await db.notifications
+        .where('businessId').equals(currentBizId)
+        .reverse()
+        .sortBy('createdAt')
+      notifications = notifications.slice(0, 50)
+    } else {
+      notifications = await db.notifications
+        .orderBy('createdAt')
+        .reverse()
+        .limit(50)
+        .toArray()
+    }
+
+    let currentBiz = activeBiz
+
+    if (!currentBiz && user?.businessId) {
+      const savedBizId = localStorage.getItem('neox-current-business-id')
+      if (savedBizId) {
+        const savedBiz = businesses.find(b => b.id === savedBizId)
+        if (savedBiz) currentBiz = savedBiz
+      }
+    }
+
+    if (!currentBiz && user?.businessId) {
+      const savedName = localStorage.getItem('neox-current-business-name')
+      if (savedName) {
+        const biz: Business = {
+          id: user.businessId,
+          name: savedName,
+          currency: 'XOF',
+          currencySymbol: 'FCFA',
+          phone: user.phone || '',
+          email: user.email || '',
+          isActive: true,
+          createdAt: new Date().toISOString(),
+        }
+        await db.businesses.add(biz)
+        currentBiz = biz
+      }
+    }
+
+    if (currentBiz?.id) {
+      localStorage.setItem('neox-current-business-id', currentBiz.id)
+      if (currentBiz.name) localStorage.setItem('neox-current-business-name', currentBiz.name)
+    }
+
+    if (settings && currentBiz?.name && (!settings.name || settings.name === 'Application')) {
+      settings.name = currentBiz.name
+      await db.settings.put(settings, 'default')
+    }
 
     set({
       initialized: true,
       settings,
       notifications,
       currentBusiness: currentBiz,
-      user: { id: 'admin', businessId: currentBiz?.id || 'biz-default', name: 'Admin', email: 'admin@neoxerp.com', passwordHash: '', role: 'admin', permissions: ['*'], isActive: true, createdAt: new Date().toISOString() },
+      user,
     })
   },
 
@@ -65,8 +118,16 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setIsOnline: (online) => set({ isOnline: online }),
-  setLocked: (locked) => set({ locked }),
-  setCurrentBusiness: (biz) => set({ currentBusiness: biz }),
+  setCurrentBusiness: (biz) => {
+    if (biz?.id) {
+      localStorage.setItem('neox-current-business-id', biz.id)
+      if (biz.name) localStorage.setItem('neox-current-business-name', biz.name)
+    } else {
+      localStorage.removeItem('neox-current-business-id')
+      localStorage.removeItem('neox-current-business-name')
+    }
+    set({ currentBusiness: biz })
+  },
 
   addNotification: async (n) => {
     await db.notifications.add(n)

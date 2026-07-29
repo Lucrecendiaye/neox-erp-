@@ -10,7 +10,7 @@ interface CardProps {
 export function Card({ children, className, padding = 'md', onClick }: CardProps) {
   const p = { sm: 'p-4', md: 'p-6', lg: 'p-8' }
   return (
-    <div onClick={(e) => onClick?.(e)} className={cn('bg-white rounded-2xl border border-surface-200 shadow-sm', p[padding], onClick && 'cursor-pointer', className)}>
+    <div onClick={(e) => onClick?.(e)} className={cn('premium-card', p[padding], onClick && 'cursor-pointer', className)}>
       {children}
     </div>
   )
@@ -42,19 +42,19 @@ const statColors = {
 
 export function StatCard({ title, value, icon, trend, color = 'primary' }: StatCardProps) {
   return (
-    <Card className="relative overflow-hidden group">
+    <Card className="relative overflow-hidden group hover-lift">
       <div className="flex items-start justify-between">
-        <div className="space-y-1">
-          <p className="text-sm text-surface-500">{title}</p>
-          <p className="text-2xl font-bold text-surface-900">{value}</p>
+        <div className="space-y-1.5">
+          <p className="text-xs font-medium text-surface-400 uppercase tracking-wider">{title}</p>
+          <p className="text-2xl font-bold gradient-text">{value}</p>
           {trend && (
-            <p className={cn('text-xs flex items-center gap-1', trend.positive ? 'text-success' : 'text-danger')}>
+            <p className={cn('text-xs flex items-center gap-1 font-medium', trend.positive ? 'text-success' : 'text-danger')}>
               <span>{trend.positive ? '↑' : '↓'}</span>
               {Math.abs(trend.value)}% vs mois dernier
             </p>
           )}
         </div>
-        <div className={cn('p-3 rounded-2xl', statColors[color])}>
+        <div className={cn('p-3 rounded-2xl shadow-sm', statColors[color])}>
           {icon}
         </div>
       </div>

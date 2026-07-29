@@ -6,9 +6,11 @@ import db from '@/db'
 import { generateId, formatCurrency, formatDate } from '@/lib/utils'
 import type { Employee, PaymentMethod } from '@/types'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { Users, Plus, Edit2, Trash2, Search } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { softDelete } from '@/lib/softDelete'
 
 const statusVariant: Record<string, 'success' | 'warning' | 'danger'> = {
   active: 'success',
@@ -32,7 +34,8 @@ const paymentMethodLabels: Record<string, string> = {
 
 export default function EmployeesPage() {
   const isCloud = isSupabaseConfigured()
-  const dexieEmployees = useLiveQuery(() => db.employees.toArray(), [])
+  const businessId = useBusinessId()
+  const dexieEmployees = useLiveQuery(() => db.employees.where('businessId').equals(businessId).toArray(), [])
   const { data: supabaseEmployees } = useSupabaseQuery<Employee>('employees', undefined, [])
   const employees = isCloud ? supabaseEmployees : dexieEmployees
   const [search, setSearch] = useState('')
@@ -85,10 +88,10 @@ export default function EmployeesPage() {
     const now = new Date().toISOString()
     try {
       if (editing) {
-        if (isCloud) { await sb.update('employees', editing.id, { ...form, businessId: 'biz-default', salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, updatedAt: now }) } else { await db.employees.update(editing.id, { ...form, businessId: 'biz-default', salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, updatedAt: now }) }
+        if (isCloud) { await sb.update('employees', editing.id, { ...form, businessId, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, updatedAt: now }) } else { await db.employees.update(editing.id, { ...form, businessId, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, updatedAt: now }) }
         toast('Employé mis à jour', 'success')
       } else {
-        if (isCloud) { await sb.insert('employees', { id: generateId(), businessId: 'biz-default', ...form, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, photo: undefined, documents: [], status: 'active', createdAt: now, updatedAt: now }) } else { await db.employees.add({ id: generateId(), businessId: 'biz-default', ...form, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, photo: undefined, documents: [], status: 'active', createdAt: now, updatedAt: now }) }
+        if (isCloud) { await sb.insert('employees', { id: generateId(), businessId, ...form, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, photo: undefined, documents: [], status: 'active', createdAt: now, updatedAt: now }) } else { await db.employees.add({ id: generateId(), businessId, ...form, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, photo: undefined, documents: [], status: 'active', createdAt: now, updatedAt: now }) }
         toast('Employé créé', 'success')
       }
       setModalOpen(false)
@@ -97,12 +100,14 @@ export default function EmployeesPage() {
 
   async function handleDelete(id: string) {
     if (!confirm('Supprimer cet employé ?')) return
+    const employee = employees?.find(e => e.id === id)
+    if (employee) await softDelete('employees', id, employee as any, employee.name)
     if (isCloud) { await sb.remove('employees', id) } else { await db.employees.delete(id) }
     toast('Employé supprimé', 'success')
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold text-surface-900">Employés</h1>
         <p className="text-surface-500 text-sm mt-1">Gérez votre personnel</p>

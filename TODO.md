@@ -1,10 +1,19 @@
 # NeoX ERP — TODO Travaux en cours
 
-> Dernière mise à jour : 22/07/2026
+> Dernière mise à jour : 25/07/2026
 
 ---
 
 ## CE QUI A ÉTÉ FAIT
+
+### ✅ Correctifs récents (25/07/2026)
+- [x] Bug `businessId: 'biz-default'` : remplacé par `user?.businessId || ''` dans 6 fichiers
+- [x] `useBusinessId` : fallback vers `user?.businessId` au lieu de `'biz-default'`
+- [x] `setCurrentBusiness` : persistance dans localStorage (id + name)
+- [x] `init()` : restauration auto de la boutique depuis localStorage si DB effacée
+- [x] `initDB()` : protection contre la perte de données (retry avant delete)
+- [x] Script seed déployé : `scripts/seed-deployed.mjs` (Dexie via CDN)
+- [x] Déploiement Vercel : https://neox-erp-alpha.vercel.app
 
 ### ✅ Core (stable)
 - [x] 14 modules ERP fonctionnels (Dashboard, Products, Stock, POS, Customers,
@@ -80,6 +89,7 @@
 - [ ] Copier les clés API (URL + anon key) → les mettre dans `.env.local`
 - [ ] Vérifier que le trigger `handle_new_user()` est bien créé (dans le SQL)
 - [ ] Pousser le code sur GitHub
+- [ ] Configurer Supabase (projet, clés API, .env.local)
 - [ ] Connecter le repo à Vercel
 - [ ] Ajouter `VITE_SUPABASE_URL` et `VITE_SUPABASE_ANON_KEY` dans Vercel Dashboard
 - [ ] Déployer et tester

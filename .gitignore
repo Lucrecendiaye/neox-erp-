@@ -24,3 +24,10 @@ dist-ssr
 *.sw?
 .vercel
 .env*
+
+# Test artifacts
+.playwright-mcp/
+playwright-report/
+test-results/
+qa-reports/
+*.tsbuildinfo

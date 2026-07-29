@@ -5,9 +5,11 @@ import db from '@/db'
 import { generateId, formatDate } from '@/lib/utils'
 import type { Attendance, Employee } from '@/types'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
+import { useBusinessId } from '@/hooks/useBusinessId'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { Calendar, CheckCheck, X, Clock, Sun, Moon, Users } from 'lucide-react'
 import { toast } from '@/lib/toast'
+import { softDelete } from '@/lib/softDelete'
 
 type AttendanceStatus = 'present' | 'absent' | 'late' | 'half-day' | 'leave'
 
@@ -37,12 +39,13 @@ const statusIcons: Record<AttendanceStatus, React.ReactNode> = {
 
 export default function AttendancePage() {
   const isCloud = isSupabaseConfigured()
+  const businessId = useBusinessId()
   const today = new Date().toISOString().split('T')[0]
   const [date, setDate] = useState(today)
-  const dexieEmployees = useLiveQuery(() => db.employees.filter(e => e.status === 'active').toArray(), [])
+  const dexieEmployees = useLiveQuery(() => db.employees.where('businessId').equals(businessId).filter(e => e.status === 'active').toArray(), [])
   const { data: supabaseEmployeesAll } = useSupabaseQuery<Employee>('employees', undefined, [])
   const employees = isCloud ? (supabaseEmployeesAll || []).filter(e => e.status === 'active') : dexieEmployees
-  const dexieAttendanceRecords = useLiveQuery(() => db.attendance.filter(a => a.date === date).toArray(), [date])
+  const dexieAttendanceRecords = useLiveQuery(() => db.attendance.where('businessId').equals(businessId).filter(a => a.date === date).toArray(), [date, businessId])
   const { data: supabaseAttendanceAll } = useSupabaseQuery<Attendance>('attendance', undefined, [])
   const attendanceRecords = isCloud ? (supabaseAttendanceAll || []).filter(a => a.date === date) : dexieAttendanceRecords
 
@@ -74,7 +77,7 @@ export default function AttendancePage() {
         }
         if (isCloud) { await sb.update('attendance', existing.id, { status }) } else { await db.attendance.update(existing.id, { status }) }
       } else {
-        if (isCloud) { await sb.insert('attendance', { id: generateId(), businessId: 'biz-default', employeeId, date, checkIn: now, status, createdAt: now }) } else { await db.attendance.add({ id: generateId(), businessId: 'biz-default', employeeId, date, checkIn: now, status, createdAt: now }) }
+        if (isCloud) { await sb.insert('attendance', { id: generateId(), businessId, employeeId, date, checkIn: now, status, createdAt: now }) } else { await db.attendance.add({ id: generateId(), businessId, employeeId, date, checkIn: now, status, createdAt: now }) }
       }
       toast(`Statut mis à jour : ${statusLabels[status]}`, 'success')
     } catch { toast("Erreur lors de l'enregistrement", 'error') }
@@ -91,7 +94,7 @@ export default function AttendancePage() {
             if (isCloud) { await sb.update('attendance', existing.id, { status: 'present' }) } else { await db.attendance.update(existing.id, { status: 'present' }) }
           }
         } else {
-          if (isCloud) { await sb.insert('attendance', { id: generateId(), businessId: 'biz-default', employeeId: e.id, date, checkIn: now, status: 'present', createdAt: now }) } else { await db.attendance.add({ id: generateId(), businessId: 'biz-default', employeeId: e.id, date, checkIn: now, status: 'present', createdAt: now }) }
+          if (isCloud) { await sb.insert('attendance', { id: generateId(), businessId, employeeId: e.id, date, checkIn: now, status: 'present', createdAt: now }) } else { await db.attendance.add({ id: generateId(), businessId, employeeId: e.id, date, checkIn: now, status: 'present', createdAt: now }) }
         }
       }))
       toast('Tous marqués présents', 'success')
@@ -102,13 +105,13 @@ export default function AttendancePage() {
     if (!attendanceRecords || attendanceRecords.length === 0) return
     if (!confirm('Effacer toutes les présences pour cette date ?')) return
     try {
-      await Promise.all(attendanceRecords.map(a => isCloud ? sb.remove('attendance', a.id) : db.attendance.delete(a.id)))
+      await Promise.all(attendanceRecords.map(async a => { await softDelete('attendance', a.id, a as any, a.id); return isCloud ? sb.remove('attendance', a.id) : db.attendance.delete(a.id) }))
       toast('Présences effacées', 'success')
     } catch { toast('Erreur lors de l\'opération', 'error') }
   }
 
   return (
-    <div className="space-y-6">
+    <div className="w-full h-full flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-bold text-surface-900">Présences</h1>
         <p className="text-surface-500 text-sm mt-1">Gérez les présences du personnel</p>
