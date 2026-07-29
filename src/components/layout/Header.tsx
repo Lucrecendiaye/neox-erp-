@@ -4,7 +4,7 @@ import { useAppStore, useSyncStore } from '@/stores/appStore'
 import { formatDateTime } from '@/lib/utils'
 import SearchDialog from '@/components/ui/SearchDialog'
 import { signOut } from '@/lib/auth'
-import { LogOut, Settings, User, Bell, Moon, Search } from 'lucide-react'
+import { LogOut, Settings, User } from 'lucide-react'
 
 export default function Header() {
   const navigate = useNavigate()
@@ -27,23 +27,10 @@ export default function Header() {
     window.location.href = '/login'
   }
 
-  const dateStr = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-    year: 'numeric',
-  })
-  const dayMonth = new Date().toLocaleDateString('fr-FR', {
-    weekday: 'long',
-    day: 'numeric',
-    month: 'long',
-  })
-  const yearStr = new Date().getFullYear().toString()
-
   return (
-    <header className="header-premium sticky top-0 z-10 h-16">
+    <header className="sticky top-0 z-10 glass border-b border-surface-200/50 h-16">
       <div className="flex items-center justify-between h-full px-4 lg:px-6">
-        <div className="flex items-center gap-2 sm:gap-4">
+        <div className="flex items-center gap-1.5 sm:gap-3">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
             className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-surface-100 text-surface-500 transition-colors lg:hidden"
@@ -53,24 +40,23 @@ export default function Header() {
             </svg>
           </button>
 
-          <div className="hidden sm:block">
-            <h1 className="text-lg font-bold text-surface-900">Bienvenue, Admin 👋</h1>
-            <p className="text-xs text-surface-400">Voici ce qui se passe aujourd'hui dans votre boutique.</p>
+          <div className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-700">
+            <div className="w-7 h-7 bg-primary-100 rounded-lg flex items-center justify-center text-primary-600 text-xs font-bold">
+              {currentBusiness?.name?.charAt(0) || 'E'}
+            </div>
+            <span className="hidden sm:inline">{currentBusiness?.name || 'Entreprise'}</span>
           </div>
-          <div className="sm:hidden">
-            <p className="text-xs text-surface-500 font-medium">Bienvenue, Admin</p>
-          </div>
-        </div>
 
-        <div className="flex items-center gap-2 sm:gap-3">
           <button
             onClick={() => setSearchOpen(true)}
-            className="header-search flex items-center gap-2 px-3 py-2 text-sm text-surface-400 min-w-[40px] sm:min-w-[200px]"
+            className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-surface-100 text-surface-400 transition-colors sm:relative sm:w-auto sm:h-auto sm:gap-2 sm:px-3 sm:py-2 sm:bg-surface-100 sm:hover:bg-surface-200 sm:min-w-[200px]"
           >
-            <Search className="w-4 h-4 shrink-0" />
+            <svg className="w-5 h-5 sm:w-4 sm:h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
             <span className="hidden sm:inline">Rechercher...</span>
+            <kbd className="hidden sm:inline ml-auto text-[10px] px-1.5 py-0.5 rounded-md bg-surface-200/50 text-surface-400 font-mono">Ctrl+K</kbd>
           </button>
-
           <div className="hidden sm:flex items-center gap-2 text-xs text-surface-400">
             {lastSync && (
               <span className="flex items-center gap-1">
@@ -81,46 +67,33 @@ export default function Header() {
               </span>
             )}
           </div>
+        </div>
 
-          <div className="hidden sm:flex items-center text-xs text-surface-400">
-            <span className="capitalize">{dayMonth}</span>
-            <span className="ml-1">{yearStr}</span>
-          </div>
-
-          <div className="flex items-center gap-1">
-            <button className="notif-bell">
-              <Bell className="w-4 h-4" />
-              <span className="notif-badge">7</span>
+        <div className="flex items-center gap-1">
+          <div className="relative" ref={userRef}>
+            <button onClick={() => setUserDropdown(!userDropdown)} className="flex items-center gap-2 pl-2 border-l border-surface-200 hover:opacity-80 transition-opacity">
+              <div className="w-8 h-8 bg-primary-100 text-primary-600 rounded-full flex items-center justify-center text-sm font-semibold">
+                {user?.name?.charAt(0)?.toUpperCase() || 'A'}
+              </div>
+              <div className="hidden sm:block text-left">
+                <p className="text-sm font-medium text-surface-900">{user?.name || 'Utilisateur'}</p>
+                <p className="text-xs text-surface-400">{currentBusiness?.name || settings?.name || 'Boutique'}</p>
+              </div>
             </button>
-
-            <button className="theme-toggle">
-              <Moon className="w-4 h-4" />
-            </button>
-
-            <div className="relative" ref={userRef}>
-              <button
-                onClick={() => setUserDropdown(!userDropdown)}
-                className="flex items-center gap-2 pl-2 border-l border-surface-200 hover:opacity-80 transition-opacity ml-1"
-              >
-                <div className="avatar-3d">
-                  {user?.name?.charAt(0)?.toUpperCase() || 'A'}
-                </div>
-              </button>
-              {userDropdown && (
-                <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-surface-200 py-1 animate-fade-in z-50">
-                  <button onClick={() => { setUserDropdown(false); navigate('/settings') }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50">
-                    <Settings className="w-4 h-4 text-surface-400" /> Paramètres
-                  </button>
-                  <button onClick={() => { setUserDropdown(false); navigate('/users') }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50">
-                    <User className="w-4 h-4 text-surface-400" /> Mon compte
-                  </button>
-                  <div className="border-t border-surface-200 my-1" />
-                  <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger hover:bg-red-50">
-                    <LogOut className="w-4 h-4" /> Déconnexion
-                  </button>
-                </div>
-              )}
-            </div>
+            {userDropdown && (
+              <div className="absolute right-0 top-full mt-1 w-48 bg-white rounded-xl shadow-lg border border-surface-200 py-1 animate-fade-in z-50">
+                <button onClick={() => { setUserDropdown(false); navigate('/settings') }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50">
+                  <Settings className="w-4 h-4 text-surface-400" /> Paramètres
+                </button>
+                <button onClick={() => { setUserDropdown(false); navigate('/users') }} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-surface-700 hover:bg-surface-50">
+                  <User className="w-4 h-4 text-surface-400" /> Mon compte
+                </button>
+                <div className="border-t border-surface-200 my-1" />
+                <button onClick={handleLogout} className="w-full flex items-center gap-2.5 px-4 py-2.5 text-sm text-danger hover:bg-red-50">
+                  <LogOut className="w-4 h-4" /> Déconnexion
+                </button>
+              </div>
+            )}
           </div>
         </div>
       </div>
