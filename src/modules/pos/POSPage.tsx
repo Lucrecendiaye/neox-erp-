@@ -8,47 +8,27 @@ import {
   Search, ScanLine, ShoppingCart, Minus, Plus, X, Trash2,
   CreditCard, Printer, Download, Camera, Package, AlertTriangle,
   ChevronDown, User, Phone, MapPin, Calendar, Tag, Percent,
-  Check, SplitSquareVertical as SplitIcon, Banknote, Boxes, Contact as ContactIcon
+  Check, Send, SplitSquareVertical as SplitIcon, Banknote, Boxes, Contact as ContactIcon
 } from 'lucide-react'
 import BarcodeScanner from '@/components/ui/BarcodeScanner'
-import SplitPaymentModal from '@/components/pos/SplitPaymentModal'
-import CreditPaymentModal from '@/components/pos/CreditPaymentModal'
-import { exportSalePDF } from '@/lib/pdf'
-import { thermalPrinter } from '@/lib/thermalPrinter'
+import { exportSalePDF, shareSalePDF } from '@/lib/pdf'
+import { thermalPrinter, printReceiptHTML } from '@/lib/thermalPrinter'
 import type { SaleItem, Product, Sale, Customer } from '@/types'
 import type { ProductStock } from '@/engine/types'
-import type { SplitPayment } from '@/components/pos/SplitPaymentModal'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAppStore } from '@/stores/appStore'
 import { processSale } from '@/engine/operations'
 
 type PriceMode = 'detail' | 'gros'
-type PaymentType = 'complet' | 'credit' | 'partiel'
+type PaymentType = 'complet'
 type PayMethod = 'cash' | 'mobile' | 'card' | 'bank'
 
 export default function POSPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
-  const dexieProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseProducts } = useSupabaseQuery<Product>('products', undefined, [])
-  const products = (isCloud ? supabaseProducts : dexieProducts) || []
-
-  const dexieCustomers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseCustomers } = useSupabaseQuery<Customer>('customers', undefined, [])
-  const allCustomers = (isCloud ? supabaseCustomers : dexieCustomers) || []
-
-  const dexieCategories = useLiveQuery(() => db.categories.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseCategories } = useSupabaseQuery<any>('categories', undefined, [])
-  const categories = (isCloud ? supabaseCategories : dexieCategories) || []
-
-  const dexieStocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseStocks } = useSupabaseQuery<any>('product_stocks', undefined, [])
-  const allStocks = (isCloud ? supabaseStocks : dexieStocks) || ([] as ProductStock[])
-
-  const dexieSettings = useLiveQuery(() => db.settings.get('default'), [])
-  const { data: supabaseSettingsRaw } = useSupabaseQuery<any>('settings', undefined, [])
-  const settings = isCloud ? (supabaseSettingsRaw || []).find((s: any) => s.id === 'default') : dexieSettings
+  const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const allCustomers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const categories = useLiveQuery(() => db.categories.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const allStocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const settings = useLiveQuery(() => db.settings.get('default'), [])
 
   const shopLocation = useLiveQuery(() => db.locations.where('businessId').equals(businessId).filter(l => l.type === 'shop').first(), [businessId])
   const shopId = shopLocation?.id || ''
@@ -73,6 +53,7 @@ export default function POSPage() {
   const [customerAddress, setCustomerAddress] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
   const [customerId, setCustomerId] = useState('')
+  const [customerOpen, setCustomerOpen] = useState(false)
   const [discount, setDiscount] = useState(0)
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 16))
   const [paymentType, setPaymentType] = useState<PaymentType>('complet')
@@ -80,9 +61,7 @@ export default function POSPage() {
 
   const [saleSuccess, setSaleSuccess] = useState(false)
   const [lastSale, setLastSale] = useState<Sale | null>(null)
-  const [splitOpen, setSplitOpen] = useState(false)
-  const [creditOpen, setCreditOpen] = useState(false)
-  const [splitPayments, setSplitPayments] = useState<SplitPayment[]>([])
+
 
   const filteredCategories = useMemo(() => {
     const ids = new Set(products.map(p => p.categoryId).filter(Boolean))
@@ -226,11 +205,9 @@ function updateQuantity(itemKey: string, delta: number) {
     }
   }
 
-  async function handleSale(payments?: SplitPayment[], paidAmount?: number) {
+  async function handleSale() {
     if (cart.length === 0) return
-    if (!customerName) { toast('Nom du client requis', 'warning'); return }
 
-    const now = new Date().toISOString()
     const customer = allCustomers.find(c => c.id === customerId)
     const invNum = generateInvoiceNumber(settings?.invoicePrefix || 'INV-', settings?.invoiceNextNumber || 1)
 
@@ -246,12 +223,11 @@ function updateQuantity(itemKey: string, delta: number) {
       discountTotal: discount,
       taxTotal: 0,
       total,
-      paid: paymentType === 'credit' ? (paidAmount || 0) : (paidAmount || total),
-      change: paidAmount ? Math.max(0, paidAmount - total) : 0,
-      paymentMethod: paymentType === 'credit' ? 'credit' : (payments ? 'split' : (payMethod === 'cash' ? 'cash' : payMethod === 'mobile' ? 'mobile' : 'card')),
-      splitPayments: payments,
+      paid: total,
+      change: 0,
+      paymentMethod: payMethod === 'cash' ? 'cash' : payMethod === 'mobile' ? 'mobile' : 'card',
       status: 'completed',
-      createdAt: now,
+      createdAt: saleDate,
       userId,
     }
 
@@ -259,12 +235,11 @@ function updateQuantity(itemKey: string, delta: number) {
 
     if (settings) {
       const nextNum = (settings.invoiceNextNumber || 1) + 1
-      if (isCloud) { await sb.update('settings', 'default', { invoiceNextNumber: nextNum } as any) } else { await db.settings.update('default', { invoiceNextNumber: nextNum }) }
+      await db.settings.update('default', { invoiceNextNumber: nextNum })
     }
 
     setLastSale(sale)
     setSaleSuccess(true)
-    setTimeout(() => { setSaleSuccess(false); clearCart() }, 2500)
   }
 
   const currency = formatCurrency
@@ -349,7 +324,7 @@ function updateQuantity(itemKey: string, delta: number) {
                     <button onClick={() => !isOut && addToCart(p)} className="w-full text-left">
                       <div className="w-full aspect-square bg-surface-50 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                         {p.photos?.[0] ? (
-                          <img src={p.photos[0]} alt="" className="w-full h-full object-cover" />
+                          <img src={p.photos[0]} alt="" className="w-full h-full object-contain" />
                         ) : (
                           <Package className="w-8 h-8 text-surface-300" />
                         )}
@@ -398,230 +373,183 @@ function updateQuantity(itemKey: string, delta: number) {
           </div>
         </div>
 
-        {/* ── RIGHT: Panier & Paiement ── */}
+        {/* ── RIGHT: Panier & Paiement (redesign mobile) ── */}
         <div className={cn(
-          'flex-1 flex flex-col bg-surface-50 min-w-0',
+          'flex-1 flex flex-col min-w-0 bg-surface-50',
           'lg:flex',
-          'fixed inset-y-0 right-0 z-50 w-full max-w-md shadow-2xl',
-          'lg:static lg:inset-auto lg:z-auto lg:w-auto lg:shadow-none lg:translate-x-0',
+          'fixed inset-0 z-50',
+          'lg:static lg:inset-auto lg:z-auto',
           cartOpen ? 'flex' : 'hidden',
-          'transition-transform duration-300',
-          cartOpen ? 'translate-x-0' : 'translate-x-full',
         )}>
-          {/* Header */}
-          <div className="px-4 py-4 border-b border-surface-200 bg-white">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2">
-                <button onClick={() => setCartOpen(false)} className="lg:hidden p-1 -ml-1 rounded-lg hover:bg-surface-100 text-surface-500 transition-colors">
-                  <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
-                </button>
-                <h2 className="text-sm font-semibold text-surface-900">Panier ({cart.length})</h2>
+          {/* Fixed header */}
+          <div className="shrink-0 px-4 py-3 bg-white border-b border-surface-200 flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <button onClick={() => setCartOpen(false)} className="lg:hidden p-1.5 -ml-1 rounded-lg hover:bg-surface-100 text-surface-500 transition-colors">
+                <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+              </button>
+              <h2 className="text-base font-bold text-surface-900">Panier <span className="text-surface-400 font-normal">({cart.length})</span></h2>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex rounded-lg bg-surface-100 border border-surface-200 overflow-hidden">
+                <button onClick={() => setPriceMode('detail')} className={cn('px-3 py-1.5 text-xs font-medium transition-colors', priceMode === 'detail' ? 'bg-primary-600 text-white' : 'text-surface-500 hover:text-surface-700')}>Détail</button>
+                <button onClick={() => setPriceMode('gros')} className={cn('px-3 py-1.5 text-xs font-medium transition-colors', priceMode === 'gros' ? 'bg-primary-600 text-white' : 'text-surface-500 hover:text-surface-700')}>Gros</button>
               </div>
               {cart.length > 0 && (
-                <button onClick={clearCart} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-red-500 transition-colors">
+                <button onClick={clearCart} className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-red-500 transition-colors" title="Vider le panier">
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
             </div>
-            <div className="flex rounded-lg bg-surface-100 border border-surface-200 overflow-hidden w-fit">
-              <button
-                onClick={() => setPriceMode('detail')}
-                className={cn(
-                  'px-3 py-1.5 text-xs font-medium transition-colors',
-                  priceMode === 'detail' ? 'bg-primary-600 text-white' : 'text-surface-500 hover:text-surface-700'
-                )}
-              >
-                Détail
-              </button>
-              <button
-                onClick={() => setPriceMode('gros')}
-                className={cn(
-                  'px-3 py-1.5 text-xs font-medium transition-colors',
-                  priceMode === 'gros' ? 'bg-primary-600 text-white' : 'text-surface-500 hover:text-surface-700'
-                )}
-              >
-                Gros
-              </button>
-            </div>
           </div>
 
-          {/* Cart items */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+          {/* Customer (collapsible, closed by default) */}
+          <div className="shrink-0 px-4 pt-2 pb-1 bg-white border-b border-surface-100">
+            <button onClick={() => setCustomerOpen(!customerOpen)} className="flex items-center justify-between w-full text-left py-1">
+              <div className="flex items-center gap-2 text-sm">
+                <User className="w-3.5 h-3.5 text-surface-400" />
+                <span className="text-surface-500">Client</span>
+                {customerName ? <span className="text-surface-900 font-medium truncate max-w-[160px]">{customerName}</span> : <span className="text-surface-400">(optionnel)</span>}
+              </div>
+              <ChevronDown className={cn('w-4 h-4 text-surface-400 transition-transform', customerOpen && 'rotate-180')} />
+            </button>
+            {customerOpen && (
+              <div className="mt-2 space-y-2 pb-2">
+                <div className="relative">
+                  <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
+                  <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nom du client"
+                    className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
+                    <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Téléphone"
+                      className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                  </div>
+                  <button type="button" onClick={async () => { const c = await pickContact(); if (c) { setCustomerName(c.name); setCustomerPhone(c.tel); toast('Contact importé', 'success') } }}
+                    className="p-2 rounded-lg bg-surface-50 border border-surface-300 text-surface-500 hover:text-primary-600" title="Importer">
+                    <ContactIcon className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="relative">
+                  <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
+                  <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Adresse"
+                    className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Scrollable cart items */}
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3">
             {cart.map((item) => {
               const key = cartItemKey(item)
               const product = products.find(p => p.id === item.productId)
               const units = product ? getProductUnits(product) : []
               return (
-                <div key={key} className="flex items-center gap-2 p-3 rounded-xl bg-white border border-surface-200 shadow-sm">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-surface-900 truncate">{item.productName}</p>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <select
-                        value={item.unitName || 'Pièce'}
-                        onChange={(e) => updateCartUnit(key, e.target.value)}
-                        className="text-[10px] rounded border border-surface-200 bg-surface-50 px-1 py-0.5 text-surface-600 focus:outline-none"
-                      >
-                        {units.map(u => (
-                          <option key={u.name} value={u.name}>{u.name}</option>
-                        ))}
-                      </select>
-                      <span className="text-[10px] text-surface-400">×</span>
-                      <input
-                        type="number"
-                        min={getUnitMinQty(item.unitName || 'Pièce')}
-                        step={getUnitStep(item.unitName || 'Pièce')}
-                        value={item.quantity}
-                        onChange={(e) => {
-                          const minQty = getUnitMinQty(item.unitName || 'Pièce')
-                          const q = Math.max(minQty, Number(e.target.value) || minQty)
-                          setCart(prev => prev.map(i =>
-                            cartItemKey(i) === key
-                              ? { ...i, quantity: q, total: q * i.unitPrice - i.discount }
-                              : i
-                          ))
-                        }}
-                        className="w-14 text-[10px] rounded border border-surface-200 bg-surface-50 px-1 py-0.5 text-surface-700 text-center focus:outline-none"
-                      />
-                    </div>
-                    <div className="flex items-center gap-1 mt-0.5">
-                      <span className="text-[10px] text-surface-400">Prix:</span>
-                      <input
-                        type="number"
-                        min="0"
-                        step="1"
-                        value={item.unitPrice}
-                        onChange={(e) => updateCartPrice(key, Math.max(0, Number(e.target.value) || 0))}
-                        className="w-20 text-[10px] rounded border border-surface-200 bg-surface-50 px-1 py-0.5 text-surface-700 text-right focus:outline-none"
-                      />
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1.5">
-                    <button onClick={() => updateQuantity(key, -1)} className="w-7 h-7 rounded-lg bg-surface-100 flex items-center justify-center text-surface-500 hover:bg-surface-200 hover:text-surface-700 transition-colors">
-                      <Minus className="w-3 h-3" />
-                    </button>
-                    <span className="w-10 text-center text-sm font-medium text-surface-900">{item.quantity.toLocaleString('fr-FR')}</span>
-                    <button onClick={() => updateQuantity(key, 1)} className="w-7 h-7 rounded-lg bg-surface-100 flex items-center justify-center text-surface-500 hover:bg-surface-200 hover:text-surface-700 transition-colors">
-                      <Plus className="w-3 h-3" />
-                    </button>
-                  </div>
-                  <p className="text-sm font-semibold text-surface-900 w-20 text-right">{currency(item.total)}</p>
-                  <button onClick={() => removeFromCart(key)} className="p-1 text-surface-300 hover:text-red-500 transition-colors">
+                <div key={key} className="bg-white border border-surface-200 rounded-2xl p-4 shadow-sm relative">
+                  <button onClick={() => removeFromCart(key)}
+                    className="absolute top-3 right-3 p-1 rounded-lg text-surface-300 hover:text-red-500 hover:bg-red-50 transition-colors z-10">
                     <X className="w-4 h-4" />
                   </button>
+                  <div className="flex gap-3 items-start">
+                    <div className="w-12 h-12 rounded-xl bg-surface-50 flex items-center justify-center overflow-hidden shrink-0 border border-surface-100">
+                      {product?.photos?.[0] ? (
+                        <img src={product.photos[0]} alt="" className="w-full h-full object-cover" />
+                      ) : (
+                        <Package className="w-6 h-6 text-surface-300" />
+                      )}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-bold text-surface-900 leading-tight">{item.productName}</p>
+                      <div className="flex items-center gap-2 mt-1.5">
+                        <select value={item.unitName || 'Pièce'} onChange={(e) => updateCartUnit(key, e.target.value)}
+                          className="text-[11px] rounded-md border border-surface-200 bg-surface-50 px-1.5 py-0.5 text-surface-600 focus:outline-none">
+                          {units.map(u => (<option key={u.name} value={u.name}>{u.name}</option>))}
+                        </select>
+                        <span className="text-xs text-surface-300">×</span>
+                        <input type="number" min={getUnitMinQty(item.unitName || 'Pièce')} step={getUnitStep(item.unitName || 'Pièce')}
+                          value={item.quantity}
+                          onChange={(e) => {
+                            const minQty = getUnitMinQty(item.unitName || 'Pièce')
+                            const q = Math.max(minQty, Number(e.target.value) || minQty)
+                            setCart(prev => prev.map(i => cartItemKey(i) === key ? { ...i, quantity: q, total: q * i.unitPrice - i.discount } : i))
+                          }}
+                          className="w-14 text-[11px] rounded-md border border-surface-200 bg-surface-50 px-1 py-0.5 text-surface-700 text-center focus:outline-none" />
+                      </div>
+                      <div className="flex items-center gap-1 mt-1">
+                        <span className="text-[11px] text-surface-400">PU:</span>
+                        <input type="number" min="0" step="1" value={item.unitPrice}
+                          onChange={(e) => updateCartPrice(key, Math.max(0, Number(e.target.value) || 0))}
+                          className="w-16 text-[11px] rounded-md border border-surface-200 bg-surface-50 px-1 py-0.5 text-surface-700 text-right focus:outline-none" />
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 mt-3">
+                    <button onClick={() => updateQuantity(key, -1)} className="w-9 h-9 rounded-xl bg-surface-100 flex items-center justify-center text-surface-500 hover:bg-surface-200 active:bg-surface-300 transition-colors">
+                      <Minus className="w-4 h-4" />
+                    </button>
+                    <span className="w-10 text-center text-base font-bold text-surface-900">{item.quantity.toLocaleString('fr-FR')}</span>
+                    <button onClick={() => updateQuantity(key, 1)} className="w-9 h-9 rounded-xl bg-surface-100 flex items-center justify-center text-surface-500 hover:bg-surface-200 active:bg-surface-300 transition-colors">
+                      <Plus className="w-4 h-4" />
+                    </button>
+                    <span className="ml-auto text-lg font-bold text-primary-600">{currency(item.total)}</span>
+                  </div>
                 </div>
               )
             })}
             {cart.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-surface-400 py-12">
-                <ShoppingCart className="w-12 h-12 mb-3 text-surface-300" />
-                <p className="text-sm">Cliquez sur un produit</p>
-                <p className="text-xs text-surface-400">pour ajouter au panier</p>
+              <div className="flex flex-col items-center justify-center h-full text-surface-400 py-16">
+                <ShoppingCart className="w-14 h-14 mb-4 text-surface-300" />
+                <p className="text-sm font-medium">Panier vide</p>
+                <p className="text-xs text-surface-400 mt-1">Cliquez sur un produit</p>
               </div>
             )}
           </div>
 
-          {/* Summary */}
-          <div className="px-4 py-3 border-t border-surface-200 bg-white space-y-3">
-            <div className="flex justify-between text-sm">
-              <span className="text-surface-500">Sous-total</span>
-              <span className="text-surface-900 font-medium">{currency(subtotal)}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="relative flex-1">
-                <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
-                <input
-                  type="number" min="0" value={discount || ''}
-                  onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
-                  placeholder="Remise (FCFA)"
-                  className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
+          {/* Summary section (compact) */}
+          <div className="shrink-0 bg-white border-t border-surface-200">
+            {cart.length > 0 && (
+              <div className="flex gap-2 px-4 pt-3 pb-2">
+                <div className="flex-1 bg-primary-50 rounded-xl px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-primary-600">{cart.length}</p>
+                  <p className="text-[10px] text-primary-400 font-medium">Articles</p>
+                </div>
+                <div className="flex-1 bg-surface-50 rounded-xl px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-surface-700">{cart.reduce((s, i) => s + i.quantity, 0)}</p>
+                  <p className="text-[10px] text-surface-400 font-medium">Qté</p>
+                </div>
+                <div className="flex-1 bg-emerald-50 rounded-xl px-3 py-2 text-center">
+                  <p className="text-lg font-bold text-emerald-600">{currency(total)}</p>
+                  <p className="text-[10px] text-emerald-400 font-medium">Total</p>
+                </div>
               </div>
-              <span className="text-xs text-surface-400">Remise</span>
-            </div>
-            <div className="flex justify-between text-lg font-bold">
-              <span className="text-surface-900">Total</span>
-              <span className="text-primary-600">{currency(total)}</span>
-            </div>
-            <div className="flex justify-between text-xs">
-              <span className="text-surface-400">Marge</span>
-              <span className={cn('font-medium', margin >= 20 ? 'text-success' : margin >= 10 ? 'text-warning' : 'text-danger')}>
-                {margin.toFixed(1)}%
-              </span>
+            )}
+            <div className="px-4 pb-1 space-y-1.5">
+              <div className="flex justify-between text-sm">
+                <span className="text-surface-500">Sous-total</span>
+                <span className="text-surface-900 font-medium">{currency(subtotal)}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="relative flex-1">
+                  <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
+                  <input type="number" min="0" value={discount || ''}
+                    onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
+                    placeholder="Remise (FCFA)"
+                    className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                </div>
+                <span className="text-xs text-surface-400">Remise</span>
+              </div>
+              <div className="flex justify-between items-baseline pt-1">
+                <span className="text-xs text-surface-400">Marge</span>
+                <span className={cn('text-xs font-medium', margin >= 20 ? 'text-emerald-600' : margin >= 10 ? 'text-amber-600' : 'text-red-600')}>{margin.toFixed(1)}%</span>
+              </div>
             </div>
           </div>
 
-          {/* Customer */}
-          <div className="px-4 py-3 border-t border-surface-200 bg-white space-y-3">
-            <div className="relative">
-              <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-              <input
-                value={customerName}
-                onChange={(e) => setCustomerName(e.target.value)}
-                placeholder="Nom du client *"
-                className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                required
-              />
-            </div>
-            <div className="relative">
-              <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-              <input
-                value={customerAddress}
-                onChange={(e) => setCustomerAddress(e.target.value)}
-                placeholder="Adresse client"
-                className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
-            <div className="relative flex gap-2">
-              <div className="relative flex-1">
-                <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-                <input
-                  value={customerPhone}
-                  onChange={(e) => setCustomerPhone(e.target.value)}
-                  placeholder="Téléphone client"
-                  className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500"
-                />
-              </div>
-              <button type="button" onClick={async () => {
-                const c = await pickContact()
-                if (c) { setCustomerName(c.name); setCustomerPhone(c.tel); toast('Contact importé', 'success') }
-              }} className="p-2.5 rounded-xl bg-surface-50 border border-surface-300 text-surface-500 hover:text-primary-600 hover:border-primary-300" title="Importer depuis contacts">
-                <ContactIcon className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-
-          {/* Payment */}
-          <div className="px-4 py-3 border-t border-surface-200 bg-white space-y-3">
-            <div className="relative">
-              <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-              <input
-                type="datetime-local"
-                value={saleDate}
-                onChange={(e) => setSaleDate(e.target.value)}
-                className="w-full pl-10 pr-3 py-2.5 rounded-xl bg-surface-50 border border-surface-300 text-sm text-surface-900 focus:outline-none focus:ring-2 focus:ring-primary-500"
-              />
-            </div>
-
-            <div className="flex rounded-xl bg-surface-100 border border-surface-200 overflow-hidden">
-              {(['complet', 'credit', 'partiel'] as PaymentType[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setPaymentType(t)}
-                  className={cn(
-                    'flex-1 px-3 py-2 text-xs font-medium transition-colors',
-                    paymentType === t ? 'bg-primary-600 text-white' : 'text-surface-500 hover:text-surface-700'
-                  )}
-                >
-                  {t === 'complet' ? 'Complet' : t === 'credit' ? 'Crédit' : 'Partiel'}
-                </button>
-              ))}
-            </div>
-
-            <select
-              value={payMethod}
-              onChange={(e) => setPayMethod(e.target.value as PayMethod)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-3 py-2.5 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
-            >
+          {/* Payment type */}
+          <div className="shrink-0 px-4 pt-2 pb-1 bg-white border-t border-surface-100">
+            <select value={payMethod} onChange={(e) => setPayMethod(e.target.value as PayMethod)}
+              className="w-full rounded-xl border border-surface-300 bg-white px-3 py-2 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option value="cash">Espèces</option>
               <option value="mobile">Mobile Money</option>
               <option value="card">Carte</option>
@@ -629,69 +557,39 @@ function updateQuantity(itemKey: string, delta: number) {
             </select>
           </div>
 
-          {/* Validate */}
-          <div className="px-4 py-3 border-t border-surface-200 bg-white space-y-2">
-            <button
-              onClick={() => {
-                if (!customerName) { toast('Nom du client requis', 'warning'); return }
-                if (paymentType === 'credit') { setCreditOpen(true); return }
-                if (paymentType === 'partiel') { setSplitOpen(true); return }
-                handleSale()
-              }}
-              disabled={cart.length === 0}
+          {/* Fixed bottom bar */}
+          <div className="shrink-0 bg-white border-t border-surface-200 px-4 pt-3 pb-3 space-y-2" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 16px))' }}>
+            <button onClick={handleSale} disabled={cart.length === 0}
               className={cn(
-                'w-full py-3 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2',
+                'w-full py-3.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2',
                 cart.length > 0
                   ? 'bg-primary-600 hover:bg-primary-500 text-white shadow-lg shadow-primary-200 active:scale-[0.98]'
                   : 'bg-surface-100 text-surface-400 cursor-not-allowed'
-              )}
-            >
-              <CreditCard className="w-4 h-4" />
+              )}>
+              <CreditCard className="w-5 h-5" />
               Valider ({currency(total)})
             </button>
             <div className="flex gap-2">
-              <button
-                onClick={async () => {
-                  try {
-                    const connected = thermalPrinter.isConnected() || await thermalPrinter.connect()
-                    if (connected) {
-                      await thermalPrinter.printReceipt([
-                        { text: 'NEOX ERP', bold: true, doubleWidth: true, align: 'center' },
-                        { text: 'Facture de vente', align: 'center' },
-                        { text: '---' },
-                        ...cart.map(i => ({ text: `${i.productName} x${i.quantity}  ${currency(i.total)}` })),
-                        { text: '---' },
-                        { text: `Total: ${currency(total)}`, bold: true, align: 'right' },
-                        { text: '', align: 'center' },
-                        { text: 'Merci de votre visite !', align: 'center' },
-                      ])
-                      await thermalPrinter.cut()
-                      toast('Ticket imprimé', 'success')
-                    }
-                  } catch { toast('Imprimante non connectée', 'warning') }
-                }}
-                disabled={cart.length === 0}
-                className={cn(
-                  'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border border-surface-200',
-                  cart.length > 0
-                    ? 'bg-white text-surface-700 hover:bg-surface-50'
-                    : 'bg-surface-50 text-surface-300 cursor-not-allowed'
-                )}
-              >
-                <Printer className="w-4 h-4" /> Ticket
+              <button onClick={async () => {
+                const customer = allCustomers.find(c => c.id === customerId)
+                const saleData = { invoiceNumber: generateInvoiceNumber(settings?.invoicePrefix || 'INV-', settings?.invoiceNextNumber || 1), items: cart.map(i => ({ productName: i.productName, quantity: i.quantity, unitName: i.unitName, unitPrice: i.unitPrice, total: i.total })), total, paid: total, change: 0, customerName: customer?.name || customerName, createdAt: saleDate, paymentMethod: payMethod }
+                try { const connected = thermalPrinter.isConnected() || await thermalPrinter.connect()
+                  if (connected) { await thermalPrinter.printReceipt([{ text: 'NEOX ERP', bold: true, doubleWidth: true, align: 'center' }, { text: 'Facture de vente', align: 'center' }, { text: '---' }, ...cart.map(i => ({ text: `${i.productName} x${i.quantity}  ${currency(i.total)}` })), { text: '---' }, { text: `Total: ${currency(total)}`, bold: true, align: 'right' }, { text: '', align: 'center' }, { text: 'Merci de votre visite !', align: 'center' }]); await thermalPrinter.cut(); toast('Ticket imprimé', 'success'); return }
+                } catch {}
+                printReceiptHTML(saleData, settings?.name)
+              }} disabled={cart.length === 0}
+                className={cn('flex-1 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 border border-surface-200', cart.length > 0 ? 'bg-white text-surface-700 hover:bg-surface-50' : 'bg-surface-50 text-surface-300 cursor-not-allowed')}>
+                <Printer className="w-3.5 h-3.5" /> Ticket
               </button>
-              <button
-                onClick={() => { if (lastSale) exportSalePDF(lastSale, settings) }}
-                disabled={cart.length === 0}
-                className={cn(
-                  'flex-1 py-2.5 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 border border-surface-200',
-                  cart.length > 0
-                    ? 'bg-white text-surface-700 hover:bg-surface-50'
-                    : 'bg-surface-50 text-surface-300 cursor-not-allowed'
-                )}
-              >
-                <Download className="w-4 h-4" /> PDF
+              <button onClick={() => { if (lastSale) exportSalePDF(lastSale, settings) }} disabled={cart.length === 0}
+                className={cn('flex-1 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 border border-surface-200', cart.length > 0 ? 'bg-white text-surface-700 hover:bg-surface-50' : 'bg-surface-50 text-surface-300 cursor-not-allowed')}>
+                <Download className="w-3.5 h-3.5" /> PDF
               </button>
+              <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-surface-200 bg-white text-surface-600 text-xs cursor-pointer" onClick={() => (document.getElementById('saleDateInput') as HTMLInputElement)?.showPicker?.()}>
+                <Calendar className="w-3.5 h-3.5 shrink-0" />
+                <span className="whitespace-nowrap">{new Date(saleDate).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                <input type="datetime-local" value={saleDate} onChange={(e) => setSaleDate(e.target.value)} id="saleDateInput" className="w-0 h-0 opacity-0 absolute pointer-events-none" />
+              </div>
             </div>
           </div>
         </div>
@@ -713,27 +611,63 @@ function updateQuantity(itemKey: string, delta: number) {
       )}
 
       <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleBarcodeScan} />
-      <CreditPaymentModal open={creditOpen} onClose={() => setCreditOpen(false)} customerId={customerId} onPaymentComplete={() => { setCreditOpen(false); handleSale() }} />
-      <SplitPaymentModal open={splitOpen} onClose={() => setSplitOpen(false)} total={total} onConfirm={(payments) => { setSplitOpen(false); handleSale(payments, payments.reduce((s, p) => s + p.amount, 0)) }} />
 
       {saleSuccess && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 animate-fade-in" onClick={() => { setSaleSuccess(false); clearCart() }}>
-          <div className="text-center py-12 px-8 bg-white rounded-2xl border border-surface-200 shadow-2xl animate-slide-up" onClick={(e) => e.stopPropagation()}>
-            <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Check className="w-8 h-8 text-success" />
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in p-4">
+          <div className="relative text-center py-8 px-6 bg-white rounded-[20px] border border-surface-200 shadow-2xl animate-slide-up w-[95%] sm:w-[90%] md:w-[640px] max-w-[640px] max-h-[95vh] md:max-h-[820px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+            <button onClick={() => { setSaleSuccess(false); clearCart() }} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-100 text-surface-400">
+              <X className="w-5 h-5" />
+            </button>
+            <div className="w-14 h-14 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
+              <Check className="w-7 h-7 text-success" />
             </div>
-            <p className="text-xl font-bold text-surface-900">Vente confirmée !</p>
+            <p className="text-lg font-bold text-surface-900">Vente confirmée !</p>
             <p className="text-sm text-surface-500 mt-1">{currency(total)}</p>
-            <div className="flex gap-2 mt-6 justify-center">
-              <button
-                onClick={() => { if (lastSale) exportSalePDF(lastSale, settings) }}
-                className="px-4 py-2 rounded-xl border border-surface-200 text-surface-700 text-sm font-medium hover:bg-surface-50 transition-colors flex items-center gap-2"
-              >
-                <Download className="w-4 h-4" /> Reçu PDF
-              </button>
+            <div className="flex flex-col gap-3 mt-5">
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => { if (lastSale) { exportSalePDF(lastSale, settings); toast('PDF téléchargé', 'success') } }}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
+                >
+                  <Download className="w-5 h-5" /> PDF
+                </button>
+                <button
+                  onClick={async () => {
+                    if (!lastSale) return
+                    try {
+                      const connected = thermalPrinter.isConnected() || await thermalPrinter.connect()
+                      if (connected) {
+                        await thermalPrinter.printReceipt([
+                          { text: 'NEOX ERP', bold: true, doubleWidth: true, align: 'center' },
+                          { text: 'Facture de vente', align: 'center' },
+                          { text: '---' },
+                          ...lastSale.items.map(i => ({ text: `${i.productName} x${i.quantity}  ${currency(i.total)}` })),
+                          { text: '---' },
+                          { text: `Total: ${currency(lastSale.total)}`, bold: true, align: 'right' },
+                          { text: '', align: 'center' },
+                          { text: 'Merci de votre visite !', align: 'center' }
+                        ])
+                        await thermalPrinter.cut()
+                        toast('Ticket imprimé', 'success')
+                        return
+                      }
+                    } catch {}
+                    printReceiptHTML(lastSale, settings?.name)
+                  }}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
+                >
+                  <Printer className="w-5 h-5" /> Imprimer
+                </button>
+                <button
+                  onClick={() => { if (lastSale) { shareSalePDF(lastSale, settings); toast('Partage en cours...', 'success') } }}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
+                >
+                  <Send className="w-5 h-5" /> WhatsApp
+                </button>
+              </div>
               <button
                 onClick={() => { setSaleSuccess(false); clearCart() }}
-                className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium hover:bg-primary-500 transition-colors"
+                className="w-full py-3 rounded-xl bg-primary-600 text-white text-sm font-bold hover:bg-primary-500 transition-colors"
               >
                 Nouvelle vente
               </button>

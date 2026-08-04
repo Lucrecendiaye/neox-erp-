@@ -3,7 +3,7 @@ import { isSupabaseConfigured } from './supabase'
 
 const TABLES_TO_BACKUP = [
   'products', 'categories', 'customers', 'suppliers',
-  'sales', 'purchases', 'invoices', 'credits',
+  'sales', 'purchases',
   'cashBook',
   'employees', 'attendance', 'payrolls',
   'leads', 'settings', 'locations', 'productStocks',

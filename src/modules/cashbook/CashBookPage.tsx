@@ -9,8 +9,8 @@ import { generateId, formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { Wallet, ArrowUpRight, ArrowDownRight, Plus, Trash2, Search, Filter, Calendar } from 'lucide-react'
 import type { CashBookEntry } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
+
+
 import { softDelete } from '@/lib/softDelete'
 
 const categories = ['Ventes', 'Achats', 'Salaires', 'Loyer', 'Transport', 'Marketing', 'Fournisseurs', 'Autre']
@@ -70,11 +70,8 @@ function getDateRange(range: string): { start: string; end: string } | null {
 }
 
 export default function CashBookPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
-  const dexieEntries = useLiveQuery(() => db.cashBook.where('businessId').equals(businessId).reverse().sortBy('date'), [businessId])
-  const { data: supabaseEntries } = useSupabaseQuery<CashBookEntry>('cash_book', undefined, [])
-  const entries = isCloud ? (supabaseEntries || []).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()) : dexieEntries
+  const entries = useLiveQuery(() => db.cashBook.where('businessId').equals(businessId).reverse().sortBy('date'), [businessId]) ?? []
 
   const [search, setSearch] = useState('')
   const [typeFilter, setTypeFilter] = useState('all')
@@ -181,7 +178,7 @@ export default function CashBookPage() {
     }
 
     try {
-      if (isCloud) { await sb.insert('cash_book', entry) } else { await db.cashBook.add(entry) }
+      await db.cashBook.add(entry)
       toast('Écriture ajoutée avec succès', 'success')
       setModalOpen(false)
       resetForm()
@@ -195,7 +192,7 @@ export default function CashBookPage() {
     try {
       const entry = entries?.find(e => e.id === id)
       if (entry) await softDelete('cashBook', id, entry as any, entry.description)
-      if (isCloud) { await sb.remove('cash_book', id) } else { await db.cashBook.delete(id) }
+      await db.cashBook.delete(id)
       toast('Écriture supprimée', 'success')
     } catch {
       toast('Erreur lors de la suppression', 'error')
@@ -339,7 +336,7 @@ export default function CashBookPage() {
         <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
       </div>
 
-      <Modal open={modalOpen} onClose={() => { setModalOpen(false); resetForm() }} title={formType === 'in' ? 'Nouvelle entrée' : 'Nouvelle sortie'} size="lg">
+      <Modal open={modalOpen} onClose={() => { setModalOpen(false); resetForm() }} title={formType === 'in' ? 'Nouvelle entrée' : 'Nouvelle sortie'} size="md">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select

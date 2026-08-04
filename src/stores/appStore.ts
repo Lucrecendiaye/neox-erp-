@@ -31,7 +31,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   session: null,
   settings: null,
   notifications: [],
-  sidebarOpen: true,
+  sidebarOpen: window.innerWidth >= 1024,
   isOnline: navigator.onLine,
   currentBusiness: null,
 

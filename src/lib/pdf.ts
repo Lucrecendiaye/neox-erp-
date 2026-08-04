@@ -347,6 +347,158 @@ export function exportSalePDF(sale: Sale, settings?: CompanySettings) {
   doc.save(`facture_${sale.invoiceNumber || 'vente'}.pdf`)
 }
 
+export function shareSalePDF(sale: Sale, settings?: CompanySettings) {
+  const doc = new jsPDF({ format: 'a5' })
+  const s = settings || {} as CompanySettings
+  drawBanner(doc, s)
+  drawInvoiceBadge(doc, sale, 8)
+  let yPos = 50
+  yPos = drawInfoCards(doc, sale, s, yPos) + 2
+  const rows = sale.items.map(item => [
+    item.productName,
+    item.quantity.toLocaleString('fr-FR'),
+    item.unitName || 'p',
+    fmt(item.unitPrice),
+    item.discount > 0 ? fmt(item.discount) : '-',
+    fmt(item.total),
+  ])
+  const colW = (PW - M * 2) / 6
+  autoTable(doc, {
+    startY: yPos,
+    head: [['Designation', 'Qte', 'Unite', 'P/U', 'Remise', 'Montant']],
+    body: rows,
+    theme: 'grid',
+    headStyles: { fillColor: hexToRgb(BLUE), textColor: 255, fontSize: 6.5, fontStyle: 'bold', halign: 'center' as any },
+    bodyStyles: { fontSize: 6 },
+    columnStyles: {
+      0: { cellWidth: 'auto' as any },
+      1: { halign: 'center' as any, cellWidth: 12 },
+      2: { halign: 'center' as any, cellWidth: 12 },
+      3: { halign: 'right' as any, cellWidth: colW - 2 },
+      4: { halign: 'center' as any, cellWidth: 18 },
+      5: { halign: 'right' as any, cellWidth: colW },
+    },
+    margin: { left: M, right: M },
+    tableLineColor: hexToRgb(LIGHT_GRAY),
+    tableLineWidth: 0.3,
+    styles: { cellPadding: 1.5 },
+  })
+  const finalY = (doc as any).lastAutoTable.finalY + 4
+  const subtotal = sale.subtotal || sale.items.reduce((s, i) => s + i.total, 0)
+  const discountTotal = sale.discountTotal || sale.items.reduce((s, i) => s + i.discount, 0)
+  const taxTotal = sale.taxTotal || 0
+  const total = sale.total
+  const summaryX = M
+  const summaryW = PW / 2 - M * 1.5
+  const summaryStart = finalY
+  const lh = 5
+  const summaryLines: { label: string; value: string; bold?: boolean; color?: string }[] = [
+    { label: 'Sous-total HT', value: fmt(subtotal) },
+    { label: 'Remise totale', value: `- ${fmt(discountTotal)}`, color: RED },
+  ]
+  if (taxTotal > 0) summaryLines.push({ label: 'Taxe', value: fmt(taxTotal) })
+  summaryLines.push({ label: '', value: '' })
+  summaryLines.push({ label: 'TOTAL TTC', value: fmt(total), bold: true })
+  const tH = summaryLines.length * lh + 10
+  rect(doc, summaryX, summaryStart - 2, summaryW, tH, LIGHT_GRAY, 4)
+  summaryLines.forEach((line, i) => {
+    const ly = summaryStart + i * lh + 2
+    if (line.bold) {
+      rect(doc, summaryX, ly - 1, summaryW, lh + 3, BLUE, 3)
+      doc.setFontSize(8)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(255, 255, 255)
+      doc.text(line.label, summaryX + 5, ly + 4)
+      doc.text(line.value, summaryX + summaryW - 5, ly + 4, { align: 'right' })
+    } else if (line.label) {
+      doc.setFontSize(6)
+      doc.setFont('helvetica', 'normal')
+      const lc = line.color ? hexToRgb(line.color) : [60, 60, 60] as const
+      doc.setTextColor(lc[0], lc[1], lc[2])
+      doc.text(line.label, summaryX + 5, ly + 3)
+      doc.text(line.value, summaryX + summaryW - 5, ly + 3, { align: 'right' })
+    }
+  })
+  const payX = summaryX + summaryW + M
+  const payW = PW - M - payX
+  const payLines: { label: string; value: string; color?: string }[] = [
+    { label: 'Montant paye', value: fmt(sale.paid) },
+    { label: 'Montant restant', value: fmt(sale.total - sale.paid), color: RED },
+    { label: 'Statut', value: getPaymentStatusLabel(sale) },
+    { label: 'Mode', value: formatPaymentMethodLabel(sale.paymentMethod) },
+  ]
+  const payH = payLines.length * lh + 10
+  rect(doc, payX, summaryStart - 2, payW, payH, LIGHT_GRAY, 4)
+  doc.setFontSize(6)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(...hexToRgb(BLUE))
+  doc.text('PAIEMENT', payX + 4, summaryStart + 2)
+  payLines.forEach((line, i) => {
+    const ly = summaryStart + (i + 1) * lh + 2
+    doc.setFontSize(5.5)
+    doc.setFont('helvetica', 'normal')
+    const pc = line.color ? hexToRgb(line.color) : [60, 60, 60] as const
+    doc.setTextColor(pc[0], pc[1], pc[2])
+    doc.text(line.label, payX + 4, ly + 2)
+    doc.setFont('helvetica', 'bold')
+    doc.text(line.value, payX + payW - 4, ly + 2, { align: 'right' })
+  })
+  let nextY = summaryStart + tH + 6
+  if (sale.paymentMethod === 'credit' && sale.paid < sale.total) {
+    const remaining = sale.total - sale.paid
+    rect(doc, M, nextY, PW - M * 2, 10, RED, 3)
+    doc.setFontSize(7)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(255, 255, 255)
+    doc.text(`RESTANT: ${fmt(remaining)}`, PW / 2, nextY + 7, { align: 'center' })
+    nextY += 14
+  }
+  if (s.invoiceNotes) {
+    rect(doc, M, nextY, PW - M * 2, 18, LIGHT_GRAY, 3)
+    doc.setFontSize(6)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(...hexToRgb(BLUE))
+    doc.text('Notes', M + 4, nextY + 6)
+    doc.setFontSize(5.5)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(80, 80, 80)
+    doc.text(s.invoiceNotes, M + 4, nextY + 13)
+    nextY += 22
+  }
+  if (s.accountNumber) {
+    rect(doc, M, nextY, PW - M * 2, 8, LIGHT_GRAY, 3)
+    doc.setFontSize(5.5)
+    doc.setFont('helvetica', 'normal')
+    doc.setTextColor(80, 80, 80)
+    doc.text(`Compte: ${s.bankName ? s.bankName + ' - ' : ''}${s.accountNumber}`, M + 4, nextY + 6)
+    nextY += 12
+  }
+  const footY = PH - 12
+  if (nextY > footY - 4) { doc.addPage(); nextY = M + 4 }
+  const footStart = Math.max(nextY + 4, footY)
+  rect(doc, 0, footStart, PW, 12, BLUE)
+  doc.setFontSize(5.5)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(255, 255, 255)
+  let fx = M
+  if (s.logo) { try { doc.addImage(s.logo, 'JPEG', fx, footStart + 1, 6, 6); fx += 10 } catch {} }
+  const fparts = [s.name, s.address, s.phone ? `Tel: ${s.phone}` : '', s.email, s.website].filter(Boolean)
+  doc.text(fparts.join(' | '), fx, footStart + 5)
+  const now = new Date()
+  const ds = now.toLocaleDateString('fr-FR')
+  const ts = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  doc.setFontSize(5)
+  doc.text(`Imprime le ${ds} a ${ts}`, PW - M, footStart + 5, { align: 'right' })
+  doc.text(`Par: ${s.managerName || 'App'}`, PW - M, footStart + 9.5, { align: 'right' })
+  const blob = doc.output('blob')
+  const file = new File([blob], `facture_${sale.invoiceNumber || 'vente'}.pdf`, { type: 'application/pdf' })
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    navigator.share({ files: [file], title: `Facture ${sale.invoiceNumber}` }).catch(() => doc.save(`facture_${sale.invoiceNumber || 'vente'}.pdf`))
+  } else {
+    doc.save(`facture_${sale.invoiceNumber || 'vente'}.pdf`)
+  }
+}
+
 export function exportInvoicePDF(invoice: Invoice, settings?: CompanySettings) {
   const paid = invoice.status === 'paid' ? invoice.total : invoice.paid
   const sale: Sale = {

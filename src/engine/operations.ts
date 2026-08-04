@@ -257,7 +257,7 @@ export async function processPurchase(purchase: Purchase) {
 }
 
 export async function processTransfer(transfer: Transfer) {
-  requirePermission('stock', 'transfer')
+  requirePermission('depots', 'transfer')
   transfer.id = transfer.id || generateId()
   transfer.businessId = currentBizId()
   transfer.createdAt = now()
@@ -279,7 +279,7 @@ export async function processTransfer(transfer: Transfer) {
 }
 
 export async function processStockAdjustment(productId: string, locationId: string, newQty: number, note?: string) {
-  requirePermission('stock', 'adjust_stock')
+  requirePermission('products', 'adjust_stock')
   const current = await getStock(productId, locationId)
   const delta = newQty - current
   await adjustStock(productId, locationId, delta, 'adjusted', undefined, note || `Ajustement de ${current} à ${newQty} par ${currentUserName()}`)
@@ -287,7 +287,7 @@ export async function processStockAdjustment(productId: string, locationId: stri
 }
 
 export async function processStockRemoval(productId: string, locationId: string, quantity: number, reason: string, comment?: string) {
-  requirePermission('stock', 'adjust_stock')
+  requirePermission('products', 'adjust_stock')
   const current = await getStock(productId, locationId)
   if (quantity <= 0) throw new Error('La quantité doit être positive')
   if (current < quantity) throw new Error(`Stock insuffisant: ${current} < ${quantity}`)
@@ -512,7 +512,7 @@ export async function recordCreditPayment(
   method: PaymentMethod,
   note?: string
 ) {
-  requirePermission('credit', 'create')
+  requirePermission('sales', 'create')
   const credit = await db.credits.get(creditId)
   if (!credit) throw new Error('Crédit introuvable')
   if (amount <= 0) throw new Error('Le montant doit être supérieur à 0')
@@ -557,7 +557,7 @@ export async function recordCreditPayment(
 }
 
 export async function modifyCreditPayment(paymentId: string, newAmount: number, method?: PaymentMethod) {
-  requirePermission('credit', 'edit')
+  requirePermission('sales', 'edit')
   const payment = await db.creditPayments.get(paymentId)
   if (!payment) throw new Error('Paiement introuvable')
 
@@ -594,7 +594,7 @@ export async function modifyCreditPayment(paymentId: string, newAmount: number, 
 }
 
 export async function deleteCreditPayment(paymentId: string) {
-  requirePermission('credit', 'delete')
+  requirePermission('sales', 'delete')
   const payment = await db.creditPayments.get(paymentId)
   if (!payment) throw new Error('Paiement introuvable')
 

@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { ThemeProvider } from '@/providers/theme-provider'
 import ToastContainer from '@/components/ui/ToastContainer'
 import OfflineBanner from '@/components/ui/OfflineBanner'
+import PWAInstallPrompt from '@/components/ui/PWAInstallPrompt'
 import AppLayout from '@/components/layout/AppLayout'
 import PermissionRoute from '@/components/layout/PermissionRoute'
 import Dashboard from '@/modules/dashboard/Dashboard'
@@ -19,18 +20,16 @@ import { startNotificationEngine } from '@/engine/notifications'
 import { subscribeAll } from '@/lib/realtime'
 import { syncAll } from '@/lib/syncEngine'
 import { scheduleAutoBackup } from '@/lib/autoBackup'
+import { purgeOldRecords } from '@/lib/purgeData'
 registerSW()
 
 const ProductsPage = lazy(() => import('@/modules/products/ProductsPage'))
 const ProductDetailPage = lazy(() => import('@/modules/products/ProductDetailPage'))
-const StockPage = lazy(() => import('@/modules/stock/StockPage'))
 const POSPage = lazy(() => import('@/modules/pos/POSPage'))
 const CustomersPage = lazy(() => import('@/modules/customers/CustomersPage'))
 const SuppliersPage = lazy(() => import('@/modules/suppliers/SuppliersPage'))
 const SupplierDetailPage = lazy(() => import('@/modules/suppliers/SupplierDetailPage'))
-const CreditPage = lazy(() => import('@/modules/credit/CreditPage'))
 const SupplierPaymentsPage = lazy(() => import('@/modules/payments/SupplierPaymentsPage'))
-const InvoicesPage = lazy(() => import('@/modules/invoices/InvoicesPage'))
 const SalesPage = lazy(() => import('@/modules/sales/SalesPage'))
 const PurchasesPage = lazy(() => import('@/modules/purchases/PurchasesPage'))
 const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage'))
@@ -56,6 +55,13 @@ export default function App() {
   const [error, setError] = useState<string | null>(null)
   const [authReady, setAuthReady] = useState(!isSupabaseConfigured())
 
+  const runPurge = () => {
+    const bizId = useAppStore.getState().currentBusiness?.id || useAppStore.getState().user?.businessId || ''
+    if (bizId) {
+      purgeOldRecords(bizId).catch(e => console.error('[purge] error:', e))
+    }
+  }
+
   useEffect(() => {
     initDB()
       .then(async () => {
@@ -71,6 +77,7 @@ export default function App() {
           }
         }
         setAuthReady(true)
+        runPurge()
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err)
@@ -90,7 +97,7 @@ export default function App() {
           const { data: profile } = await supabase.from('profiles').select('*, businesses(*)').eq('auth_user_id', session.user.id).single()
           const u = {
             id: session.user.id,
-            businessId: profile?.business_id || '',
+            businessId: profile?.businessId || profile?.business_id || '',
             name: profile?.name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Utilisateur',
             email: session.user.email || '',
             loginId: session.user.email || '',
@@ -116,6 +123,7 @@ export default function App() {
               createdAt: profile.businesses.created_at,
             })
           }
+          runPurge()
         } catch {
           setUser(null)
         }
@@ -180,6 +188,7 @@ export default function App() {
     <>
       <ThemeProvider>
       <OfflineBanner />
+      <PWAInstallPrompt />
       <ToastContainer />
       <BrowserRouter>
       <Routes>
@@ -195,14 +204,11 @@ export default function App() {
           <Route path="/" element={<Dashboard />} />
           <Route path="/products" element={<PermissionRoute module="products"><ProductsPage /></PermissionRoute>} />
           <Route path="/products/:productId" element={<PermissionRoute module="products"><ProductDetailPage /></PermissionRoute>} />
-          <Route path="/stock" element={<PermissionRoute module="stock"><StockPage /></PermissionRoute>} />
           <Route path="/pos" element={<PermissionRoute module="pos"><POSPage /></PermissionRoute>} />
           <Route path="/customers" element={<PermissionRoute module="customers"><CustomersPage /></PermissionRoute>} />
           <Route path="/suppliers" element={<PermissionRoute module="suppliers"><SuppliersPage /></PermissionRoute>} />
           <Route path="/suppliers/:supplierId" element={<PermissionRoute module="suppliers"><SupplierDetailPage /></PermissionRoute>} />
-          <Route path="/credit" element={<PermissionRoute module="credit"><CreditPage /></PermissionRoute>} />
           <Route path="/payments" element={<PermissionRoute module="payments"><SupplierPaymentsPage /></PermissionRoute>} />
-          <Route path="/invoices" element={<PermissionRoute module="invoices"><InvoicesPage /></PermissionRoute>} />
           <Route path="/sales" element={<PermissionRoute module="sales"><SalesPage /></PermissionRoute>} />
           <Route path="/purchases" element={<PermissionRoute module="purchases"><PurchasesPage /></PermissionRoute>} />
           <Route path="/reports" element={<PermissionRoute module="reports"><ReportsPage /></PermissionRoute>} />

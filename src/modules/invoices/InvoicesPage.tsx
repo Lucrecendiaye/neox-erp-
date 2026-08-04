@@ -11,8 +11,6 @@ import { Search, Plus, Edit2, Trash2, FileText, Download, Send, ChevronDown, Che
 import { exportInvoicePDF } from '@/lib/pdf'
 import { softDelete } from '@/lib/softDelete'
 import type { Invoice, SaleItem, Customer, Supplier, Product } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
 
 const statusColors = {
   draft: 'default',
@@ -37,14 +35,11 @@ const typeLabels = {
 } as const
 
 export default function InvoicesPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
   const dexieInvoices = useLiveQuery(() => db.invoices.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId])
-  const { data: supabaseInvoices } = useSupabaseQuery<Invoice>('invoices', undefined, [])
-  const invoices = isCloud ? (supabaseInvoices || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : dexieInvoices
+  const invoices = dexieInvoices ?? []
   const dexieSettings = useLiveQuery(() => db.settings.get('default'), [])
-  const { data: supabaseSettingsRaw } = useSupabaseQuery<any>('settings', undefined, [])
-  const settings = isCloud ? (supabaseSettingsRaw || []).find((s: any) => s.id === 'default') : dexieSettings
+  const settings = dexieSettings
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Invoice | null>(null)
@@ -59,14 +54,11 @@ export default function InvoicesPage() {
   const [paid, setPaid] = useState(0)
 
   const dexieCustomers = useLiveQuery(() => db.customers.toArray(), [])
-  const { data: supabaseCustomers } = useSupabaseQuery<Customer>('customers', undefined, [])
-  const customers = isCloud ? supabaseCustomers : dexieCustomers
+  const customers = dexieCustomers ?? []
   const dexieSuppliers = useLiveQuery(() => db.suppliers.toArray(), [])
-  const { data: supabaseSuppliers } = useSupabaseQuery<Supplier>('suppliers', undefined, [])
-  const suppliers = isCloud ? supabaseSuppliers : dexieSuppliers
+  const suppliers = dexieSuppliers ?? []
   const dexieProducts = useLiveQuery(() => db.products.toArray(), [])
-  const { data: supabaseProducts } = useSupabaseQuery<Product>('products', undefined, [])
-  const products = isCloud ? supabaseProducts : dexieProducts
+  const products = dexieProducts ?? []
 
   const parties = type === 'purchase' ? suppliers || [] : customers || []
 
@@ -172,12 +164,12 @@ export default function InvoicesPage() {
 
     try {
       if (editing) {
-        if (isCloud) { await sb.update('invoices', editing.id, { ...invoice }) } else { await db.invoices.update(editing.id, { ...invoice }) }
+        await db.invoices.update(editing.id, { ...invoice })
         toast('Facture mise à jour avec succès', 'success')
       } else {
-        if (isCloud) { await sb.insert('invoices', invoice) } else { await db.invoices.add(invoice) }
+        await db.invoices.add(invoice)
         if (settings) {
-          if (isCloud) { await sb.update('settings', 'default', { invoiceNextNumber: nextNum + 1 }) } else { await db.settings.update('default', { invoiceNextNumber: nextNum + 1 }) }
+          await db.settings.update('default', { invoiceNextNumber: nextNum + 1 })
         }
         toast('Facture créée avec succès', 'success')
       }
@@ -192,7 +184,7 @@ export default function InvoicesPage() {
     try {
       const invoice = invoices?.find(inv => inv.id === id)
       if (invoice) await softDelete('invoices', id, invoice as any, invoice.number)
-      if (isCloud) { await sb.remove('invoices', id) } else { await db.invoices.delete(id) }
+      await db.invoices.delete(id)
       toast('Facture supprimée avec succès', 'success')
     } catch (error) {
       toast('Erreur lors de la suppression de la facture', 'error')
@@ -201,7 +193,7 @@ export default function InvoicesPage() {
 
   async function handleMarkPaid(id: string) {
     try {
-      if (isCloud) { await sb.update('invoices', id, { status: 'paid', paid: invoices?.find(i => i.id === id)?.total || 0 }) } else { await db.invoices.update(id, { status: 'paid', paid: invoices?.find(i => i.id === id)?.total || 0 }) }
+      await db.invoices.update(id, { status: 'paid', paid: invoices?.find(i => i.id === id)?.total || 0 })
       toast('Facture marquée comme payée', 'success')
     } catch (error) {
       toast('Erreur lors du marquage de la facture', 'error')
@@ -274,6 +266,7 @@ export default function InvoicesPage() {
             </div>
             {expandedId === inv.id && (
               <div className="px-4 pb-4 border-t border-surface-100 pt-3 animate-fade-in">
+                <div className="overflow-x-auto responsive-table">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-surface-400 text-xs">
@@ -315,6 +308,7 @@ export default function InvoicesPage() {
                     )}
                   </tfoot>
                 </table>
+                </div>
               </div>
             )}
           </Card>
@@ -328,7 +322,7 @@ export default function InvoicesPage() {
         <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier facture' : 'Nouvelle facture'} size="xl">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier facture' : 'Nouvelle facture'} size="lg">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <Select

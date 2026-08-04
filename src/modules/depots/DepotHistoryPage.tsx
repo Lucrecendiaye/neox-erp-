@@ -62,7 +62,7 @@ export default function DepotHistoryPage() {
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -85,21 +85,21 @@ export default function DepotHistoryPage() {
                 const delta = h.quantityAfter - h.quantityBefore
                 return (
                   <tr key={h.id} className="hover:bg-surface-50">
-                    <td className="px-6 py-4 text-xs text-surface-500 whitespace-nowrap">{formatDateTime(h.createdAt)}</td>
-                    <td className="px-6 py-4">
+                    <td data-label="Date" className="px-6 py-4 text-xs text-surface-500 whitespace-nowrap">{formatDateTime(h.createdAt)}</td>
+                    <td data-label="Action" className="px-6 py-4">
                       <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${action.color}`}>
                         <Icon className="w-3 h-3" />
                         {action.label}
                       </span>
                     </td>
-                    <td className="px-6 py-4 text-sm font-medium text-surface-900">{product?.name || h.productId}</td>
-                    <td className="px-6 py-4 text-right text-sm text-surface-600">{h.quantityBefore}</td>
-                    <td className="px-6 py-4 text-right text-sm text-surface-600">{h.quantityAfter}</td>
-                    <td className="px-6 py-4 text-right text-sm font-semibold" style={{ color: delta > 0 ? '#16a34a' : delta < 0 ? '#dc2626' : '#6b7280' }}>
+                    <td data-label="Produit" className="px-6 py-4 text-sm font-medium text-surface-900">{product?.name || h.productId}</td>
+                    <td data-label="Avant" className="px-6 py-4 text-right text-sm text-surface-600">{h.quantityBefore}</td>
+                    <td data-label="Après" className="px-6 py-4 text-right text-sm text-surface-600">{h.quantityAfter}</td>
+                    <td data-label="Delta" className="px-6 py-4 text-right text-sm font-semibold" style={{ color: delta > 0 ? '#16a34a' : delta < 0 ? '#dc2626' : '#6b7280' }}>
                       {delta > 0 ? '+' : ''}{delta}
                     </td>
-                    <td className="px-6 py-4 text-sm text-surface-600">{user?.name || 'Inconnu'}</td>
-                    <td className="px-6 py-4 text-sm text-surface-400 max-w-[200px] truncate">{h.comment || h.reference || '-'}</td>
+                    <td data-label="Utilisateur" className="px-6 py-4 text-sm text-surface-600">{user?.name || 'Inconnu'}</td>
+                    <td data-label="Commentaire" className="px-6 py-4 text-sm text-surface-400 max-w-[200px] truncate">{h.comment || h.reference || '-'}</td>
                   </tr>
                 )
               })}

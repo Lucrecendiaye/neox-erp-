@@ -2,9 +2,9 @@ import { useState } from 'react'
 import { Card, Button, Input, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
+
 import { usePagination } from '@/hooks/usePagination'
-import { isSupabaseConfigured } from '@/lib/supabase'
+
 import db from '@/db'
 import { generateId, formatCurrency, openWhatsApp, pickContact } from '@/lib/utils'
 import { toast } from '@/lib/toast'
@@ -14,15 +14,9 @@ import { Search, Plus, Edit2, Trash2, Users, Phone, Mail, MapPin, CreditCard, Me
 import type { Customer } from '@/types'
 
 export default function CustomersPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
-  const dexieCustomers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId])
-  const dexieCredits = useLiveQuery(() => db.credits.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseCustomers } = useSupabaseQuery<Customer>('customers', undefined, [])
-  const { data: supabaseCredits } = useSupabaseQuery<any>('credits', undefined, [])
-
-  const customers = isCloud ? supabaseCustomers : dexieCustomers
-  const credits = isCloud ? supabaseCredits : dexieCredits
+  const customers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const credits = useLiveQuery(() => db.credits.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
 
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -56,11 +50,7 @@ export default function CustomersPage() {
     const now = new Date().toISOString()
     try {
       if (editing) {
-        if (isCloud) {
-          await sb.update('customers', editing.id, { ...form, updatedAt: now })
-        } else {
-          await db.customers.update(editing.id, { ...form, updatedAt: now })
-        }
+        await db.customers.update(editing.id, { ...form, updatedAt: now })
         toast('Client mis à jour avec succès', 'success')
       } else {
         const record = {
@@ -70,11 +60,7 @@ export default function CustomersPage() {
           currentBalance: 0,
           createdAt: now, updatedAt: now,
         }
-        if (isCloud) {
-          await sb.insert('customers', record)
-        } else {
-          await db.customers.add(record)
-        }
+        await db.customers.add(record)
         toast('Client créé avec succès', 'success')
       }
       setModalOpen(false)
@@ -93,11 +79,7 @@ export default function CustomersPage() {
     try {
       const customer = customers?.find(c => c.id === deleteTargetId)
       if (customer) await softDelete('customers', deleteTargetId, customer as any, customer.name)
-      if (isCloud) {
-        await sb.remove('customers', deleteTargetId)
-      } else {
-        await db.customers.delete(deleteTargetId)
-      }
+      await db.customers.delete(deleteTargetId)
       toast('Client supprimé avec succès', 'success')
     } catch {
       toast('Erreur lors de la suppression du client', 'error')
@@ -190,7 +172,7 @@ export default function CustomersPage() {
         )}
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier le client' : 'Nouveau client'} size="lg">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier le client' : 'Nouveau client'} size="md">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Nom du client" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

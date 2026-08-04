@@ -7,13 +7,10 @@ export const MODULES = [
   'suppliers',
   'sales',
   'purchases',
-  'invoices',
   'payments',
-  'credit',
   'reports',
   'users',
   'settings',
-  'stock',
   'trash',
 ] as const
 
@@ -28,7 +25,6 @@ export const ACTIONS = [
   'transfer',
   'validate',
   'cancel_sale',
-  'edit_invoice',
   'export',
   'print',
 ] as const
@@ -48,13 +44,10 @@ export const MODULE_LABELS: Record<Module, string> = {
   suppliers: 'Fournisseurs',
   sales: 'Ventes',
   purchases: 'Achats',
-  invoices: 'Factures',
   payments: 'Paiements',
-  credit: 'Crédit',
   reports: 'Rapports',
   settings: 'Paramètres',
   users: 'Utilisateurs',
-  stock: 'Stock',
   trash: 'Corbeille',
 }
 
@@ -67,7 +60,6 @@ export const ACTION_LABELS: Record<Action, string> = {
   transfer: 'Effectuer un transfert',
   validate: 'Valider une opération',
   cancel_sale: 'Annuler une vente',
-  edit_invoice: 'Modifier une facture',
   export: 'Exporter',
   print: 'Imprimer',
 }
@@ -85,9 +77,7 @@ export const SIMPLIFIED_PERMISSIONS: SimplifiedPermission[] = [
   { id: 'products_view', label: 'Voir les produits', permissions: ['products:view'] },
   { id: 'products_manage', label: 'Gérer les produits (ajouter, modifier)', permissions: ['products:create', 'products:edit'] },
   { id: 'products_delete', label: 'Supprimer des produits', permissions: ['products:delete'] },
-  { id: 'stock_view', label: 'Voir le stock', permissions: ['stock:view'] },
-  { id: 'stock_adjust', label: 'Réajuster le stock', permissions: ['stock:adjust_stock'] },
-  { id: 'stock_transfer', label: 'Effectuer des transferts', permissions: ['stock:transfer'] },
+
   { id: 'customers', label: 'Gérer les clients', permissions: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
   { id: 'suppliers', label: 'Gérer les fournisseurs', permissions: ['suppliers:view', 'suppliers:create', 'suppliers:edit', 'suppliers:delete'] },
   { id: 'sales_view', label: 'Voir les ventes', permissions: ['sales:view'] },
@@ -96,9 +86,7 @@ export const SIMPLIFIED_PERMISSIONS: SimplifiedPermission[] = [
   { id: 'sales_delete', label: 'Supprimer des ventes', permissions: ['sales:delete'] },
   { id: 'sales_edit', label: 'Modifier des ventes', permissions: ['sales:edit'] },
   { id: 'purchases', label: 'Gérer les achats', permissions: ['purchases:view', 'purchases:create', 'purchases:edit', 'purchases:delete'] },
-  { id: 'invoices', label: 'Gérer les factures', permissions: ['invoices:view', 'invoices:create', 'invoices:edit', 'invoices:delete'] },
   { id: 'payments', label: 'Gérer les paiements', permissions: ['payments:view', 'payments:create', 'payments:edit', 'payments:delete'] },
-  { id: 'credit', label: 'Gérer les crédits', permissions: ['credit:view', 'credit:create', 'credit:edit', 'credit:delete'] },
   { id: 'depots', label: 'Gérer les dépôts', permissions: ['depots:view', 'depots:create', 'depots:edit', 'depots:delete'] },
   { id: 'reports', label: 'Rapports', permissions: ['reports:view'] },
   { id: 'users_view', label: 'Voir les utilisateurs', permissions: ['users:view'] },
@@ -117,27 +105,27 @@ export const ROLE_PRESETS: RolePreset[] = [
   {
     id: 'vendeur',
     label: 'Vendeur',
-    permissionIds: ['dashboard', 'pos', 'products_view', 'stock_view', 'customers', 'sales_view', 'sales_create', 'sales_cancel'],
+    permissionIds: ['dashboard', 'pos', 'products_view', 'customers', 'sales_view', 'sales_create', 'sales_cancel'],
   },
   {
     id: 'gestionnaire_stock',
     label: 'Gestionnaire de stock',
-    permissionIds: ['products_view', 'products_manage', 'stock_view', 'stock_adjust', 'stock_transfer', 'depots'],
+    permissionIds: ['products_view', 'products_manage', 'depots'],
   },
   {
     id: 'comptable',
     label: 'Comptable',
-    permissionIds: ['dashboard', 'sales_view', 'purchases', 'invoices', 'payments', 'credit', 'reports'],
+    permissionIds: ['dashboard', 'sales_view', 'purchases', 'payments', 'reports'],
   },
   {
     id: 'superviseur',
     label: 'Superviseur',
-    permissionIds: ['dashboard', 'pos', 'products_view', 'products_manage', 'stock_view', 'stock_adjust', 'customers', 'suppliers', 'sales_view', 'sales_create', 'sales_cancel', 'purchases', 'invoices', 'payments', 'credit', 'depots', 'reports', 'trash'],
+    permissionIds: ['dashboard', 'pos', 'products_view', 'products_manage', 'customers', 'suppliers', 'sales_view', 'sales_create', 'sales_cancel', 'purchases', 'payments', 'depots', 'reports', 'trash'],
   },
   {
     id: 'observateur',
     label: 'Observateur',
-    permissionIds: ['dashboard', 'products_view', 'stock_view', 'customers', 'suppliers', 'sales_view', 'purchases', 'reports'],
+    permissionIds: ['dashboard', 'products_view', 'customers', 'suppliers', 'sales_view', 'purchases', 'reports'],
   },
 ]
 
@@ -231,7 +219,6 @@ export const DEFAULT_STAFF_PERMISSIONS: Permission[] = [
   'customers:view', 'customers:create',
   'suppliers:view',
   'sales:view', 'sales:create',
-  'stock:view',
 ]
 
 export const DEFAULT_VIEWER_PERMISSIONS: Permission[] = [
@@ -242,5 +229,4 @@ export const DEFAULT_VIEWER_PERMISSIONS: Permission[] = [
   'sales:view',
   'purchases:view',
   'reports:view',
-  'stock:view',
 ]

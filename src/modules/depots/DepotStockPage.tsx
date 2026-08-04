@@ -286,7 +286,7 @@ export default function DepotStockPage() {
               {/* Image */}
               <div className="relative h-32 bg-surface-50 flex items-center justify-center overflow-hidden">
                 {p.photos?.[0] ? (
-                  <img src={p.photos[0]} alt="" className="w-full h-full object-cover" />
+                  <img src={p.photos[0]} alt="" className="w-full h-full object-contain" />
                 ) : (
                   <Package className="w-10 h-10 text-surface-300" />
                 )}
@@ -353,7 +353,7 @@ export default function DepotStockPage() {
 
       {/* Modals */}
       <Modal open={confirmDelete !== null} onClose={() => setConfirmDelete(null)} title="Confirmer la suppression">
-        <div className="space-y-4">
+        <div className="p-6 space-y-4">
           <p className="text-sm text-surface-600">Mettre le stock à zéro pour <strong>{productMap.get(confirmDelete || '')?.name}</strong> ?</p>
           <div className="flex gap-2">
             <Button onClick={() => setConfirmDelete(null)} variant="outline" className="flex-1">Annuler</Button>
@@ -363,7 +363,7 @@ export default function DepotStockPage() {
       </Modal>
 
       <Modal open={adjModal} onClose={() => setAdjModal(false)} title="Ajustement de stock">
-        <div className="space-y-4">
+        <div className="p-6 space-y-4">
           <select value={adjProduct} onChange={e => setAdjProduct(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm">
             <option value="">Sélectionner un produit</option>
@@ -378,7 +378,7 @@ export default function DepotStockPage() {
       </Modal>
 
       <Modal open={transferModal} onClose={() => setTransferModal(false)} title="Transférer vers">
-        <div className="space-y-4">
+        <div className="p-6 space-y-4">
           <select value={transferTarget} onChange={e => setTransferTarget(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm">
             <option value="">Destination</option>
@@ -420,60 +420,79 @@ export default function DepotStockPage() {
       </Modal>
 
       {/* Edit Product */}
-      <Modal open={editModal} onClose={() => setEditModal(false)} title="Modifier le produit" size="xl">
-        <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Input label="Nom du produit" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
-            <Input label="Code-barres" value={editForm.barcode} onChange={(e) => setEditForm({ ...editForm, barcode: e.target.value })} />
-            <Select label="Catégorie" value={editForm.categoryId} onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
-            <Input label="Marque" value={editForm.brand} onChange={(e) => setEditForm({ ...editForm, brand: e.target.value })} />
-            <Input label="Référence" value={editForm.reference} onChange={(e) => setEditForm({ ...editForm, reference: e.target.value })} />
-            <Select label="Unité" value={editForm.unit} onChange={(e) => setEditForm({ ...editForm, unit: e.target.value as 'piece' | 'dozen' | 'pack' })} options={[{ value: 'piece', label: 'Pièce' }, { value: 'dozen', label: 'Douzaine' }, { value: 'pack', label: 'Paquet' }]} />
-          </div>
-          {editForm.unit === 'pack' && (
-            <div className="bg-surface-50 rounded-xl p-4 space-y-3">
-              <p className="text-sm font-medium text-surface-700">Composition du paquet</p>
-              <div className="flex items-center gap-3">
-                <div className="flex items-center gap-2">
-                  <input type="radio" id="edit-comp-piece" name="editPackComp" checked={editPackUnit === 'piece'} onChange={() => setEditPackUnit('piece')} className="w-4 h-4 text-primary-500" />
-                  <label htmlFor="edit-comp-piece" className="text-sm text-surface-700">Pièces</label>
-                </div>
-                <div className="flex items-center gap-2">
-                  <input type="radio" id="edit-comp-dozen" name="editPackComp" checked={editPackUnit === 'dozen'} onChange={() => setEditPackUnit('dozen')} className="w-4 h-4 text-primary-500" />
-                  <label htmlFor="edit-comp-dozen" className="text-sm text-surface-700">Douzaines</label>
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-surface-500">1 paquet =</span>
-                <input type="number" min="1" value={editPackQty || ''} onChange={(e) => setEditPackQty(+e.target.value)} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
-                <span className="text-sm text-surface-500">{editPackUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
-                {editPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty} pièces</span>}
-              </div>
+      <Modal open={editModal} onClose={() => setEditModal(false)} title="Modifier le produit" size="lg">
+        <div className="p-6 space-y-5">
+          <div>
+            <h3 className="modal-section-title">Informations principales</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input label="Nom du produit" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
+              <Input label="Code-barres" value={editForm.barcode} onChange={(e) => setEditForm({ ...editForm, barcode: e.target.value })} />
+              <Select label="Catégorie" value={editForm.categoryId} onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
+              <Input label="Marque" value={editForm.brand} onChange={(e) => setEditForm({ ...editForm, brand: e.target.value })} />
+              <Input label="Référence" value={editForm.reference} onChange={(e) => setEditForm({ ...editForm, reference: e.target.value })} />
+              <Select label="Unité" value={editForm.unit} onChange={(e) => setEditForm({ ...editForm, unit: e.target.value as 'piece' | 'dozen' | 'pack' })} options={[{ value: 'piece', label: 'Pièce' }, { value: 'dozen', label: 'Douzaine' }, { value: 'pack', label: 'Paquet' }]} />
             </div>
-          )}
-          <Input label="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
-          <PhotoUpload photos={editPhotos} onChange={setEditPhotos} />
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Input label="Prix d'achat" type="number" value={editForm.purchasePrice} onChange={(e) => setEditForm({ ...editForm, purchasePrice: +e.target.value })} />
-            <Input label="Prix de vente (pièce)" type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: +e.target.value })} />
-            <Input label="Prix de gros" type="number" value={editForm.wholesalePrice} onChange={(e) => setEditForm({ ...editForm, wholesalePrice: +e.target.value })} />
-          </div>
-          {editForm.purchasePrice > 0 && (
-            <p className="text-sm text-surface-500">Marge : <span className="font-semibold text-success">{calculateMargin(editForm.purchasePrice, editForm.sellingPrice).toFixed(1)}%</span></p>
-          )}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {editForm.unit === 'dozen' && <Input label="Prix par douzaine" type="number" value={editForm.priceDozen} onChange={(e) => setEditForm({ ...editForm, priceDozen: +e.target.value })} />}
             {editForm.unit === 'pack' && (
-              <>
-                <Input label="Prix par douzaine" type="number" value={editForm.priceDozen} onChange={(e) => setEditForm({ ...editForm, priceDozen: +e.target.value })} />
-                <Input label="Prix par paquet" type="number" value={editForm.pricePack} onChange={(e) => setEditForm({ ...editForm, pricePack: +e.target.value })} />
-              </>
+              <div className="bg-surface-50 rounded-xl p-4 space-y-3 mt-4">
+                <p className="text-sm font-medium text-surface-700">Composition du paquet</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <input type="radio" id="edit-comp-piece" name="editPackComp" checked={editPackUnit === 'piece'} onChange={() => setEditPackUnit('piece')} className="w-4 h-4 text-primary-500" />
+                    <label htmlFor="edit-comp-piece" className="text-sm text-surface-700">Pièces</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="radio" id="edit-comp-dozen" name="editPackComp" checked={editPackUnit === 'dozen'} onChange={() => setEditPackUnit('dozen')} className="w-4 h-4 text-primary-500" />
+                    <label htmlFor="edit-comp-dozen" className="text-sm text-surface-700">Douzaines</label>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-surface-500">1 paquet =</span>
+                  <input type="number" min="1" value={editPackQty || ''} onChange={(e) => setEditPackQty(+e.target.value)} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
+                  <span className="text-sm text-surface-500">{editPackUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
+                  {editPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty} pièces</span>}
+                </div>
+              </div>
             )}
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
-            <Input label="TVA (%)" type="number" value={editForm.taxRate} onChange={(e) => setEditForm({ ...editForm, taxRate: +e.target.value })} />
-            <Input label="Alerte stock" type="number" value={editForm.stockAlert} onChange={(e) => setEditForm({ ...editForm, stockAlert: +e.target.value })} />
-            <Input label="Emplacement" value={editForm.location} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} />
+
+          <div>
+            <h3 className="modal-section-title">Image du produit</h3>
+            <PhotoUpload photos={editPhotos} onChange={setEditPhotos} />
+          </div>
+
+          <div>
+            <h3 className="modal-section-title">Description</h3>
+            <Input label="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+          </div>
+
+          <div>
+            <h3 className="modal-section-title">Prix</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <Input label="Prix d'achat" type="number" value={editForm.purchasePrice} onChange={(e) => setEditForm({ ...editForm, purchasePrice: +e.target.value })} />
+              <Input label="Prix de vente (pièce)" type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: +e.target.value })} />
+              <Input label="Prix de gros" type="number" value={editForm.wholesalePrice} onChange={(e) => setEditForm({ ...editForm, wholesalePrice: +e.target.value })} />
+            </div>
+            {editForm.purchasePrice > 0 && (
+              <p className="text-sm text-surface-500 mt-3">Marge : <span className="font-semibold text-success">{calculateMargin(editForm.purchasePrice, editForm.sellingPrice).toFixed(1)}%</span></p>
+            )}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+              {editForm.unit === 'dozen' && <Input label="Prix par douzaine" type="number" value={editForm.priceDozen} onChange={(e) => setEditForm({ ...editForm, priceDozen: +e.target.value })} />}
+              {editForm.unit === 'pack' && (
+                <>
+                  <Input label="Prix par douzaine" type="number" value={editForm.priceDozen} onChange={(e) => setEditForm({ ...editForm, priceDozen: +e.target.value })} />
+                  <Input label="Prix par paquet" type="number" value={editForm.pricePack} onChange={(e) => setEditForm({ ...editForm, pricePack: +e.target.value })} />
+                </>
+              )}
+            </div>
+          </div>
+
+          <div>
+            <h3 className="modal-section-title">Stock</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input label="TVA (%)" type="number" value={editForm.taxRate} onChange={(e) => setEditForm({ ...editForm, taxRate: +e.target.value })} />
+              <Input label="Alerte stock" type="number" value={editForm.stockAlert} onChange={(e) => setEditForm({ ...editForm, stockAlert: +e.target.value })} />
+              <Input label="Emplacement" value={editForm.location} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} />
+            </div>
           </div>
         </div>
         <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
@@ -484,7 +503,7 @@ export default function DepotStockPage() {
 
       {/* Bon de sortie */}
       <Modal open={bonModal} onClose={() => setBonModal(false)} title={`Bon de sortie n°${bonInfo?.bonNumber || ''}`}>
-        <div className="space-y-4">
+        <div className="p-6 space-y-4">
           {bonInfo && (
             <>
               <div className="grid grid-cols-2 gap-4 text-sm">
@@ -501,6 +520,7 @@ export default function DepotStockPage() {
                   <p className="font-medium text-surface-900">{new Date(bonInfo.date).toLocaleDateString('fr-FR', { dateStyle: 'long' })}</p>
                 </div>
               </div>
+              <div className="overflow-x-auto responsive-table">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-surface-200">
@@ -517,6 +537,7 @@ export default function DepotStockPage() {
                   ))}
                 </tbody>
               </table>
+              </div>
               <div className="flex gap-2 pt-2">
                 <Button onClick={() => {
                   const w = window.open('', '_blank')

@@ -1,6 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
+import { sanitizePayloadForSync } from './imageStorage'
 
 const SUBSCRIPTIONS: { table: string; dexieTable: keyof typeof db }[] = [
   { table: 'products', dexieTable: 'products' },
@@ -99,7 +100,7 @@ export async function syncWrite(table: string, data: Record<string, any>): Promi
     data.businessId = state.currentBusiness?.id || state.user?.businessId || ''
   }
 
-  const { error } = await supabase.from(table).upsert(data, { onConflict: 'id' })
+  const { error } = await supabase.from(table).upsert(await sanitizePayloadForSync(data), { onConflict: 'id' })
   if (error) {
     console.error(`Sync write error [${table}]:`, error)
     return false

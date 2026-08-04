@@ -260,6 +260,7 @@ export default function BillBookPage() {
               </div>
               {expandedId === inv.id && (
                 <div className="px-4 pb-4 border-t border-surface-100 pt-3 animate-fade-in">
+                  <div className="overflow-x-auto responsive-table">
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="text-surface-400 text-xs">
@@ -296,6 +297,7 @@ export default function BillBookPage() {
                       </tr>
                     </tfoot>
                   </table>
+                  </div>
                 </div>
               )}
             </Card>
@@ -341,7 +343,7 @@ export default function BillBookPage() {
         </div>
       </Modal>
 
-      <Modal open={!!newFromTemplate} onClose={() => setNewFromTemplate(null)} title="Créer une facture depuis le modèle" size="lg">
+      <Modal open={!!newFromTemplate} onClose={() => setNewFromTemplate(null)} title="Créer une facture depuis le modèle" size="md">
         <div className="p-6 space-y-4">
           {newFromTemplate && (
             <>

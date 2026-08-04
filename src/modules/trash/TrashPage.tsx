@@ -126,7 +126,7 @@ export default function TrashPage() {
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -140,7 +140,7 @@ export default function TrashPage() {
             <tbody className="divide-y divide-surface-100">
               {paginatedItems?.map((r) => (
                 <tr key={`${r.entity}-${r.entityId}`} className="hover:bg-surface-50 transition-colors">
-                  <td className="px-6 py-4">
+                  <td data-label="Élément" className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center text-danger">
                         <Archive className="w-4 h-4" />
@@ -151,16 +151,16 @@ export default function TrashPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td data-label="Type" className="px-6 py-4">
                     <Badge variant="default">{r.entityLabel}</Badge>
                   </td>
-                  <td className="px-6 py-4 text-sm text-surface-600">
+                  <td data-label="Supprimé par" className="px-6 py-4 text-sm text-surface-600">
                     {r.userName || '—'}
                   </td>
-                  <td className="px-6 py-4 text-sm text-surface-500 whitespace-nowrap">
+                  <td data-label="Date suppression" className="px-6 py-4 text-sm text-surface-500 whitespace-nowrap">
                     {formatDateTime(r.deletedAt)}
                   </td>
-                  <td className="px-6 py-4">
+                  <td data-label="Actions" className="px-6 py-4">
                     <div className="flex items-center justify-center gap-2">
                       <Button size="sm" variant="outline" onClick={() => setConfirmModal({ type: 'restore', entity: r.entity as DeletableEntity, recordId: r.entityId })}>
                         <RotateCcw className="w-3.5 h-3.5" /> Restaurer

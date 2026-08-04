@@ -5,8 +5,6 @@ import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { formatDateTime } from '@/lib/utils'
 import { Search, History, User, FileText, ShoppingCart, DollarSign, Package, Truck, AlertTriangle } from 'lucide-react'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import type { AuditLog } from '@/types'
 
@@ -28,11 +26,9 @@ const actionColors: Record<string, 'info' | 'success' | 'danger' | 'warning'> = 
 }
 
 export default function AuditPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
   const dexieLogs = useLiveQuery(() => db.auditLogs.where('businessId').equals(businessId).reverse().sortBy('createdAt').then(r => r.slice(0, 200)), [businessId])
-  const { data: supabaseLogs } = useSupabaseQuery<AuditLog>('audit_logs', undefined, [])
-  const logs = isCloud ? (supabaseLogs || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).slice(0, 200) : dexieLogs
+  const logs = dexieLogs ?? []
   const [search, setSearch] = useState('')
   const [entityFilter, setEntityFilter] = useState('')
 

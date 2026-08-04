@@ -241,7 +241,7 @@ export default function UsersPage() {
 
       {tab === 'users' && (
         <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto responsive-table">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-surface-200 bg-surface-50">
@@ -257,7 +257,7 @@ export default function UsersPage() {
               <tbody className="divide-y divide-surface-100">
                 {paginatedItems?.map((u) => (
                   <tr key={u.id} className="hover:bg-surface-50 transition-colors">
-                    <td className="px-6 py-4">
+                    <td data-label="Utilisateur" className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-9 h-9 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 font-bold text-sm">
                           {u.name.charAt(0).toUpperCase()}
@@ -268,8 +268,8 @@ export default function UsersPage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-sm text-surface-600 font-mono">{u.loginId}</td>
-                    <td className="px-6 py-4">
+                    <td data-label="Identifiant" className="px-6 py-4 text-sm text-surface-600 font-mono">{u.loginId}</td>
+                    <td data-label="Rôle" className="px-6 py-4">
                       <div className="flex justify-center">
                         <Badge variant={u.isPrimaryAdmin ? 'danger' : 'info'}>
                           <Shield className="w-3 h-3 mr-1" />
@@ -277,28 +277,28 @@ export default function UsersPage() {
                         </Badge>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center text-sm text-surface-500">
+                    <td data-label="Permissions" className="px-6 py-4 text-center text-sm text-surface-500">
                       {getPermissionLabel(
                         u.permissions?.includes('*')
                           ? SIMPLIFIED_PERMISSIONS.map(p => p.id)
                           : getSimplifiedFromPermissions(u.permissions)
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td data-label="Statut" className="px-6 py-4">
                       <div className="flex justify-center">
                         <Badge variant={u.isActive ? 'success' : 'default'}>
                           {u.isActive ? 'Actif' : 'Inactif'}
                         </Badge>
                       </div>
                     </td>
-                    <td className="px-6 py-4 text-center">
+                    <td data-label="Admin" className="px-6 py-4 text-center">
                       {u.isPrimaryAdmin ? (
                         <Check className="w-5 h-5 inline text-success" />
                       ) : (
                         <X className="w-5 h-5 inline text-surface-300" />
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td data-label="Actions" className="px-6 py-4">
                       <div className="flex items-center justify-center gap-1">
                         {!u.isPrimaryAdmin && (
                           <>
@@ -340,7 +340,7 @@ export default function UsersPage() {
 
       {tab === 'audit' && (
         <Card className="overflow-hidden p-0">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto responsive-table">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-surface-200 bg-surface-50">
@@ -353,12 +353,12 @@ export default function UsersPage() {
               <tbody className="divide-y divide-surface-100">
                 {auditLogs?.map((log) => (
                   <tr key={log.id} className="hover:bg-surface-50 transition-colors">
-                    <td className="px-6 py-4 text-sm text-surface-500 whitespace-nowrap">{formatDateTime(log.createdAt)}</td>
-                    <td className="px-6 py-4">
+                    <td data-label="Date" className="px-6 py-4 text-sm text-surface-500 whitespace-nowrap">{formatDateTime(log.createdAt)}</td>
+                    <td data-label="Action" className="px-6 py-4">
                       <Badge variant="info">{log.action}</Badge>
                     </td>
-                    <td className="px-6 py-4 text-sm text-surface-600">{log.entity}</td>
-                    <td className="px-6 py-4 text-sm text-surface-500 max-w-xs truncate">{log.details}</td>
+                    <td data-label="Entité" className="px-6 py-4 text-sm text-surface-600">{log.entity}</td>
+                    <td data-label="Détails" className="px-6 py-4 text-sm text-surface-500 max-w-xs truncate">{log.details}</td>
                   </tr>
                 ))}
                 {(!auditLogs || auditLogs.length === 0) && (
@@ -375,7 +375,7 @@ export default function UsersPage() {
         </Card>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier l'utilisateur" : 'Nouvel utilisateur'} size="full">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier l'utilisateur" : 'Nouvel utilisateur'} size="lg">
         <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             <Input label="Nom complet" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} required />
@@ -467,7 +467,7 @@ export default function UsersPage() {
       </Modal>
 
       <Modal open={auditModalOpen} onClose={() => setAuditModalOpen(false)} title="Journal d'activité" size="lg">
-        <div className="max-h-[60vh] overflow-y-auto p-6">
+        <div className="p-6">
           {auditLogs && auditLogs.length > 0 ? (
             <div className="space-y-3">
               {auditLogs.map(log => (

@@ -5,10 +5,8 @@ import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { generateId, formatCurrency, formatDate } from '@/lib/utils'
 import type { Payroll, Employee, Attendance } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { useAppStore } from '@/stores/appStore'
-import { isSupabaseConfigured } from '@/lib/supabase'
 import { Wallet, DollarSign, CheckCircle, XCircle, RefreshCw } from 'lucide-react'
 import { toast } from '@/lib/toast'
 
@@ -25,7 +23,6 @@ const statusLabels: Record<string, string> = {
 }
 
 export default function PayrollPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
   const now = new Date()
   const [month, setMonth] = useState(now.getMonth() + 1)
@@ -33,14 +30,11 @@ export default function PayrollPage() {
   const [generating, setGenerating] = useState(false)
 
   const dexieEmployees = useLiveQuery(() => db.employees.where('businessId').equals(businessId).filter(e => e.status === 'active').toArray(), [])
-  const { data: supabaseEmployeesAll } = useSupabaseQuery<Employee>('employees', undefined, [])
-  const employees = isCloud ? (supabaseEmployeesAll || []).filter(e => e.status === 'active') : dexieEmployees
+  const employees = dexieEmployees ?? []
   const dexiePayrolls = useLiveQuery(() => db.payrolls.where('businessId').equals(businessId).toArray(), [])
-  const { data: supabasePayrolls } = useSupabaseQuery<Payroll>('payrolls', undefined, [])
-  const payrolls = isCloud ? supabasePayrolls : dexiePayrolls
+  const payrolls = dexiePayrolls ?? []
   const dexieAllAttendance = useLiveQuery(() => db.attendance.where('businessId').equals(businessId).toArray(), [])
-  const { data: supabaseAllAttendance } = useSupabaseQuery<Attendance>('attendance', undefined, [])
-  const allAttendance = isCloud ? supabaseAllAttendance : dexieAllAttendance
+  const allAttendance = dexieAllAttendance ?? []
 
   const periodStart = `${year}-${String(month).padStart(2, '0')}-01`
   const periodEnd = new Date(year, month, 0).toISOString().split('T')[0]
@@ -125,7 +119,7 @@ export default function PayrollPage() {
       }
 
       if (toCreate.length > 0) {
-        if (isCloud) { await Promise.all(toCreate.map(p => sb.insert('payrolls', p))) } else { await db.payrolls.bulkAdd(toCreate) }
+        await db.payrolls.bulkAdd(toCreate)
         toast(`${toCreate.length} fiches de paie générées`, 'success')
       } else {
         toast('Toutes les fiches existent déjà', 'info')
@@ -136,7 +130,7 @@ export default function PayrollPage() {
 
   async function updateStatus(id: string, status: 'paid' | 'cancelled') {
     try {
-      if (isCloud) { await sb.update('payrolls', id, { status, paidAt: status === 'paid' ? new Date().toISOString() : undefined }) } else { await db.payrolls.update(id, { status, paidAt: status === 'paid' ? new Date().toISOString() : undefined }) }
+      await db.payrolls.update(id, { status, paidAt: status === 'paid' ? new Date().toISOString() : undefined })
       toast(`Fiche ${status === 'paid' ? 'payée' : 'annulée'}`, 'success')
     } catch { toast('Erreur lors de la mise à jour', 'error') }
   }
@@ -183,7 +177,7 @@ export default function PayrollPage() {
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -201,19 +195,19 @@ export default function PayrollPage() {
             <tbody className="divide-y divide-surface-100">
               {paginatedItems?.map((p) => (
                 <tr key={p.id} className="hover:bg-surface-50 transition-colors">
-                  <td className="px-6 py-4">
+                  <td data-label="Employé" className="px-6 py-4">
                     <p className="text-sm font-medium text-surface-900">{p.employeeName}</p>
                   </td>
-                  <td className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(p.baseSalary)}</td>
-                  <td className="px-6 py-4 text-right text-sm text-success">{formatCurrency(p.allowances)}</td>
-                  <td className="px-6 py-4 text-right text-sm text-danger">{formatCurrency(p.deductions)}</td>
-                  <td className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(p.bonus)}</td>
-                  <td className="px-6 py-4 text-right text-sm font-medium text-surface-900">{formatCurrency(p.netSalary)}</td>
-                  <td className="px-6 py-4 text-center text-sm text-surface-600">{p.daysWorked}</td>
-                  <td className="px-6 py-4 text-center">
+                  <td data-label="Salaire base" className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(p.baseSalary)}</td>
+                  <td data-label="Primes" className="px-6 py-4 text-right text-sm text-success">{formatCurrency(p.allowances)}</td>
+                  <td data-label="Retenues" className="px-6 py-4 text-right text-sm text-danger">{formatCurrency(p.deductions)}</td>
+                  <td data-label="Bonus" className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(p.bonus)}</td>
+                  <td data-label="Net" className="px-6 py-4 text-right text-sm font-medium text-surface-900">{formatCurrency(p.netSalary)}</td>
+                  <td data-label="Jours" className="px-6 py-4 text-center text-sm text-surface-600">{p.daysWorked}</td>
+                  <td data-label="Statut" className="px-6 py-4 text-center">
                     <Badge variant={statusVariant[p.status] || 'default'}>{statusLabels[p.status]}</Badge>
                   </td>
-                  <td className="px-6 py-4">
+                  <td data-label="Actions" className="px-6 py-4">
                     <div className="flex items-center justify-center gap-1">
                       {p.status === 'draft' && (
                         <>

@@ -13,6 +13,7 @@ import { supabase } from '@/lib/supabase'
 import { setPin as setSecurityPin, resetPinToDefault, verifyPin, getStoredPinHash } from '@/lib/security'
 import { hashPassword } from '@/lib/auth'
 import { subscribeToPushNotifications, unsubscribeFromPushNotifications, isPushSubscribed } from '@/lib/pushNotifications'
+import { compressImage, uploadImage } from '@/lib/imageStorage'
 import PushSubscription from '@/components/ui/PushSubscription'
 import type { CurrencyRate } from '@/types'
 
@@ -75,11 +76,13 @@ export default function SettingsPage() {
     } catch { toast('Erreur lors de l\'enregistrement', 'error') }
   }
 
-  function handleLogoUpload(file: File) {
+  async function handleLogoUpload(file: File) {
     if (!file.type.startsWith('image/')) return
-    const reader = new FileReader()
-    reader.onload = (e) => { setLogo(e.target?.result as string || '') }
-    reader.readAsDataURL(file)
+    try {
+      const compressed = await compressImage(file, { maxDim: 512 })
+      const url = await uploadImage(compressed, 'logos')
+      setLogo(url)
+    } catch { toast('Erreur lors du chargement du logo', 'error') }
   }
 
   function removeLogo() { setLogo('') }

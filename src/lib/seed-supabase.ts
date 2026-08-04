@@ -43,6 +43,10 @@ const TABLES: SyncTable[] = [
 export async function syncDexieToSupabase(): Promise<{ table: string; count: number }[]> {
   if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
 
+  const AUDIT_DB_COLUMNS = new Set([
+    'id', 'businessId', 'userId', 'action', 'entity', 'entityId', 'details', 'createdAt',
+  ])
+
   const results: { table: string; count: number }[] = []
 
   for (const { name, source, transform } of TABLES) {
@@ -51,7 +55,16 @@ export async function syncDexieToSupabase(): Promise<{ table: string; count: num
       results.push({ table: name, count: 0 })
       continue
     }
-    const data = transform ? records.map(transform) : records
+    let data = transform ? records.map(transform) : records
+    if (name === 'audit_logs') {
+      data = data.map((row: any) => {
+        const out: Record<string, unknown> = {}
+        for (const key of Object.keys(row)) {
+          if (AUDIT_DB_COLUMNS.has(key)) out[key] = row[key]
+        }
+        return out
+      })
+    }
     const { error } = await supabase.from(name).upsert(data, { onConflict: 'id' })
     if (error) {
       console.error(`Sync error [${name}]:`, error)

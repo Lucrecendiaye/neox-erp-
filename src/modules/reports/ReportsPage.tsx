@@ -309,7 +309,7 @@ export default function ReportsPage() {
             <Button variant="outline" size="sm" onClick={exportPDF}><FileText className="w-4 h-4" /> PDF</Button>
           </div>
         </CardHeader>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">

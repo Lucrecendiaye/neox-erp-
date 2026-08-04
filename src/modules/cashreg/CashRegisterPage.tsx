@@ -197,7 +197,7 @@ export default function CashRegisterPage() {
           <Clock className="w-5 h-5 text-surface-400" />
           <h2 className="font-semibold text-surface-900">Historique des shifts</h2>
         </div>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -214,16 +214,16 @@ export default function CashRegisterPage() {
             <tbody className="divide-y divide-surface-100">
               {closedShifts.map(s => (
                 <tr key={s.id} className="hover:bg-surface-50">
-                  <td className="px-4 py-3 text-sm text-surface-600">{formatDateTime(s.openedAt)}</td>
-                  <td className="px-4 py-3 text-sm text-surface-600">{s.closedAt ? formatDateTime(s.closedAt) : '-'}</td>
-                  <td className="px-4 py-3 text-right text-sm font-medium">{formatCurrency(s.initialCash)}</td>
-                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(s.totalSales)}</td>
-                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(s.expectedCash)}</td>
-                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(s.actualCash)}</td>
-                  <td className={`px-4 py-3 text-right text-sm font-semibold ${s.difference >= 0 ? 'text-success' : 'text-danger'}`}>
+                  <td data-label="Ouverture" className="px-4 py-3 text-sm text-surface-600">{formatDateTime(s.openedAt)}</td>
+                  <td data-label="Fermeture" className="px-4 py-3 text-sm text-surface-600">{s.closedAt ? formatDateTime(s.closedAt) : '-'}</td>
+                  <td data-label="Initial" className="px-4 py-3 text-right text-sm font-medium">{formatCurrency(s.initialCash)}</td>
+                  <td data-label="Ventes" className="px-4 py-3 text-right text-sm">{formatCurrency(s.totalSales)}</td>
+                  <td data-label="Attendu" className="px-4 py-3 text-right text-sm">{formatCurrency(s.expectedCash)}</td>
+                  <td data-label="Réel" className="px-4 py-3 text-right text-sm">{formatCurrency(s.actualCash)}</td>
+                  <td data-label="Écart" className={`px-4 py-3 text-right text-sm font-semibold ${s.difference >= 0 ? 'text-success' : 'text-danger'}`}>
                     {s.difference >= 0 ? '+' : ''}{formatCurrency(s.difference)}
                   </td>
-                  <td className="px-4 py-3 text-center">
+                  <td data-label="Statut" className="px-4 py-3 text-center">
                     <Badge variant={s.difference === 0 ? 'success' : Math.abs(s.difference) < 1000 ? 'warning' : 'danger'}>
                       {s.difference === 0 ? 'Juste' : Math.abs(s.difference) < 1000 ? 'Écart mineur' : 'Écart'}
                     </Badge>

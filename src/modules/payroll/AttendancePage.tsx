@@ -4,9 +4,7 @@ import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
 import { generateId, formatDate } from '@/lib/utils'
 import type { Attendance, Employee } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { useBusinessId } from '@/hooks/useBusinessId'
-import { isSupabaseConfigured } from '@/lib/supabase'
 import { Calendar, CheckCheck, X, Clock, Sun, Moon, Users } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { softDelete } from '@/lib/softDelete'
@@ -38,16 +36,13 @@ const statusIcons: Record<AttendanceStatus, React.ReactNode> = {
 }
 
 export default function AttendancePage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
   const today = new Date().toISOString().split('T')[0]
   const [date, setDate] = useState(today)
   const dexieEmployees = useLiveQuery(() => db.employees.where('businessId').equals(businessId).filter(e => e.status === 'active').toArray(), [])
-  const { data: supabaseEmployeesAll } = useSupabaseQuery<Employee>('employees', undefined, [])
-  const employees = isCloud ? (supabaseEmployeesAll || []).filter(e => e.status === 'active') : dexieEmployees
+  const employees = dexieEmployees ?? []
   const dexieAttendanceRecords = useLiveQuery(() => db.attendance.where('businessId').equals(businessId).filter(a => a.date === date).toArray(), [date, businessId])
-  const { data: supabaseAttendanceAll } = useSupabaseQuery<Attendance>('attendance', undefined, [])
-  const attendanceRecords = isCloud ? (supabaseAttendanceAll || []).filter(a => a.date === date) : dexieAttendanceRecords
+  const attendanceRecords = dexieAttendanceRecords ?? []
 
   const attendanceMap = useMemo(() => {
     const map = new Map<string, Attendance>()
@@ -75,9 +70,9 @@ export default function AttendancePage() {
           toast('Statut inchangé', 'info')
           return
         }
-        if (isCloud) { await sb.update('attendance', existing.id, { status }) } else { await db.attendance.update(existing.id, { status }) }
+        await db.attendance.update(existing.id, { status })
       } else {
-        if (isCloud) { await sb.insert('attendance', { id: generateId(), businessId, employeeId, date, checkIn: now, status, createdAt: now }) } else { await db.attendance.add({ id: generateId(), businessId, employeeId, date, checkIn: now, status, createdAt: now }) }
+        await db.attendance.add({ id: generateId(), businessId, employeeId, date, checkIn: now, status, createdAt: now })
       }
       toast(`Statut mis à jour : ${statusLabels[status]}`, 'success')
     } catch { toast("Erreur lors de l'enregistrement", 'error') }
@@ -91,10 +86,10 @@ export default function AttendancePage() {
         const existing = attendanceMap.get(e.id)
         if (existing) {
           if (existing.status !== 'present') {
-            if (isCloud) { await sb.update('attendance', existing.id, { status: 'present' }) } else { await db.attendance.update(existing.id, { status: 'present' }) }
+            await db.attendance.update(existing.id, { status: 'present' })
           }
         } else {
-          if (isCloud) { await sb.insert('attendance', { id: generateId(), businessId, employeeId: e.id, date, checkIn: now, status: 'present', createdAt: now }) } else { await db.attendance.add({ id: generateId(), businessId, employeeId: e.id, date, checkIn: now, status: 'present', createdAt: now }) }
+          await db.attendance.add({ id: generateId(), businessId, employeeId: e.id, date, checkIn: now, status: 'present', createdAt: now })
         }
       }))
       toast('Tous marqués présents', 'success')
@@ -105,7 +100,7 @@ export default function AttendancePage() {
     if (!attendanceRecords || attendanceRecords.length === 0) return
     if (!confirm('Effacer toutes les présences pour cette date ?')) return
     try {
-      await Promise.all(attendanceRecords.map(async a => { await softDelete('attendance', a.id, a as any, a.id); return isCloud ? sb.remove('attendance', a.id) : db.attendance.delete(a.id) }))
+      await Promise.all(attendanceRecords.map(async a => { await softDelete('attendance', a.id, a as any, a.id); return db.attendance.delete(a.id) }))
       toast('Présences effacées', 'success')
     } catch { toast('Erreur lors de l\'opération', 'error') }
   }
@@ -150,7 +145,7 @@ export default function AttendancePage() {
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -165,7 +160,7 @@ export default function AttendancePage() {
                 const att = attendanceMap.get(e.id)
                 return (
                   <tr key={e.id} className="hover:bg-surface-50 transition-colors">
-                    <td className="px-6 py-4">
+                    <td data-label="Employé" className="px-6 py-4">
                       <div className="flex items-center gap-3">
                         <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 overflow-hidden">
                           {e.photo ? <img src={e.photo} alt="" className="w-full h-full object-cover" /> : <Users className="w-5 h-5" />}
@@ -176,10 +171,10 @@ export default function AttendancePage() {
                         </div>
                       </div>
                     </td>
-                    <td className="px-6 py-4">
+                    <td data-label="Poste" className="px-6 py-4">
                       <span className="text-sm text-surface-600">{e.position}</span>
                     </td>
-                    <td className="px-6 py-4">
+                    <td data-label="Statut" className="px-6 py-4">
                       {att ? (
                         <Badge variant={statusVariants[att.status]}>
                           {statusLabels[att.status]}
@@ -188,7 +183,7 @@ export default function AttendancePage() {
                         <span className="text-sm text-surface-400">Non défini</span>
                       )}
                     </td>
-                    <td className="px-6 py-4">
+                    <td data-label="Actions" className="px-6 py-4">
                       <div className="flex items-center justify-center gap-1.5">
                         {(Object.keys(statusLabels) as AttendanceStatus[]).map((s) => (
                           <button

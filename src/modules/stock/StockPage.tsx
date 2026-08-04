@@ -2,9 +2,7 @@ import { useState, useMemo } from 'react'
 import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { usePagination } from '@/hooks/usePagination'
-import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAppStore } from '@/stores/appStore'
 import { adjustStockPublic, processStockRemoval } from '@/engine/operations'
 import db from '@/db'
@@ -13,15 +11,12 @@ import { Search, Plus, Package, AlertTriangle, TrendingUp, TrendingDown, Clipboa
 import { toast } from '@/lib/toast'
 
 export default function StockPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
   const [tab, setTab] = useState<'movements' | 'valuation' | 'inventory'>('movements')
   const dexieMovements = useLiveQuery(() => db.stockMovements.where('businessId').equals(businessId).reverse().sortBy('createdAt').then(r => r.slice(0, 100)), [businessId])
   const dexieProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseMovements } = useSupabaseQuery<any>('stock_movements', (q) => q.order('createdAt', { ascending: false }).limit(100), [])
-  const { data: supabaseProducts } = useSupabaseQuery<any>('products', undefined, [])
-  const movements = isCloud ? supabaseMovements : dexieMovements
-  const products = isCloud ? supabaseProducts : dexieProducts
+  const movements = dexieMovements ?? []
+  const products = dexieProducts ?? []
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [moveForm, setMoveForm] = useState({ productId: '', type: 'in' as 'in' | 'out' | 'adjustment', quantity: 1, unitPrice: 0, note: '' })
@@ -40,7 +35,7 @@ export default function StockPage() {
   }, [movements])
 
   const dexieStocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
-  const stocks = isCloud ? [] : dexieStocks || []
+  const stocks = dexieStocks ?? []
 
   const valuation = useMemo(() => {
     let totalValue = 0
@@ -171,7 +166,7 @@ export default function StockPage() {
 
           <Card>
             <CardTitle>Détail par produit</CardTitle>
-            <div className="mt-4">
+            <div className="mt-4 overflow-x-auto responsive-table">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-surface-200 text-surface-500 text-xs">
@@ -184,10 +179,10 @@ export default function StockPage() {
                 <tbody className="divide-y divide-surface-100">
                   {valuation.details.map(d => (
                     <tr key={d.product} className="hover:bg-surface-50">
-                      <td className="py-3 font-medium text-surface-900">{d.product}</td>
-                      <td className="py-3 text-right text-surface-600">{d.qty}</td>
-                      <td className="py-3 text-right text-surface-600">{formatCurrency(d.avgPrice)}</td>
-                      <td className="py-3 text-right font-semibold">{formatCurrency(d.value)}</td>
+                      <td data-label="Produit" className="py-3 font-medium text-surface-900">{d.product}</td>
+                      <td data-label="Qté" className="py-3 text-right text-surface-600">{d.qty}</td>
+                      <td data-label="Prix moyen" className="py-3 text-right text-surface-600">{formatCurrency(d.avgPrice)}</td>
+                      <td data-label="Valeur" className="py-3 text-right font-semibold">{formatCurrency(d.value)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -201,7 +196,7 @@ export default function StockPage() {
       {tab === 'inventory' && (
         <Card>
           <CardTitle>État des stocks</CardTitle>
-          <div className="mt-4">
+          <div className="mt-4 overflow-x-auto responsive-table">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-200 text-surface-500 text-xs">
@@ -217,10 +212,10 @@ export default function StockPage() {
                   const isLow = p.stockAlert && qty <= p.stockAlert
                   return (
                     <tr key={p.id} className={`hover:bg-surface-50 ${isLow ? 'bg-amber-50/50' : ''}`}>
-                      <td className="py-3 font-medium text-surface-900">{p.name}</td>
-                      <td className="py-3 text-right font-semibold">{qty}</td>
-                      <td className="py-3 text-right text-surface-500">{p.stockAlert || '—'}</td>
-                      <td className="py-3 text-center">
+                      <td data-label="Produit" className="py-3 font-medium text-surface-900">{p.name}</td>
+                      <td data-label="Stock" className="py-3 text-right font-semibold">{qty}</td>
+                      <td data-label="Seuil" className="py-3 text-right text-surface-500">{p.stockAlert || '—'}</td>
+                      <td data-label="Statut" className="py-3 text-center">
                         <Badge variant={qty <= 0 ? 'danger' : isLow ? 'warning' : 'success'}>
                           {qty <= 0 ? 'Rupture' : isLow ? 'Faible' : 'OK'}
                         </Badge>

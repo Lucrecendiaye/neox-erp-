@@ -1,6 +1,7 @@
 import { isSupabaseConfigured, supabase } from './supabase'
 import db from '@/db'
 import { useAppStore, useSyncStore } from '@/stores/appStore'
+import { sanitizePayloadForSync } from './imageStorage'
 
 type TableName = keyof typeof db & string
 
@@ -12,7 +13,6 @@ const TABLES: { name: TableName; supabaseName: string }[] = [
   { name: 'sales', supabaseName: 'sales' },
   { name: 'purchases', supabaseName: 'purchases' },
   { name: 'credits', supabaseName: 'credits' },
-
   { name: 'cashBook', supabaseName: 'cash_book' },
   { name: 'employees', supabaseName: 'employees' },
   { name: 'attendance', supabaseName: 'attendance' },
@@ -31,11 +31,31 @@ const TABLES: { name: TableName; supabaseName: string }[] = [
 
 const TENANT_TABLES: Set<string> = new Set([
   'products', 'categories', 'customers', 'suppliers', 'sales', 'purchases',
-  'credits', 'cash_book', 'employees',
-  'attendance', 'payrolls', 'leads', 'notifications', 'audit_logs',
-  'locations', 'product_stocks', 'product_history', 'supplier_invoices',
-  'supplier_payments', 'compensations', 'transfers',
+  'credits', 'cash_book', 'employees', 'attendance', 'payrolls', 'leads',
+  'notifications', 'audit_logs', 'locations', 'product_stocks', 'product_history',
+  'supplier_invoices', 'supplier_payments', 'compensations', 'transfers',
 ])
+
+const SMALL_TABLES = new Set([
+  'categories', 'locations', 'employees', 'attendance', 'payrolls', 'leads',
+  'notifications', 'audit_logs', 'settings', 'profiles',
+])
+
+const AUDIT_LOG_DB_COLUMNS = new Set([
+  'id', 'businessId', 'userId', 'action', 'entity', 'entityId', 'details', 'createdAt',
+])
+
+function sanitizeForTable(supabaseName: string, payload: Record<string, unknown>): Record<string, unknown> {
+  let clean = payload
+  if (supabaseName === 'audit_logs') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(clean)) {
+      if (AUDIT_LOG_DB_COLUMNS.has(key)) out[key] = clean[key]
+    }
+    clean = out
+  }
+  return clean
+}
 
 function getCurrentBusinessId(): string {
   const state = useAppStore.getState()
@@ -43,8 +63,8 @@ function getCurrentBusinessId(): string {
 }
 
 const PROCESSED_IDS_KEY = 'neox-synced-ids'
-const MAX_RETRIES = 5
-const BASE_DELAY = 1000
+const MAX_RETRIES = 3
+const BASE_DELAY = 500
 
 function getProcessedIds(): Set<string> {
   try {
@@ -58,7 +78,7 @@ function getProcessedIds(): Set<string> {
 function addProcessedIds(ids: string[]): void {
   const existing = getProcessedIds()
   for (const id of ids) existing.add(id)
-  const arr = Array.from(existing).slice(-10000)
+  const arr = Array.from(existing).slice(-20000)
   localStorage.setItem(PROCESSED_IDS_KEY, JSON.stringify(arr))
 }
 
@@ -74,8 +94,8 @@ async function retryWithBackoff<T>(fn: () => Promise<T>, retries = MAX_RETRIES):
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
       return await fn()
-    } catch (err) {
-      if (attempt === retries - 1) throw err
+    } catch {
+      if (attempt === retries - 1) throw new Error(`Failed after ${retries} retries`)
       await delay(BASE_DELAY * Math.pow(2, attempt))
     }
   }
@@ -91,30 +111,42 @@ export async function pushToSupabase(): Promise<{ success: number; failed: numbe
   const processedIds: string[] = []
   const businessId = getCurrentBusinessId()
 
-  for (const { name, supabaseName } of TABLES) {
-    try {
-      let query = (db[name] as any)
-      if (businessId && TENANT_TABLES.has(supabaseName)) {
-        query = query.where('businessId').equals(businessId)
-      }
-      const items = await query.toArray()
-      for (const item of items) {
-        if (hasBeenProcessed(item.id)) continue
-        try {
-          const { id, ...data } = item
-          await retryWithBackoff(async () => {
-            const { error } = await supabase!.from(supabaseName).upsert({ id, ...data }, { onConflict: 'id' })
-            if (error) throw error
-          })
-          processedIds.push(id)
-          success++
-        } catch {
-          failed++
-        }
-      }
-    } catch {
-      failed++
+  const results = await Promise.allSettled(TABLES.map(async ({ name, supabaseName }) => {
+    let query = (db[name] as any)
+    if (businessId && TENANT_TABLES.has(supabaseName)) {
+      query = query.where('businessId').equals(businessId)
     }
+    const items = await query.toArray()
+    if (items.length === 0) return
+
+    const batch: any[] = []
+    for (const item of items) {
+      if (hasBeenProcessed(item.id)) continue
+      const { id, ...data } = item
+      batch.push({ id, data })
+    }
+    if (batch.length === 0) return
+
+    try {
+      await retryWithBackoff(async () => {
+        const sanitized = await Promise.all(
+          batch.map(async ({ id, data }) => {
+            const clean = await sanitizePayloadForSync(data)
+            return { id, ...sanitizeForTable(supabaseName, clean) }
+          })
+        )
+        const { error } = await supabase!.from(supabaseName).upsert(sanitized, { onConflict: 'id' })
+        if (error) throw error
+      })
+      for (const { id } of batch) processedIds.push(id)
+      success += batch.length
+    } catch {
+      failed += batch.length
+    }
+  }))
+
+  for (const r of results) {
+    if (r.status === 'rejected') failed++
   }
 
   addProcessedIds(processedIds)
@@ -123,44 +155,108 @@ export async function pushToSupabase(): Promise<{ success: number; failed: numbe
   return { success, failed }
 }
 
-export async function pullFromSupabase(): Promise<{ success: number; failed: number }> {
+async function pullTable(
+  name: TableName,
+  supabaseName: string,
+  businessId: string,
+  onProgress?: (table: string, count: number) => void
+): Promise<{ success: number; failed: number }> {
+  let success = 0
+  let failed = 0
+  try {
+    let q = supabase!.from(supabaseName).select('*', { count: 'estimated', head: false }).limit(1)
+    if (businessId && TENANT_TABLES.has(supabaseName)) {
+      q = q.eq('businessId', businessId)
+    }
+    const { count } = await q
+    const estimated = count || 0
+
+    onProgress?.(supabaseName, 0)
+
+    const pageSize = SMALL_TABLES.has(supabaseName) ? 1000 : 200
+    const allData: any[] = []
+    let from = 0
+    let hasMore = true
+
+    while (hasMore) {
+      let r = supabase!.from(supabaseName).select('*').range(from, from + pageSize - 1)
+      if (businessId && TENANT_TABLES.has(supabaseName)) {
+        r = r.eq('businessId', businessId)
+      }
+      r = r.order('id', { ascending: true })
+      const { data, error } = await r
+      if (error) { failed += estimated; break }
+      if (!data || data.length === 0) { hasMore = false; break }
+      allData.push(...data)
+      from += data.length
+      if (data.length < pageSize) hasMore = false
+      onProgress?.(supabaseName, allData.length)
+    }
+
+    if (allData.length === 0) return { success, failed }
+
+    const table = db[name] as any
+    const newRows = allData.filter(row => !hasBeenProcessed(row.id))
+
+    if (newRows.length > 0) {
+      const batchSize = SMALL_TABLES.has(supabaseName) ? 500 : 100
+      for (let i = 0; i < newRows.length; i += batchSize) {
+        const batch = newRows.slice(i, i + batchSize)
+        try {
+          await table.bulkPut(batch)
+          success += batch.length
+        } catch {
+          for (const row of batch) {
+            try { await table.put(row); success++ } catch { failed++ }
+          }
+        }
+      }
+      addProcessedIds(newRows.map(r => r.id))
+    }
+  } catch {
+    failed++
+  }
+  return { success, failed }
+}
+
+export async function pullFromSupabase(
+  onProgress?: (table: string, count: number) => void
+): Promise<{ success: number; failed: number }> {
   if (!isSupabaseConfigured() || !supabase) throw new Error('Supabase non configuré')
   useSyncStore.getState().setSyncing(true)
 
-  let success = 0
-  let failed = 0
   const businessId = getCurrentBusinessId()
+  let totalSuccess = 0
+  let totalFailed = 0
 
-  for (const { name, supabaseName } of TABLES) {
-    try {
-      let q = supabase.from(supabaseName).select('*')
-      if (businessId && TENANT_TABLES.has(supabaseName)) {
-        q = q.eq('businessId', businessId)
+  const BATCH_SIZE = 4
+  for (let i = 0; i < TABLES.length; i += BATCH_SIZE) {
+    const batch = TABLES.slice(i, i + BATCH_SIZE)
+    const results = await Promise.allSettled(
+      batch.map(({ name, supabaseName }) =>
+        pullTable(name, supabaseName, businessId, onProgress)
+      )
+    )
+    for (const r of results) {
+      if (r.status === 'fulfilled') {
+        totalSuccess += r.value.success
+        totalFailed += r.value.failed
+      } else {
+        totalFailed++
       }
-      const { data, error } = await q
-      if (error) { failed++; continue }
-      if (!data) continue
-      const table = db[name] as any
-      for (const row of data) {
-        if (hasBeenProcessed(row.id)) continue
-        try {
-          await table.put(row)
-          success++
-        } catch {
-          failed++
-        }
-      }
-    } catch { failed++ }
+    }
   }
 
   useSyncStore.getState().setSyncing(false)
   useSyncStore.getState().setLastSync(new Date().toISOString())
-  return { success, failed }
+  return { success: totalSuccess, failed: totalFailed }
 }
 
-export async function syncAll(): Promise<{ pushed: { success: number; failed: number }; pulled: { success: number; failed: number } }> {
+export async function syncAll(
+  onProgress?: (table: string, count: number) => void
+): Promise<{ pushed: { success: number; failed: number }; pulled: { success: number; failed: number } }> {
   const pushed = await pushToSupabase()
-  const pulled = await pullFromSupabase()
+  const pulled = await pullFromSupabase(onProgress)
   return { pushed, pulled }
 }
 
@@ -172,9 +268,7 @@ export async function queueOfflineOperation(
   const queue: any[] = JSON.parse(localStorage.getItem('neox-sync-queue') || '[]')
   queue.push({
     id: crypto.randomUUID?.() || `${Date.now()}`,
-    table,
-    operation,
-    data,
+    table, operation, data,
     createdAt: new Date().toISOString(),
     retries: 0,
   })
@@ -189,7 +283,7 @@ export async function processSyncQueue(): Promise<void> {
   const businessId = getCurrentBusinessId()
   for (const item of queue) {
     try {
-      const { name, supabaseName } = TABLES.find(t => t.name === item.table) || { supabaseName: item.table }
+      const { supabaseName } = TABLES.find(t => t.name === item.table) || { supabaseName: item.table }
       if (item.operation === 'delete') {
         await retryWithBackoff(async () => {
           let q = supabase!.from(supabaseName).delete().eq('id', item.data.id)
@@ -203,15 +297,14 @@ export async function processSyncQueue(): Promise<void> {
           if (businessId && TENANT_TABLES.has(supabaseName) && !payload.businessId) {
             payload.businessId = businessId
           }
-          const { error } = await supabase!.from(supabaseName).upsert(payload, { onConflict: 'id' })
+          const clean = await sanitizePayloadForSync(payload)
+          const { error } = await supabase!.from(supabaseName).upsert(sanitizeForTable(supabaseName, clean), { onConflict: 'id' })
           if (error) throw error
         })
       }
     } catch {
       item.retries = (item.retries || 0) + 1
-      if (item.retries < MAX_RETRIES) {
-        remaining.push(item)
-      }
+      if (item.retries < MAX_RETRIES) remaining.push(item)
     }
   }
   localStorage.setItem('neox-sync-queue', JSON.stringify(remaining))

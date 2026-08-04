@@ -15,8 +15,6 @@ import {
   Check, Percent, Contact as ContactIcon
 } from 'lucide-react'
 import type { SaleItem, Product, Sale, Customer, Supplier } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAppStore } from '@/stores/appStore'
 import SplitPaymentModal from '@/components/pos/SplitPaymentModal'
 import CreditPaymentModal from '@/components/pos/CreditPaymentModal'
@@ -44,17 +42,14 @@ type PayMethod = 'cash' | 'mobile' | 'card' | 'bank'
 export default function DepotGlobalPOSPage() {
   const businessId = useBusinessId()
   const navigate = useNavigate()
-  const isCloud = isSupabaseConfigured()
 
   const allProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const allStocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
   const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).filter(l => l.type === 'warehouse').toArray(), [businessId])
   const dexieCustomers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseCustomers } = useSupabaseQuery<Customer>('customers', undefined, [])
-  const allCustomers = (isCloud ? supabaseCustomers : dexieCustomers) || []
+  const allCustomers = dexieCustomers ?? []
   const dexieSuppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseSuppliers } = useSupabaseQuery<Supplier>('suppliers', undefined, [])
-  const allSuppliers = (isCloud ? supabaseSuppliers : dexieSuppliers) || []
+  const allSuppliers = dexieSuppliers ?? []
   const dexieSettings = useLiveQuery(() => db.settings.get('default'), [])
   const userId = useAppStore(s => s.user?.id || '')
 
@@ -255,7 +250,7 @@ export default function DepotGlobalPOSPage() {
         dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
         status: 'active' as const, reminderSent: [], createdAt: now,
       }
-      if (isCloud) { await sb.insert('credits', credit as any) } else { await db.credits.add(credit as any) }
+      await db.credits.add(credit as any)
     }
 
     setLastSale(sale)
@@ -296,7 +291,7 @@ export default function DepotGlobalPOSPage() {
                     <button onClick={() => handleProductClick(p)} className="w-full text-left">
                       <div className="w-full aspect-square bg-surface-50 rounded-lg mb-2 flex items-center justify-center overflow-hidden">
                         {p.photos?.[0] ? (
-                          <img src={p.photos[0]} alt="" className="w-full h-full object-cover" />
+                          <img src={p.photos[0]} alt="" className="w-full h-full object-contain" />
                         ) : (
                           <Package className="w-8 h-8 text-surface-300" />
                         )}
@@ -642,8 +637,8 @@ export default function DepotGlobalPOSPage() {
         onConfirm={(payments) => { setSplitOpen(false); handleSale(payments, payments.reduce((s, p) => s + p.amount, 0)) }} />
 
       {saleSuccess && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={() => { setSaleSuccess(false); clearCart() }}>
-          <div className="text-center py-12 px-8 bg-white rounded-2xl border border-surface-200 shadow-2xl" onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in p-4" onClick={() => { setSaleSuccess(false); clearCart() }}>
+          <div className="text-center py-12 px-8 bg-white rounded-[20px] border border-surface-200 shadow-2xl animate-slide-up w-[95%] sm:w-[90%] md:w-[640px] max-w-[640px] max-h-[95vh] md:max-h-[820px] overflow-y-auto" onClick={e => e.stopPropagation()}>
             <div className="w-16 h-16 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-4">
               <Check className="w-8 h-8 text-success" />
             </div>
@@ -680,7 +675,7 @@ function SplitDepotModal({ open, item, stockByProduct, locationMap, onConfirm, o
 
   return (
     <Modal open={open} onClose={onClose} title="Répartir sur plusieurs dépôts">
-      <div className="space-y-4">
+      <div className="p-6 space-y-4">
         <p className="text-sm text-surface-600">
           Stock insuffisant dans <strong>{item.locationName}</strong>.
           Répartissez sur les autres dépôts :

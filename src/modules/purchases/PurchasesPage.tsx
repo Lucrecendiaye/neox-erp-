@@ -8,8 +8,8 @@ import { generateId, generateInvoiceNumber, formatCurrency, getProductUnits, con
 import { toast } from '@/lib/toast'
 import { Search, Plus, Edit2, Trash2, Package, DollarSign, FileText, ChevronDown, ChevronUp, X, Minus, Plus as PlusIcon } from 'lucide-react'
 import type { Purchase, SaleItem, Product, Supplier, StockMovement, AuditLog, AccountingEntry } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
+
+
 import { useAppStore } from '@/stores/appStore'
 import { processPurchase, deletePurchase } from '@/engine/operations'
 import type { Location } from '@/engine/types'
@@ -22,20 +22,11 @@ const statusColors = {
 } as const
 
 export default function PurchasesPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
-  const dexiePurchases = useLiveQuery(() => db.purchases.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId])
-  const { data: supabasePurchases } = useSupabaseQuery<Purchase>('purchases', undefined, [])
-  const purchases = isCloud ? (supabasePurchases || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : dexiePurchases
-  const dexieSuppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseSuppliers } = useSupabaseQuery<Supplier>('suppliers', undefined, [])
-  const suppliers = isCloud ? supabaseSuppliers : dexieSuppliers
-  const dexieProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseProducts } = useSupabaseQuery<Product>('products', undefined, [])
-  const products = isCloud ? supabaseProducts : dexieProducts
-  const dexieLocations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseLocations } = useSupabaseQuery<Location>('locations', undefined, [])
-  const allLocations = (isCloud ? supabaseLocations : dexieLocations) || []
+  const purchases = useLiveQuery(() => db.purchases.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId]) ?? []
+  const suppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const allLocations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Purchase | null>(null)
@@ -239,6 +230,7 @@ export default function PurchasesPage() {
             </div>
             {expandedId === p.id && (
               <div className="px-4 pb-4 border-t border-surface-100 pt-3 animate-fade-in">
+                <div className="overflow-x-auto responsive-table">
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="text-surface-400 text-xs">
@@ -270,6 +262,7 @@ export default function PurchasesPage() {
                     )}
                   </tfoot>
                 </table>
+                </div>
               </div>
             )}
           </Card>
@@ -285,7 +278,7 @@ export default function PurchasesPage() {
         )}
       </div>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier achat' : 'Nouvel achat'} size="xl">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier achat' : 'Nouvel achat'} size="lg">
         <div className="p-6 space-y-4">
           <Select
             label="Fournisseur"

@@ -152,7 +152,7 @@ export default function CreditPage() {
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -170,20 +170,20 @@ export default function CreditPage() {
                 const isOverdue = new Date(c.dueDate) < new Date() && c.status === 'active'
                 return (
                   <tr key={c.id} className="hover:bg-surface-50 transition-colors group">
-                    <td className="px-6 py-4">
+                    <td data-label="Client" className="px-6 py-4">
                       <p className="text-sm font-medium text-surface-900">{c.customerName}</p>
                       <p className="text-xs text-surface-400 font-mono">{c.id.slice(0, 10)}...</p>
                     </td>
-                    <td className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(c.amount)}</td>
-                    <td className="px-6 py-4 text-right text-sm text-emerald-600 font-medium">{formatCurrency(c.paid)}</td>
-                    <td className="px-6 py-4 text-right text-sm font-semibold text-surface-900">{formatCurrency(c.balance)}</td>
-                    <td className="px-6 py-4 text-center text-sm text-surface-500">{formatDate(c.dueDate)}</td>
-                    <td className="px-6 py-4 text-center">
+                    <td data-label="Montant" className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(c.amount)}</td>
+                    <td data-label="Payé" className="px-6 py-4 text-right text-sm text-emerald-600 font-medium">{formatCurrency(c.paid)}</td>
+                    <td data-label="Solde" className="px-6 py-4 text-right text-sm font-semibold text-surface-900">{formatCurrency(c.balance)}</td>
+                    <td data-label="Échéance" className="px-6 py-4 text-center text-sm text-surface-500">{formatDate(c.dueDate)}</td>
+                    <td data-label="Statut" className="px-6 py-4 text-center">
                       <Badge variant={c.status === 'paid' ? 'success' : isOverdue ? 'danger' : 'warning'}>
                         {c.status === 'paid' ? 'Payé' : isOverdue ? 'Échu' : c.status === 'defaulted' ? 'Défaut' : 'Actif'}
                       </Badge>
                     </td>
-                    <td className="px-6 py-4">
+                    <td data-label="Actions" className="px-6 py-4">
                       <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
                         <button onClick={() => openHistory(c)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-600" title="Historique">
                           <History className="w-4 h-4" />
@@ -262,8 +262,8 @@ export default function CreditPage() {
       </Modal>
 
       <Modal open={showHistory} onClose={() => setShowHistory(false)}
-        title={`Paiements - ${selectedCredit?.customerName || ''}`} size="lg">
-        <div className="p-6 max-h-[70vh] overflow-y-auto space-y-4">
+        title={`Paiements - ${selectedCredit?.customerName || ''}`} size="md">
+        <div className="p-6 space-y-4">
           <div className="grid grid-cols-3 gap-4 mb-4">
             <Card className="p-4"><p className="text-xs text-surface-500">Total</p><p className="text-lg font-bold">{formatCurrency(selectedCredit?.amount || 0)}</p></Card>
             <Card className="p-4"><p className="text-xs text-surface-500">Payé</p><p className="text-lg font-bold text-emerald-600">{formatCurrency(selectedCredit?.paid || 0)}</p></Card>

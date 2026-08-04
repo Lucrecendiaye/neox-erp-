@@ -189,7 +189,7 @@ export default function BusinessesPage() {
         open={modalOpen}
         onClose={() => setModalOpen(false)}
         title={editing ? "Modifier l'entreprise" : 'Nouvelle entreprise'}
-        size="lg"
+        size="md"
       >
         <div className="p-6 space-y-4">
           <Input

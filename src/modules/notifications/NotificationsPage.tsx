@@ -5,8 +5,8 @@ import db from '@/db'
 import { formatDateTime } from '@/lib/utils'
 import { Bell, BellRing, CheckCheck, Trash2, AlertTriangle, CreditCard, ShoppingCart, DollarSign, Clock, UserCheck, Target } from 'lucide-react'
 import type { Notification } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
+
+
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { softDelete } from '@/lib/softDelete'
 
@@ -41,27 +41,24 @@ const typeLabels = {
 }
 
 export default function NotificationsPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
-  const dexieNotifications = useLiveQuery(() => db.notifications.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId])
-  const { data: supabaseNotifications } = useSupabaseQuery<Notification>('notifications', undefined, [])
-  const notifications = isCloud ? (supabaseNotifications || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : dexieNotifications
+  const notifications = useLiveQuery(() => db.notifications.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId]) ?? []
 
   async function markAllRead() {
     const unread = notifications?.filter(n => !n.read) || []
     for (const n of unread) {
-      if (isCloud) { await sb.update('notifications', n.id, { read: true }) } else { await db.notifications.update(n.id, { read: true }) }
+      await db.notifications.update(n.id, { read: true })
     }
   }
 
   async function markRead(id: string) {
-    if (isCloud) { await sb.update('notifications', id, { read: true }) } else { await db.notifications.update(id, { read: true }) }
+    await db.notifications.update(id, { read: true })
   }
 
   async function deleteNotification(id: string) {
     const notification = notifications?.find(n => n.id === id)
     if (notification) await softDelete('notifications', id, notification as any, notification.title)
-    if (isCloud) { await sb.remove('notifications', id) } else { await db.notifications.delete(id) }
+    await db.notifications.delete(id)
   }
 
   const unread = notifications?.filter(n => !n.read) || []

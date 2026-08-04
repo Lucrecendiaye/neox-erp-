@@ -153,7 +153,7 @@ export default function SmsRemindersPage() {
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -180,7 +180,7 @@ export default function SmsRemindersPage() {
                 const reminderCount = credit.reminderSent?.length || 0
                 return (
                   <tr key={credit.id} className="hover:bg-surface-50 transition-colors">
-                    <td className="px-4 py-4">
+                    <td data-label="" className="px-4 py-4">
                       <input
                         type="checkbox"
                         checked={selected.has(credit.id)}
@@ -188,16 +188,16 @@ export default function SmsRemindersPage() {
                         className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
                       />
                     </td>
-                    <td className="px-4 py-4 text-sm font-medium text-surface-900">{credit.customerName}</td>
-                    <td className="px-4 py-4 text-right text-sm text-surface-600">{formatCurrency(credit.amount)}</td>
-                    <td className="px-4 py-4 text-right text-sm font-semibold text-surface-900">{formatCurrency(credit.balance)}</td>
-                    <td className="px-4 py-4 text-center text-sm text-surface-500">{formatDate(credit.dueDate)}</td>
-                    <td className="px-4 py-4 text-center">
+                    <td data-label="Client" className="px-4 py-4 text-sm font-medium text-surface-900">{credit.customerName}</td>
+                    <td data-label="Montant" className="px-4 py-4 text-right text-sm text-surface-600">{formatCurrency(credit.amount)}</td>
+                    <td data-label="Solde" className="px-4 py-4 text-right text-sm font-semibold text-surface-900">{formatCurrency(credit.balance)}</td>
+                    <td data-label="Échéance" className="px-4 py-4 text-center text-sm text-surface-500">{formatDate(credit.dueDate)}</td>
+                    <td data-label="Statut" className="px-4 py-4 text-center">
                       <Badge variant={credit.status === 'paid' ? 'success' : isOverdue ? 'danger' : 'warning'}>
                         {credit.status === 'paid' ? 'Payé' : isOverdue ? 'Échu' : 'Actif'}
                       </Badge>
                     </td>
-                    <td className="px-4 py-4 text-center">
+                    <td data-label="Relances" className="px-4 py-4 text-center">
                       <button
                         onClick={() => setHistoryCredit(credit)}
                         className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-primary-600 transition-colors"
@@ -206,7 +206,7 @@ export default function SmsRemindersPage() {
                         {reminderCount}
                       </button>
                     </td>
-                    <td className="px-4 py-4">
+                    <td data-label="Actions" className="px-4 py-4">
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => sendReminder(credit.id)}

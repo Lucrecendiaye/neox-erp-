@@ -5,9 +5,7 @@ import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { generateId, formatCurrency, formatDate } from '@/lib/utils'
 import type { Employee, PaymentMethod } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { useBusinessId } from '@/hooks/useBusinessId'
-import { isSupabaseConfigured } from '@/lib/supabase'
 import { Users, Plus, Edit2, Trash2, Search } from 'lucide-react'
 import { toast } from '@/lib/toast'
 import { softDelete } from '@/lib/softDelete'
@@ -33,11 +31,9 @@ const paymentMethodLabels: Record<string, string> = {
 }
 
 export default function EmployeesPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
   const dexieEmployees = useLiveQuery(() => db.employees.where('businessId').equals(businessId).toArray(), [])
-  const { data: supabaseEmployees } = useSupabaseQuery<Employee>('employees', undefined, [])
-  const employees = isCloud ? supabaseEmployees : dexieEmployees
+  const employees = dexieEmployees ?? []
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Employee | null>(null)
@@ -88,10 +84,10 @@ export default function EmployeesPage() {
     const now = new Date().toISOString()
     try {
       if (editing) {
-        if (isCloud) { await sb.update('employees', editing.id, { ...form, businessId, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, updatedAt: now }) } else { await db.employees.update(editing.id, { ...form, businessId, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, updatedAt: now }) }
+        await db.employees.update(editing.id, { ...form, businessId, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, updatedAt: now })
         toast('Employé mis à jour', 'success')
       } else {
-        if (isCloud) { await sb.insert('employees', { id: generateId(), businessId, ...form, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, photo: undefined, documents: [], status: 'active', createdAt: now, updatedAt: now }) } else { await db.employees.add({ id: generateId(), businessId, ...form, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, photo: undefined, documents: [], status: 'active', createdAt: now, updatedAt: now }) }
+        await db.employees.add({ id: generateId(), businessId, ...form, salaryType: form.salaryType as 'monthly' | 'daily' | 'hourly', email: form.email || undefined, bankAccount: form.bankAccount || undefined, address: form.address || undefined, photo: undefined, documents: [], status: 'active', createdAt: now, updatedAt: now })
         toast('Employé créé', 'success')
       }
       setModalOpen(false)
@@ -102,7 +98,7 @@ export default function EmployeesPage() {
     if (!confirm('Supprimer cet employé ?')) return
     const employee = employees?.find(e => e.id === id)
     if (employee) await softDelete('employees', id, employee as any, employee.name)
-    if (isCloud) { await sb.remove('employees', id) } else { await db.employees.delete(id) }
+    await db.employees.delete(id)
     toast('Employé supprimé', 'success')
   }
 
@@ -128,7 +124,7 @@ export default function EmployeesPage() {
       </div>
 
       <Card className="overflow-hidden p-0">
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -143,7 +139,7 @@ export default function EmployeesPage() {
             <tbody className="divide-y divide-surface-100">
               {paginatedItems?.map((e) => (
                 <tr key={e.id} className="hover:bg-surface-50 transition-colors">
-                  <td className="px-6 py-4">
+                  <td data-label="Employé" className="px-6 py-4">
                     <div className="flex items-center gap-3">
                       <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 overflow-hidden">
                         {e.photo ? <img src={e.photo} alt="" className="w-full h-full object-cover" /> : <Users className="w-5 h-5" />}
@@ -154,22 +150,22 @@ export default function EmployeesPage() {
                       </div>
                     </div>
                   </td>
-                  <td className="px-6 py-4">
+                  <td data-label="Poste" className="px-6 py-4">
                     <span className="text-sm text-surface-600">{e.position}</span>
                   </td>
-                  <td className="px-6 py-4">
+                  <td data-label="Département" className="px-6 py-4">
                     <span className="text-sm text-surface-600">{e.department}</span>
                   </td>
-                  <td className="px-6 py-4 text-right">
+                  <td data-label="Salaire" className="px-6 py-4 text-right">
                     <p className="text-sm font-medium text-surface-900">{formatCurrency(e.salary)}</p>
                     <p className="text-xs text-surface-400">{salaryTypeLabels[e.salaryType]}</p>
                   </td>
-                  <td className="px-6 py-4 text-center">
+                  <td data-label="Statut" className="px-6 py-4 text-center">
                     <Badge variant={statusVariant[e.status] || 'default'}>
                       {e.status === 'active' ? 'Actif' : e.status === 'inactive' ? 'Inactif' : 'Terminé'}
                     </Badge>
                   </td>
-                  <td className="px-6 py-4">
+                  <td data-label="Actions" className="px-6 py-4">
                     <div className="flex items-center justify-center gap-1">
                       <button onClick={() => openEdit(e)} className="p-2 rounded-lg hover:bg-surface-100 text-surface-400 transition-colors">
                         <Edit2 className="w-4 h-4" />
@@ -194,7 +190,7 @@ export default function EmployeesPage() {
         <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
       </Card>
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier l'employé" : 'Nouvel employé'} size="lg">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? "Modifier l'employé" : 'Nouvel employé'} size="md">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Nom complet" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

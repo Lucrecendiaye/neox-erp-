@@ -316,7 +316,7 @@ export default function Dashboard() {
             <div className="flex items-center gap-2"><Receipt className="w-5 h-5 text-primary-500" />Transactions récentes</div>
           </CardTitle>
           <div className="mt-4">
-            <div className="overflow-x-auto">
+            <div className="overflow-x-auto responsive-table">
               <table className="w-full text-sm">
                 <thead>
                   <tr className="text-xs text-surface-400 border-b border-surface-100">
@@ -329,12 +329,12 @@ export default function Dashboard() {
                 <tbody>
                   {recentTransactions.map(tx => (
                     <tr key={tx.id} className="border-b border-surface-50 hover:bg-surface-50 transition-colors">
-                      <td className="py-2.5 text-surface-900 font-medium">{tx.ref}</td>
-                      <td className={`py-2.5 font-semibold ${tx.type === 'Vente' || tx.type === 'Revenu' ? 'text-success' : 'text-danger'}`}>
+                      <td data-label="Référence" className="py-2.5 text-surface-900 font-medium">{tx.ref}</td>
+                      <td data-label="Montant" className={`py-2.5 font-semibold ${tx.type === 'Vente' || tx.type === 'Revenu' ? 'text-success' : 'text-danger'}`}>
                         {tx.type === 'Vente' || tx.type === 'Revenu' ? '' : '-'}{formatCurrency(tx.amount)}
                       </td>
-                      <td className="py-2.5 text-surface-500">{formatDate(tx.date)}</td>
-                      <td className="py-2.5">
+                      <td data-label="Date" className="py-2.5 text-surface-500">{formatDate(tx.date)}</td>
+                      <td data-label="Statut" className="py-2.5">
                         <Badge variant={tx.status === 'complété' || tx.status === 'Entrée' ? 'success' : 'info'}>{tx.status}</Badge>
                       </td>
                     </tr>
@@ -511,7 +511,7 @@ export default function Dashboard() {
           <p className="text-xs text-surface-400">Stock bas</p>
           <p className={`text-lg font-bold ${stats.lowStockCount > 0 ? 'text-danger' : 'text-surface-900'}`}>{stats.lowStockCount}</p>
         </div>
-        <div className="p-3 rounded-2xl bg-white border border-surface-200 cursor-pointer" onClick={() => navigate('/credit')}>
+        <div className="p-3 rounded-2xl bg-white border border-surface-200 cursor-pointer" onClick={() => navigate('/customers')}>
           <p className="text-xs text-surface-400">Créances clients</p>
           <p className="text-lg font-bold text-warning">{formatCurrency(stats.totalCredits)}</p>
         </div>

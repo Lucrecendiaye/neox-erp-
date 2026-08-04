@@ -184,11 +184,16 @@ export default function DepotsPage() {
       )}
 
       <Modal open={modalOpen} onClose={() => { setModalOpen(false); setEditingDepot(null); setForm({ name: '', address: '', phone: '' }) }} title={editingDepot ? 'Modifier le dépôt' : 'Nouveau dépôt'}>
-        <div className="space-y-4">
+        <div className="p-6 space-y-4">
           <Input label="Nom du dépôt" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })} />
-          <Input label="Adresse" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
-          <Input label="Téléphone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
-          <Button onClick={editingDepot ? handleUpdate : handleCreate} className="w-full">{editingDepot ? 'Mettre à jour' : 'Créer le dépôt'}</Button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label="Téléphone" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} />
+            <Input label="Adresse" value={form.address} onChange={e => setForm({ ...form, address: e.target.value })} />
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
+          <Button variant="ghost" onClick={() => { setModalOpen(false); setEditingDepot(null); setForm({ name: '', address: '', phone: '' }) }}>Annuler</Button>
+          <Button onClick={editingDepot ? handleUpdate : handleCreate}>{editingDepot ? 'Mettre à jour' : 'Créer le dépôt'}</Button>
         </div>
       </Modal>
 

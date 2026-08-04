@@ -146,7 +146,7 @@ export default function ProductDetailPage() {
             </div>
           </div>
         </CardHeader>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -166,22 +166,22 @@ export default function ProductDetailPage() {
                 const locName = locations?.find(l => l.id === h.locationId)?.name || h.locationId
                 return (
                   <tr key={h.id} className="hover:bg-surface-50">
-                    <td className="px-4 py-3">
+                    <td data-label="Action" className="px-4 py-3">
                       <div className="flex items-center gap-2">
                         <Icon className={`w-4 h-4 ${delta > 0 ? 'text-success' : delta < 0 ? 'text-danger' : 'text-surface-400'}`} />
                         <span className="text-sm font-medium">{actionLabels[h.action] || h.action}</span>
                       </div>
                     </td>
-                    <td className="px-4 py-3 text-sm text-surface-500">{locName}</td>
-                    <td className="px-4 py-3 text-sm text-right">{h.quantityBefore}</td>
-                    <td className="px-4 py-3 text-sm text-right font-medium">{h.quantityAfter}</td>
-                    <td className="px-4 py-3 text-sm text-right font-semibold">
+                    <td data-label="Emplacement" className="px-4 py-3 text-sm text-surface-500">{locName}</td>
+                    <td data-label="Avant" className="px-4 py-3 text-sm text-right">{h.quantityBefore}</td>
+                    <td data-label="Après" className="px-4 py-3 text-sm text-right font-medium">{h.quantityAfter}</td>
+                    <td data-label="Delta" className="px-4 py-3 text-sm text-right font-semibold">
                       <span className={delta > 0 ? 'text-success' : delta < 0 ? 'text-danger' : ''}>
                         {delta > 0 ? '+' : ''}{delta}
                       </span>
                     </td>
-                    <td className="px-4 py-3 text-sm text-surface-400">{h.reference || h.comment || '—'}</td>
-                    <td className="px-4 py-3 text-sm text-surface-400 text-right whitespace-nowrap">{formatDateTime(h.createdAt)}</td>
+                    <td data-label="Référence" className="px-4 py-3 text-sm text-surface-400">{h.reference || h.comment || '—'}</td>
+                    <td data-label="Date" className="px-4 py-3 text-sm text-surface-400 text-right whitespace-nowrap">{formatDateTime(h.createdAt)}</td>
                   </tr>
                 )
               })}

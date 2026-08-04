@@ -1,34 +1,34 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useCallback } from 'react'
 import { Card, Button, Input, Badge, Pagination, Modal } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { useBusinessId } from '@/hooks/useBusinessId'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { usePagination } from '@/hooks/usePagination'
-import { isSupabaseConfigured } from '@/lib/supabase'
-import { useAppStore } from '@/stores/appStore'
+import { useAppStore, useSyncStore } from '@/stores/appStore'
 import db from '@/db'
-import { generateId, formatCurrency, formatDate, formatDateTime, cn, openWhatsApp } from '@/lib/utils'
-import { exportSalePDF, exportReportPDF } from '@/lib/pdf'
-import type { Sale, SaleItem, Credit, PaymentMethod, CompanySettings } from '@/types'
+import { formatCurrency, formatDate, formatDateTime, cn } from '@/lib/utils'
+import { exportSalePDF, exportReportPDF, shareSalePDF } from '@/lib/pdf'
+import type { Sale, SaleItem, PaymentMethod, CompanySettings } from '@/types'
 import type { Location } from '@/engine/types'
 import { toast } from '@/lib/toast'
 import { deleteSale, editSale } from '@/engine/operations'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
+import MobileSaleCard from '@/components/sales/MobileSaleCard'
+import MobileActionsSheet from '@/components/sales/MobileActionsSheet'
 import {
   Search, Filter, Download, FileText, Eye, Edit2, Trash2,
   ShoppingBag, ChevronDown, ChevronUp, Plus,
   User, Phone, MapPin, Send, Mail,
   Clock, ArrowUpDown, Wallet, FileSpreadsheet,
-  Receipt, Save, X
+  Receipt, Save, X, RefreshCw, MoreHorizontal
 } from 'lucide-react'
 
-type TabKey = 'active' | 'credit' | 'paid' | 'partial' | 'cancelled'
+type TabKey = 'active' | 'paid' | 'partial' | 'cancelled'
 type SaleType = 'retail' | 'wholesale' | 'depot' | 'shop'
 type PeriodKey = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'custom'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'active', label: 'Ventes' },
-  { key: 'credit', label: 'À crédit' },
   { key: 'paid', label: 'Payées' },
   { key: 'partial', label: 'Partielles' },
   { key: 'cancelled', label: 'Annulées' },
@@ -69,6 +69,14 @@ function getSaleType(sale: Sale, locations: Location[]): SaleType {
   return loc?.type === 'warehouse' ? 'depot' : 'shop'
 }
 
+function getPaymentStatusBadge(sale: Sale): React.ReactNode {
+  if (sale.status === 'cancelled') return <Badge variant="danger">Annulée</Badge>
+  if (sale.paid >= sale.total) return <Badge variant="success">Payée</Badge>
+  if (sale.paymentMethod === 'credit') return <Badge variant="info">Crédit</Badge>
+  if (sale.paid > 0) return <Badge variant="warning">Partielle</Badge>
+  return <Badge variant="warning">En attente</Badge>
+}
+
 function getPaymentStatus(sale: Sale): 'paid' | 'partial' | 'credit' | 'pending' {
   if (sale.status === 'cancelled') return 'pending'
   if (sale.paid >= sale.total) return 'paid'
@@ -107,37 +115,29 @@ function formatPaymentMethod(method: PaymentMethod): string {
 }
 
 export default function SalesPage() {
-  const isCloud = isSupabaseConfigured()
+  const isMobile = useIsMobile()
   const businessId = useBusinessId()
   const userId = useAppStore(s => s.user?.id || '')
+  const syncing = useSyncStore(s => s.syncing)
   const [refreshKey, setRefreshKey] = useState(0)
+  const [actionSheetSale, setActionSheetSale] = useState<Sale | null>(null)
 
-  const dexieSales = useLiveQuery(() => db.sales.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId, refreshKey])
-  const { data: supabaseSales } = useSupabaseQuery<Sale>('sales', undefined, [refreshKey])
-  const allSales = (isCloud ? supabaseSales : dexieSales) || ([] as Sale[])
+  const rawSales = useLiveQuery(() => db.sales.where('businessId').equals(businessId).toArray(), [businessId, refreshKey])
+  const salesLoading = rawSales === undefined
+  const allSales: Sale[] = rawSales ?? []
 
-  const dexieLocations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseLocations } = useSupabaseQuery<Location>('locations', undefined, [])
-  const locations = (isCloud ? supabaseLocations : dexieLocations) || ([] as Location[])
+  const rawLocations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
+  const locations: Location[] = rawLocations ?? []
 
-  const dexieCustomers = useLiveQuery(() => db.customers.toArray(), [])
-  const { data: supabaseCustomers } = useSupabaseQuery<any>('customers', undefined, [])
-  const customers = (isCloud ? supabaseCustomers : dexieCustomers) || []
+  const customers: any[] = useLiveQuery(() => db.customers.toArray(), []) ?? []
 
-  const dexieProductsList = useLiveQuery(() => db.products.toArray(), [])
-  const { data: supabaseProducts } = useSupabaseQuery<any>('products', undefined, [])
-  const productsList = (isCloud ? supabaseProducts : dexieProductsList) || []
+  const productsList: any[] = useLiveQuery(() => db.products.toArray(), []) ?? []
 
-  const dexieCredits = useLiveQuery(() => db.credits.toArray(), [])
-  const { data: supabaseCredits } = useSupabaseQuery<Credit>('credits', undefined, [])
-  const credits = (isCloud ? supabaseCredits : dexieCredits) || ([] as Credit[])
 
-  const dexieSettings = useLiveQuery(() => db.settings.get('default'), [])
-  const appSettings = dexieSettings as CompanySettings | undefined
+  const rawSettings = useLiveQuery(() => db.settings.get('default'), [])
+  const appSettings = rawSettings as CompanySettings | undefined
 
-  const dexieUsers = useLiveQuery(() => db.users.toArray(), [])
-  const { data: supabaseUsers } = useSupabaseQuery<any>('profiles', undefined, [])
-  const users = (isCloud ? supabaseUsers : dexieUsers) || []
+  const users: any[] = useLiveQuery(() => db.users.toArray(), []) ?? []
 
   const productCostMap = useMemo(() => {
     const map = new Map<string, number>()
@@ -173,11 +173,10 @@ export default function SalesPage() {
   const filteredSales = useMemo(() => {
     let result = [...allSales]
     const activeSales = result.filter(s => s.status === 'completed' || s.status === 'pending')
-    const creditSales = result.filter(s => s.status === 'completed' && s.paymentMethod === 'credit' && s.paid < s.total)
     const paidSales = result.filter(s => s.status === 'completed' && s.paid >= s.total)
-    const partialSales = result.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total && s.paymentMethod !== 'credit')
+    const partialSales = result.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total)
     const cancelledSales = result.filter(s => s.status === 'cancelled')
-    const tabMap: Record<TabKey, Sale[]> = { active: activeSales, credit: creditSales, paid: paidSales, partial: partialSales, cancelled: cancelledSales }
+    const tabMap: Record<TabKey, Sale[]> = { active: activeSales, paid: paidSales, partial: partialSales, cancelled: cancelledSales }
     result = tabMap[tab] || activeSales
     if (search) {
       const q = search.toLowerCase()
@@ -218,9 +217,8 @@ export default function SalesPage() {
     const all = allSales
     return {
       active: all.filter(s => s.status === 'completed' || s.status === 'pending').length,
-      credit: all.filter(s => s.status === 'completed' && s.paymentMethod === 'credit' && s.paid < s.total).length,
       paid: all.filter(s => s.status === 'completed' && s.paid >= s.total).length,
-      partial: all.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total && s.paymentMethod !== 'credit').length,
+      partial: all.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total).length,
       cancelled: all.filter(s => s.status === 'cancelled').length,
     }
   }, [allSales])
@@ -303,10 +301,8 @@ export default function SalesPage() {
   }
 
   function handleWhatsApp(sale: Sale) {
-    const phone = customers.find((c: any) => c.id === sale.customerId)?.phone || ''
-    const msg = `Bonjour ${sale.customerName || ''},\nFacture ${sale.invoiceNumber}\nTotal: ${formatCurrency(sale.total)}`
-    openWhatsApp(phone, msg)
-    toast('WhatsApp ouvert', 'success')
+    shareSalePDF(sale, appSettings)
+    toast('Facture partagée', 'success')
   }
 
   function handleEmail(sale: Sale) {
@@ -381,13 +377,21 @@ export default function SalesPage() {
     <div className="w-full h-full flex flex-col gap-4 p-4 lg:p-6 overflow-y-auto">
       <div className="flex items-center justify-between w-full">
         <div>
-          <h1 className="text-2xl font-bold text-surface-900">Ventes</h1>
-          <p className="text-surface-500 text-sm mt-1">{kpiStats.totalSales} ventes · {formatCurrency(kpiStats.totalRevenue)} CA</p>
+          <div className="flex items-center gap-2">
+            <h1 className="text-2xl font-bold text-surface-900">Ventes</h1>
+            {syncing && <RefreshCw className="w-4 h-4 text-primary-500 animate-spin" />}
+          </div>
+          <p className="text-surface-500 text-sm mt-1">
+            {syncing ? 'Synchronisation...' : `${kpiStats.totalSales} ventes · ${formatCurrency(kpiStats.totalRevenue)} CA`}
+          </p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handleExportPDF}><FileText className="w-4 h-4" /> PDF</Button>
-          <Button variant="outline" size="sm" onClick={handleExportExcel}><FileSpreadsheet className="w-4 h-4" /> Excel</Button>
-          <Button variant="outline" size="sm" onClick={handleExportCSV}><Download className="w-4 h-4" /> CSV</Button>
+          <Button variant="outline" size="sm" onClick={() => setRefreshKey(k => k + 1)}><RefreshCw className={cn('w-4 h-4', syncing && 'animate-spin')} /></Button>
+          {!isMobile && <>
+            <Button variant="outline" size="sm" onClick={handleExportPDF}><FileText className="w-4 h-4" /> PDF</Button>
+            <Button variant="outline" size="sm" onClick={handleExportExcel}><FileSpreadsheet className="w-4 h-4" /> Excel</Button>
+            <Button variant="outline" size="sm" onClick={handleExportCSV}><Download className="w-4 h-4" /> CSV</Button>
+          </>}
         </div>
       </div>
 
@@ -454,74 +458,125 @@ export default function SalesPage() {
         )}
       </div>
 
-      <div className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden w-full">
-        <div className="overflow-x-auto responsive-table">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-surface-200 bg-surface-50/80">
-                <Th onClick={() => toggleSort('invoiceNumber')}><SortIcon field="invoiceNumber" /> Facture</Th>
-                <Th onClick={() => toggleSort('createdAt')}><SortIcon field="createdAt" /> Date/Heure</Th>
-                <Th onClick={() => toggleSort('customerName')}><SortIcon field="customerName" /> Client</Th>
-                <Th>Téléphone</Th>
-                <Th>Type</Th>
-                <Th>Paiement</Th>
-                <Th>Vendeur</Th>
-                <Th>Boutique</Th>
-                <Th onClick={() => toggleSort('total')} className="text-right"><SortIcon field="total" /> Total</Th>
-                <Th className="text-right">Bénéfice</Th>
-                <Th>Statut</Th>
-                <Th className="text-right">Actions</Th>
-              </tr>
-            </thead>
-            <tbody>
-              {paginatedSales.map((sale) => {
-                const ratio = sale.total > 0 ? sale.paid / sale.total : 1
-                const profit = (sale.total - getSaleCost(sale)) * ratio
-                const phone = customers.find((c: any) => c.id === sale.customerId)?.phone || ''
-                const seller = users.find((u: any) => u.id === sale.userId)?.name || '—'
-                const locName = locations.find(l => l.id === sale.locationId)?.name || '—'
-                return (
-                  <tr key={sale.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition-colors cursor-pointer group" onClick={() => openDetail(sale)}>
-                    <td data-label="Facture" className="px-4 py-3 font-medium text-primary-600">{sale.invoiceNumber || '—'}</td>
-                    <td data-label="Date" className="px-4 py-3 text-surface-600 whitespace-nowrap"><div className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-surface-400 shrink-0" /><span>{formatDateTime(sale.createdAt)}</span></div></td>
-                    <td data-label="Client" className="px-4 py-3"><div className="flex items-center gap-2"><User className="w-3.5 h-3.5 text-surface-400 shrink-0" /><span className="font-medium text-surface-900 truncate max-w-[120px]">{sale.customerName || 'Client divers'}</span></div></td>
-                    <td data-label="Téléphone" className="px-4 py-3 text-surface-500 text-xs">{phone || '—'}</td>
-                    <td data-label="Type" className="px-4 py-3"><Badge variant={getSaleType(sale, locations) === 'depot' ? 'warning' : 'info'}>{getSaleType(sale, locations) === 'depot' ? 'Dépôt' : 'Boutique'}</Badge></td>
-                    <td data-label="Paiement" className="px-4 py-3"><div className="flex items-center gap-1"><Wallet className="w-3 h-3 text-surface-400" /><span className="text-xs">{formatPaymentMethod(sale.paymentMethod)}</span></div></td>
-                    <td data-label="Vendeur" className="px-4 py-3 text-xs text-surface-600">{seller}</td>
-                    <td data-label="Boutique" className="px-4 py-3 text-xs text-surface-600">{locName}</td>
-                    <td data-label="Total" className="px-4 py-3 text-right font-semibold text-surface-900">{formatCurrency(sale.total)}</td>
-                    <td data-label="Bénéfice" className={cn('px-4 py-3 text-right font-semibold', profit >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(profit)}</td>
-                    <td data-label="Statut" className="px-4 py-3">{statusBadge(sale.status).label !== 'Terminée' ? <Badge variant={statusBadge(sale.status).variant}>{statusBadge(sale.status).label}</Badge> : <Badge variant={sale.paid >= sale.total ? 'success' : 'warning'}>{sale.paid >= sale.total ? 'Payée' : 'Partielle'}</Badge>}</td>
-                    <td data-label="Actions" className="px-4 py-3">
-                      <div className="flex items-center justify-end gap-1 lg:opacity-0 lg:group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
-                        <button onClick={() => openDetail(sale)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-600 transition-colors" title="Détails"><Eye className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handlePrintPDF(sale)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="PDF"><FileText className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleWhatsApp(sale)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-green-600 transition-colors" title="WhatsApp"><Send className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => { handleEmail(sale) }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="Email"><Mail className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => openEditModal(sale)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-600 transition-colors" title="Modifier"><Edit2 className="w-3.5 h-3.5" /></button>
-                        <button onClick={() => handleDelete(sale)} className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors" title="Supprimer"><Trash2 className="w-3.5 h-3.5" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
+      {isMobile ? (
+        <div className="flex flex-col gap-3 w-full">
+          {paginatedSales.map((sale) => (
+            <div key={sale.id} className="relative">
+              <MobileSaleCard sale={sale} onTap={() => openDetail(sale)} />
+              <button
+                onClick={(e) => { e.stopPropagation(); setActionSheetSale(sale) }}
+                className="absolute top-3 right-3 w-9 h-9 flex items-center justify-center rounded-full active:bg-surface-100"
+              >
+                <MoreHorizontal className="w-5 h-5 text-surface-400" />
+              </button>
+            </div>
+          ))}
+          {paginatedSales.length === 0 && salesLoading && (
+            <div className="flex flex-col items-center justify-center py-16 text-surface-400">
+              <RefreshCw className="w-10 h-10 mb-3 text-primary-400 animate-spin" />
+              <p className="font-medium text-surface-500">Chargement des ventes...</p>
+              <p className="text-xs mt-1 text-surface-400">Synchronisation en cours</p>
+            </div>
+          )}
+          {paginatedSales.length === 0 && !salesLoading && (
+            <div className="flex flex-col items-center justify-center py-16 text-surface-400">
+              <ShoppingBag className="w-12 h-12 mb-3 opacity-50" />
+              <p className="font-medium">Aucune vente trouvée</p>
+              <p className="text-sm mt-1">Essayez de modifier vos filtres</p>
+            </div>
+          )}
+          <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
         </div>
-        {paginatedSales.length === 0 && (
-          <div className="flex flex-col items-center justify-center py-16 text-surface-400">
-            <ShoppingBag className="w-12 h-12 mb-3 opacity-50" />
-            <p className="font-medium">Aucune vente trouvée</p>
-            <p className="text-sm mt-1">Essayez de modifier vos filtres</p>
+      ) : (
+        <div className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden w-full">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-surface-200 bg-surface-50/80">
+                  <Th onClick={() => toggleSort('invoiceNumber')}><SortIcon field="invoiceNumber" /> Facture</Th>
+                  <Th onClick={() => toggleSort('createdAt')}><SortIcon field="createdAt" /> Date/Heure</Th>
+                  <Th onClick={() => toggleSort('customerName')}><SortIcon field="customerName" /> Client</Th>
+                  <Th>Téléphone</Th>
+                  <Th>Type</Th>
+                  <Th>Paiement</Th>
+                  <Th>Vendeur</Th>
+                  <Th>Boutique</Th>
+                  <Th onClick={() => toggleSort('total')} className="text-right"><SortIcon field="total" /> Total</Th>
+                  <Th className="text-right">Bénéfice</Th>
+                  <Th>Statut</Th>
+                  <Th className="text-right">Actions</Th>
+                </tr>
+              </thead>
+              <tbody>
+                {paginatedSales.map((sale) => {
+                  const ratio = sale.total > 0 ? sale.paid / sale.total : 1
+                  const profit = (sale.total - getSaleCost(sale)) * ratio
+                  const phone = customers.find((c: any) => c.id === sale.customerId)?.phone || ''
+                  const seller = users.find((u: any) => u.id === sale.userId)?.name || '—'
+                  const locName = locations.find(l => l.id === sale.locationId)?.name || '—'
+                  return (
+                    <tr key={sale.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition-colors cursor-pointer group" onClick={() => openDetail(sale)}>
+                      <td className="px-4 py-3 font-medium text-primary-600">{sale.invoiceNumber || '—'}</td>
+                      <td className="px-4 py-3 text-surface-600 whitespace-nowrap"><div className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-surface-400 shrink-0" /><span>{formatDateTime(sale.createdAt)}</span></div></td>
+                      <td className="px-4 py-3"><div className="flex items-center gap-2"><User className="w-3.5 h-3.5 text-surface-400 shrink-0" /><span className="font-medium text-surface-900 truncate max-w-[120px]">{sale.customerName || 'Client divers'}</span></div></td>
+                      <td className="px-4 py-3 text-surface-500 text-xs">{phone || '—'}</td>
+                      <td className="px-4 py-3"><Badge variant={getSaleType(sale, locations) === 'depot' ? 'warning' : 'info'}>{getSaleType(sale, locations) === 'depot' ? 'Dépôt' : 'Boutique'}</Badge></td>
+                      <td className="px-4 py-3"><div className="flex items-center gap-1"><Wallet className="w-3 h-3 text-surface-400" /><span className="text-xs">{formatPaymentMethod(sale.paymentMethod)}</span></div></td>
+                      <td className="px-4 py-3 text-xs text-surface-600">{seller}</td>
+                      <td className="px-4 py-3 text-xs text-surface-600">{locName}</td>
+                      <td className="px-4 py-3 text-right font-semibold text-surface-900">{formatCurrency(sale.total)}</td>
+                      <td className={cn('px-4 py-3 text-right font-semibold', profit >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(profit)}</td>
+                      <td className="px-4 py-3">{getPaymentStatusBadge(sale)}</td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+                          <button onClick={() => openDetail(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-600 transition-colors" title="Détails"><Eye className="w-4 h-4" /></button>
+                          <button onClick={() => handlePrintPDF(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="PDF"><FileText className="w-4 h-4" /></button>
+                          <button onClick={() => handleWhatsApp(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-green-600 transition-colors" title="WhatsApp"><Send className="w-4 h-4" /></button>
+                          <button onClick={() => { handleEmail(sale) }} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="Email"><Mail className="w-4 h-4" /></button>
+                          <button onClick={() => openEditModal(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-600 transition-colors" title="Modifier"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleDelete(sale)} className="touch-target-sm rounded-lg hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
-        )}
-        <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
-      </div>
+          {paginatedSales.length === 0 && salesLoading && (
+            <div className="flex flex-col items-center justify-center py-16 text-surface-400">
+              <RefreshCw className="w-10 h-10 mb-3 text-primary-400 animate-spin" />
+              <p className="font-medium text-surface-500">Chargement des ventes...</p>
+              <p className="text-xs mt-1 text-surface-400">Synchronisation en cours</p>
+            </div>
+          )}
+          {paginatedSales.length === 0 && !salesLoading && (
+            <div className="flex flex-col items-center justify-center py-16 text-surface-400">
+              <ShoppingBag className="w-12 h-12 mb-3 opacity-50" />
+              <p className="font-medium">Aucune vente trouvée</p>
+              <p className="text-sm mt-1">Essayez de modifier vos filtres</p>
+            </div>
+          )}
+          <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
+        </div>
+      )}
 
-      <Modal open={detailOpen} onClose={() => setDetailOpen(false)} title={selectedSale ? `Vente ${selectedSale.invoiceNumber}` : ''} size="xl">
+      <MobileActionsSheet
+        open={actionSheetSale !== null}
+        onClose={() => setActionSheetSale(null)}
+        actions={actionSheetSale ? [
+          { key: 'detail', label: 'Voir détails', icon: <Eye className="w-5 h-5" />, onClick: () => openDetail(actionSheetSale) },
+          { key: 'pdf', label: 'Télécharger PDF', icon: <FileText className="w-5 h-5" />, onClick: () => handlePrintPDF(actionSheetSale) },
+          { key: 'whatsapp', label: 'Partager PDF par WhatsApp', icon: <Send className="w-5 h-5" />, onClick: () => handleWhatsApp(actionSheetSale) },
+          { key: 'email', label: 'Envoyer par Email', icon: <Mail className="w-5 h-5" />, onClick: () => handleEmail(actionSheetSale) },
+          { key: 'edit', label: 'Modifier', icon: <Edit2 className="w-5 h-5" />, onClick: () => openEditModal(actionSheetSale) },
+          { key: 'delete', label: 'Supprimer', icon: <Trash2 className="w-5 h-5" />, variant: 'danger', onClick: () => handleDelete(actionSheetSale) },
+        ] : []}
+      />
+
+      <Modal open={detailOpen} onClose={() => setDetailOpen(false)} title={selectedSale ? `Vente ${selectedSale.invoiceNumber}` : ''} size={isMobile ? 'full' : 'md'}>
         {selectedSale && (
-          <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+          <div className="p-6 space-y-6">
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div><p className="text-xs text-surface-500">Facture</p><p className="text-sm font-semibold text-surface-900">{selectedSale.invoiceNumber}</p></div>
               <div><p className="text-xs text-surface-500">Date</p><p className="text-sm text-surface-900">{formatDate(selectedSale.createdAt)}</p></div>
@@ -540,7 +595,7 @@ export default function SalesPage() {
 
             <div>
               <h3 className="text-sm font-semibold text-surface-900 mb-3">Produits</h3>
-              <table className="w-full text-sm">
+              <div className="overflow-x-auto responsive-table"><table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-surface-200 bg-surface-50">
                     <th className="px-3 py-2 text-left text-xs font-medium text-surface-500">Produit</th><th className="px-3 py-2 text-center text-xs font-medium text-surface-500">Qté</th>
@@ -552,12 +607,12 @@ export default function SalesPage() {
                 <tbody>
                   {selectedSale.items.map((item, idx) => (
                     <tr key={idx} className="border-b border-surface-100">
-                      <td className="px-3 py-2 font-medium text-surface-900">{item.productName}</td>
-                      <td className="px-3 py-2 text-center">{item.quantity.toLocaleString('fr-FR')}</td>
-                      <td className="px-3 py-2 text-center text-surface-500 text-xs">{item.unitName || 'Pièce'}</td>
-                      <td className="px-3 py-2 text-right">{formatCurrency(item.unitPrice)}</td>
-                      <td className="px-3 py-2 text-right text-red-500">{item.discount > 0 ? formatCurrency(item.discount) : '—'}</td>
-                      <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
+                      <td data-label="Produit" className="px-3 py-2 font-medium text-surface-900">{item.productName}</td>
+                      <td data-label="Qté" className="px-3 py-2 text-center">{item.quantity.toLocaleString('fr-FR')}</td>
+                      <td data-label="Unité" className="px-3 py-2 text-center text-surface-500 text-xs">{item.unitName || 'Pièce'}</td>
+                      <td data-label="Prix unit." className="px-3 py-2 text-right">{formatCurrency(item.unitPrice)}</td>
+                      <td data-label="Remise" className="px-3 py-2 text-right text-red-500">{item.discount > 0 ? formatCurrency(item.discount) : '—'}</td>
+                      <td data-label="Total" className="px-3 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -569,6 +624,7 @@ export default function SalesPage() {
                 </tfoot>
               </table>
             </div>
+            </div>
 
             <div>
               <h3 className="text-sm font-semibold text-surface-900 mb-3">Paiement</h3>
@@ -578,12 +634,17 @@ export default function SalesPage() {
                 <Card className="p-4"><p className="text-xs text-surface-500">Restant</p><p className={cn('text-lg font-bold', selectedSale.total - selectedSale.paid > 0 ? 'text-red-600' : 'text-surface-900')}>{formatCurrency(selectedSale.total - selectedSale.paid)}</p></Card>
               </div>
             </div>
+            {isMobile && (
+              <div className="flex flex-col gap-3 pt-2">
+                <Button className="w-full min-h-[48px]" variant="outline" onClick={() => { setDetailOpen(false); setActionSheetSale(selectedSale) }}><MoreHorizontal className="w-5 h-5" /> Plus d'actions</Button>
+              </div>
+            )}
           </div>
         )}
       </Modal>
 
-      <Modal open={editModalOpen} onClose={() => setEditModalOpen(false)} title={`Modifier la vente ${editSaleTarget?.invoiceNumber || ''}`} size="full">
-        <div className="p-6 space-y-6 max-h-[75vh] overflow-y-auto">
+      <Modal open={editModalOpen} onClose={() => setEditModalOpen(false)} title={`Modifier la vente ${editSaleTarget?.invoiceNumber || ''}`} size="lg">
+        <div className="p-6 space-y-6">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-surface-700 mb-1.5">Client</label>
@@ -605,7 +666,7 @@ export default function SalesPage() {
               <h3 className="text-lg font-semibold text-surface-900">Produits</h3>
               <Button size="sm" onClick={addEditItem}><Plus className="w-4 h-4" /> Ajouter</Button>
             </div>
-            <table className="w-full text-sm">
+            <div className="overflow-x-auto responsive-table"><table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-200 bg-surface-50">
                   <th className="px-3 py-2 text-left text-xs font-medium text-surface-500">Produit</th>
@@ -645,6 +706,7 @@ export default function SalesPage() {
               </tfoot>
             </table>
           </div>
+        </div>
         </div>
         <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
           <Button variant="ghost" onClick={() => setEditModalOpen(false)}>Annuler</Button>

@@ -199,7 +199,7 @@ export default function SupplierDetailPage() {
 
       <Card>
         <CardHeader><CardTitle><FileText className="w-5 h-5 inline mr-2" />Factures</CardTitle></CardHeader>
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
@@ -215,17 +215,17 @@ export default function SupplierDetailPage() {
             <tbody className="divide-y divide-surface-100">
               {invoices?.map(inv => (
                 <tr key={inv.id} className="hover:bg-surface-50">
-                  <td className="px-4 py-3 text-sm font-medium">{inv.number}</td>
-                  <td className="px-4 py-3 text-sm text-surface-500">{formatDate(inv.createdAt)}</td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold">{formatCurrency(inv.total)}</td>
-                  <td className="px-4 py-3 text-sm text-right">{formatCurrency(inv.paid)}</td>
-                  <td className="px-4 py-3 text-sm text-right font-semibold text-danger">{formatCurrency(inv.balance)}</td>
-                  <td className="px-4 py-3 text-center">
+                  <td data-label="N°" className="px-4 py-3 text-sm font-medium">{inv.number}</td>
+                  <td data-label="Date" className="px-4 py-3 text-sm text-surface-500">{formatDate(inv.createdAt)}</td>
+                  <td data-label="Total" className="px-4 py-3 text-sm text-right font-semibold">{formatCurrency(inv.total)}</td>
+                  <td data-label="Payé" className="px-4 py-3 text-sm text-right">{formatCurrency(inv.paid)}</td>
+                  <td data-label="Solde" className="px-4 py-3 text-sm text-right font-semibold text-danger">{formatCurrency(inv.balance)}</td>
+                  <td data-label="Statut" className="px-4 py-3 text-center">
                     <Badge variant={inv.status === 'paid' ? 'success' : inv.status === 'partial' ? 'warning' : inv.status === 'cancelled' ? 'danger' : 'info'}>
                       {inv.status === 'paid' ? 'Payée' : inv.status === 'partial' ? 'Partielle' : inv.status === 'cancelled' ? 'Annulée' : 'À crédit'}
                     </Badge>
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td data-label="Action" className="px-4 py-3 text-right">
                     {inv.status !== 'paid' && inv.status !== 'cancelled' && (
                       <Button size="sm" variant="outline" onClick={() => { setPayModal(inv); setPayAmount(inv.balance); setPayType('cash'); setPayProductItems([]) }}>
                         <DollarSign className="w-3 h-3" /> Payer
@@ -263,7 +263,7 @@ export default function SupplierDetailPage() {
         </div>
       </Card>
 
-      <Modal open={invModal} onClose={() => setInvModal(false)} title="Nouvelle facture fournisseur" size="lg">
+      <Modal open={invModal} onClose={() => setInvModal(false)} title="Nouvelle facture fournisseur" size="md">
         <div className="space-y-4 p-6">
           <input placeholder="N° de facture" value={invNumber} onChange={e => setInvNumber(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
@@ -287,7 +287,7 @@ export default function SupplierDetailPage() {
         </div>
       </Modal>
 
-      <Modal open={!!payModal} onClose={() => setPayModal(null)} title={`Paiement facture ${payModal?.number || ''}`} size="lg">
+      <Modal open={!!payModal} onClose={() => setPayModal(null)} title={`Paiement facture ${payModal?.number || ''}`} size="md">
         <div className="space-y-4 p-6">
           <div className="flex justify-between text-sm">
             <span className="text-surface-500">Solde restant</span>
@@ -327,7 +327,7 @@ export default function SupplierDetailPage() {
         </div>
       </Modal>
 
-      <Modal open={compModal} onClose={() => setCompModal(false)} title="Compensation" size="lg">
+      <Modal open={compModal} onClose={() => setCompModal(false)} title="Compensation" size="md">
         <div className="space-y-4 p-6">
           <select value={compDirection} onChange={e => setCompDirection(e.target.value as any)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm">

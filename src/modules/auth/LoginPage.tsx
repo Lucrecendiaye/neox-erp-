@@ -5,6 +5,7 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import db from '@/db'
 import { toast } from '@/lib/toast'
 import { useAppStore } from '@/stores/appStore'
+import { syncAll } from '@/lib/syncEngine'
 import { LogIn, Mail, Lock, Eye, EyeOff } from 'lucide-react'
 
 export default function LoginPage() {
@@ -86,9 +87,10 @@ export default function LoginPage() {
             <div className="relative">
               <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
               <input
-                type="text" value={email} onChange={e => setEmail(e.target.value)}
+                type="email" inputMode="email" autoComplete="email"
+                value={email} onChange={e => setEmail(e.target.value)}
                 placeholder="exemple@email.com"
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                className="w-full pl-10 pr-4 py-3 rounded-xl border border-surface-300 bg-white text-base focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
               />
             </div>
           </div>
@@ -98,9 +100,10 @@ export default function LoginPage() {
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
               <input
-                type={showPwd ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                type={showPwd ? 'text' : 'password'} autoComplete="current-password"
+                value={password} onChange={e => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                className="w-full pl-10 pr-10 py-3 rounded-xl border border-surface-300 bg-white text-base focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
               />
               <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600">
                 {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -110,7 +113,7 @@ export default function LoginPage() {
 
           <button
             type="submit" disabled={loading}
-            className="w-full py-3 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-200"
+            className="w-full min-h-[48px] py-3 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-200 active:scale-[0.98]"
           >
             <LogIn className="w-4 h-4" />
             {loading ? 'Connexion...' : 'Se connecter'}
@@ -118,7 +121,7 @@ export default function LoginPage() {
 
           <p className="text-center text-sm text-surface-400">
             Pas encore de compte ?{' '}
-            <button type="button" onClick={() => navigate('/register')} className="text-primary-600 hover:text-primary-700 font-medium">
+            <button type="button" onClick={() => navigate('/register')} className="text-primary-600 hover:text-primary-700 font-medium min-h-[44px] inline-flex items-center">
               Créer un compte
             </button>
           </p>

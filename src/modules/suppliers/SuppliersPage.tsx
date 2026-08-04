@@ -3,9 +3,9 @@ import { Card, Button, Input, Modal, Pagination } from '@/components/ui'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
+
 import { usePagination } from '@/hooks/usePagination'
-import { isSupabaseConfigured } from '@/lib/supabase'
+
 import db from '@/db'
 import { generateId, openWhatsApp, pickContact } from '@/lib/utils'
 import { toast } from '@/lib/toast'
@@ -16,12 +16,8 @@ import type { Supplier } from '@/types'
 
 export default function SuppliersPage() {
   const navigate = useNavigate()
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
-  const dexieSuppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseSuppliers } = useSupabaseQuery<Supplier>('suppliers', undefined, [])
-
-  const suppliers = isCloud ? supabaseSuppliers : dexieSuppliers
+  const suppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
 
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
@@ -54,19 +50,11 @@ export default function SuppliersPage() {
     const now = new Date().toISOString()
     try {
       if (editing) {
-        if (isCloud) {
-          await sb.update('suppliers', editing.id, { ...form, updatedAt: now })
-        } else {
-          await db.suppliers.update(editing.id, { ...form, updatedAt: now })
-        }
+        await db.suppliers.update(editing.id, { ...form, updatedAt: now })
         toast('Fournisseur mis à jour avec succès', 'success')
       } else {
         const record = { id: generateId(), businessId, ...form, createdAt: now, updatedAt: now }
-        if (isCloud) {
-          await sb.insert('suppliers', record)
-        } else {
-          await db.suppliers.add(record)
-        }
+        await db.suppliers.add(record)
         toast('Fournisseur créé avec succès', 'success')
       }
       setModalOpen(false)
@@ -85,11 +73,7 @@ export default function SuppliersPage() {
     try {
       const supplier = suppliers?.find(s => s.id === deleteTargetId)
       if (supplier) await softDelete('suppliers', deleteTargetId, supplier as any, supplier.name)
-      if (isCloud) {
-        await sb.remove('suppliers', deleteTargetId)
-      } else {
-        await db.suppliers.delete(deleteTargetId)
-      }
+      await db.suppliers.delete(deleteTargetId)
       toast('Fournisseur supprimé avec succès', 'success')
     } catch {
       toast('Erreur lors de la suppression du fournisseur', 'error')
@@ -155,10 +139,12 @@ export default function SuppliersPage() {
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier' : 'Nouveau fournisseur'}>
         <div className="p-6 space-y-4">
-          <Input label="Nom" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-          <Input label="Téléphone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} icon={<Phone className="w-4 h-4" />} />
-          <Input label="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
-          <Input label="Adresse" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input label="Nom" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
+            <Input label="Téléphone" value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} icon={<Phone className="w-4 h-4" />} />
+            <Input label="Email" value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} />
+            <Input label="Adresse" value={form.address} onChange={(e) => setForm({ ...form, address: e.target.value })} />
+          </div>
           <Input label="Notes" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} />
           <Button variant="outline" className="w-full" onClick={async () => {
             const contact = await pickContact()

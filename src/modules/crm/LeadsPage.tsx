@@ -8,8 +8,8 @@ import { generateId, formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { Search, Plus, Edit2, Trash2, Kanban, LayoutList, Phone, Mail, Building2, DollarSign, Users } from 'lucide-react'
 import type { Lead } from '@/types'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
+
+
 import { softDelete } from '@/lib/softDelete'
 
 const statusConfig: Record<string, { label: string; variant: 'default' | 'success' | 'warning' | 'danger' | 'info'; badgeClass?: string }> = {
@@ -41,11 +41,8 @@ const sourceOptions = [
 ]
 
 export default function LeadsPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
-  const dexieLeads = useLiveQuery(() => db.leads.where('businessId').equals(businessId).toArray(), [businessId])
-  const { data: supabaseLeads } = useSupabaseQuery<Lead>('leads', undefined, [])
-  const leads = isCloud ? supabaseLeads : dexieLeads
+  const leads = useLiveQuery(() => db.leads.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const [search, setSearch] = useState('')
   const [view, setView] = useState<'kanban' | 'table'>('kanban')
   const [modalOpen, setModalOpen] = useState(false)
@@ -83,10 +80,10 @@ export default function LeadsPage() {
     const now = new Date().toISOString()
     try {
       if (editing) {
-        if (isCloud) { await sb.update('leads', editing.id, { ...form, updatedAt: now }) } else { await db.leads.update(editing.id, { ...form, updatedAt: now }) }
+        await db.leads.update(editing.id, { ...form, updatedAt: now })
         toast('Lead mis à jour avec succès', 'success')
       } else {
-        if (isCloud) { await sb.insert('leads', { id: generateId(), businessId, ...form, createdAt: now, updatedAt: now }) } else { await db.leads.add({ id: generateId(), businessId, ...form, createdAt: now, updatedAt: now }) }
+        await db.leads.add({ id: generateId(), businessId, ...form, createdAt: now, updatedAt: now })
         toast('Lead créé avec succès', 'success')
       }
       setModalOpen(false)
@@ -100,7 +97,7 @@ export default function LeadsPage() {
     try {
       const lead = leads?.find(l => l.id === id)
       if (lead) await softDelete('leads', id, lead as any, lead.name)
-      if (isCloud) { await sb.remove('leads', id) } else { await db.leads.delete(id) }
+      await db.leads.delete(id)
       toast('Lead supprimé avec succès', 'success')
     } catch {
       toast('Erreur lors de la suppression', 'error')
@@ -109,7 +106,7 @@ export default function LeadsPage() {
 
   async function changeStatus(lead: Lead, newStatus: Lead['status']) {
     try {
-      if (isCloud) { await sb.update('leads', lead.id, { status: newStatus, updatedAt: new Date().toISOString() }) } else { await db.leads.update(lead.id, { status: newStatus, updatedAt: new Date().toISOString() }) }
+      await db.leads.update(lead.id, { status: newStatus, updatedAt: new Date().toISOString() })
       toast('Statut mis à jour', 'success')
     } catch {
       toast('Erreur lors du changement de statut', 'error')
@@ -210,7 +207,7 @@ export default function LeadsPage() {
         </div>
       ) : (
         <div className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto responsive-table">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-200 bg-surface-50/50">
@@ -227,22 +224,22 @@ export default function LeadsPage() {
               <tbody>
                 {paginatedItems?.map(lead => (
                   <tr key={lead.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition-colors">
-                    <td className="px-4 py-3 font-medium text-surface-900">{lead.name}</td>
-                    <td className="px-4 py-3 text-surface-600">{lead.phone}</td>
-                    <td className="px-4 py-3 text-surface-600">{lead.company || '-'}</td>
-                    <td className="px-4 py-3">
+                    <td data-label="Nom" className="px-4 py-3 font-medium text-surface-900">{lead.name}</td>
+                    <td data-label="Téléphone" className="px-4 py-3 text-surface-600">{lead.phone}</td>
+                    <td data-label="Entreprise" className="px-4 py-3 text-surface-600">{lead.company || '-'}</td>
+                    <td data-label="Source" className="px-4 py-3">
                       <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-surface-100 text-surface-600">
                         {lead.source}
                       </span>
                     </td>
-                    <td className="px-4 py-3">
+                    <td data-label="Statut" className="px-4 py-3">
                       <Badge variant={statusConfig[lead.status].variant} className={statusConfig[lead.status].badgeClass}>
                         {statusConfig[lead.status].label}
                       </Badge>
                     </td>
-                    <td className="px-4 py-3 text-right font-medium text-surface-900">{formatCurrency(lead.expectedValue)}</td>
-                    <td className="px-4 py-3 text-surface-500 text-xs">{formatDate(lead.createdAt)}</td>
-                    <td className="px-4 py-3 text-right">
+                    <td data-label="Valeur" className="px-4 py-3 text-right font-medium text-surface-900">{formatCurrency(lead.expectedValue)}</td>
+                    <td data-label="Créé le" className="px-4 py-3 text-surface-500 text-xs">{formatDate(lead.createdAt)}</td>
+                    <td data-label="Actions" className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
                         <button onClick={() => openEdit(lead)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
                           <Edit2 className="w-4 h-4" />
@@ -269,7 +266,7 @@ export default function LeadsPage() {
         </div>
       )}
 
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier le lead' : 'Nouveau lead'} size="lg">
+      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier le lead' : 'Nouveau lead'} size="md">
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input label="Nom" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />

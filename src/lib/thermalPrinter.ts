@@ -160,3 +160,43 @@ export class ThermalPrinter {
 }
 
 export const thermalPrinter = new ThermalPrinter()
+
+export function printReceiptHTML(sale: { invoiceNumber: string; customerName?: string; items: { productName: string; quantity: number; unitName?: string; unitPrice: number; total: number }[]; total: number; paid: number; change?: number; createdAt: string; paymentMethod: string }, businessName?: string) {
+  const w = window.open('', '', 'width=400,height=600')
+  if (!w) return
+  const fmt = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' FCFA'
+  const date = new Date(sale.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+  const payLabels: Record<string, string> = { cash: 'Espèces', mobile: 'Mobile Money', card: 'Carte', bank: 'Banque' }
+  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Facture ${sale.invoiceNumber}</title><style>
+    body { font-family: 'Courier New', monospace; font-size: 12px; width: 280px; margin: 0 auto; padding: 10px; }
+    h2 { text-align: center; font-size: 16px; margin: 5px 0; }
+    .center { text-align: center; }
+    .line { border-top: 1px dashed #000; margin: 5px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    td { padding: 2px 0; }
+    .right { text-align: right; }
+    .total { font-weight: bold; font-size: 14px; }
+    .footer { text-align: center; margin-top: 10px; font-size: 11px; }
+  </style></head><body>
+    <h2>${businessName || 'NEOX ERP'}</h2>
+    <p class="center">Facture ${sale.invoiceNumber}</p>
+    <p class="center">${date}</p>
+    ${sale.customerName ? `<p>Client: ${sale.customerName}</p>` : ''}
+    <div class="line"></div>
+    <table>
+      <tr><th>Article</th><th class="right">Qté</th><th class="right">PU</th><th class="right">Total</th></tr>
+      ${sale.items.map(i => `<tr><td>${i.productName}</td><td class="right">${i.quantity}${i.unitName ? ' ' + i.unitName : ''}</td><td class="right">${fmt(i.unitPrice)}</td><td class="right">${fmt(i.total)}</td></tr>`).join('')}
+    </table>
+    <div class="line"></div>
+    <table>
+      <tr><td><strong>Total</strong></td><td class="right"><strong>${fmt(sale.total)}</strong></td></tr>
+      <tr><td>Payé</td><td class="right">${fmt(sale.paid)}</td></tr>
+      ${sale.change ? `<tr><td>Monnaie</td><td class="right">${fmt(sale.change)}</td></tr>` : ''}
+    </table>
+    <p class="center">Paiement: ${payLabels[sale.paymentMethod] || sale.paymentMethod}</p>
+    <div class="line"></div>
+    <p class="footer">Merci de votre visite !</p>
+    <script>window.onload = function() { window.print(); window.close(); }<\\/script>
+  </body></html>`)
+  w.document.close()
+}

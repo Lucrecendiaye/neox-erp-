@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
-import { Search, Package, Users, Truck, FileText, X } from 'lucide-react'
+import { Search, Package, Users, Truck, X } from 'lucide-react'
 
 interface SearchDialogProps {
   open: boolean
@@ -53,10 +53,7 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
             .filter((s) => s.name.toLowerCase().includes(q) || s.phone.includes(q))
             .slice(0, 5)
             .map((s) => ({ label: s.name, sub: s.phone, icon: Truck, route: '/suppliers' as const, id: s.id })),
-          ...(allInvoices || [])
-            .filter((i) => (i.number || '').toLowerCase().includes(q) || (i.partyName || '').toLowerCase().includes(q))
-            .slice(0, 5)
-            .map((i) => ({ label: i.number, sub: `${i.partyName || ''} - ${i.status}`, icon: FileText, route: '/invoices' as const, id: i.id })),
+
         ]
 
   function handleSelect(item: (typeof filtered)[0]) {
@@ -65,9 +62,9 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-start justify-center pt-[15vh]">
-      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
-      <div className="premium-modal-content relative w-full max-w-lg mx-4 overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-0 sm:p-4 animate-fade-in">
+      <div className="fixed inset-0 bg-black/60 backdrop-blur-md" onClick={onClose} />
+      <div className="premium-modal-content relative w-[95%] sm:w-[90%] md:w-[640px] max-w-[640px] overflow-hidden max-h-[95vh] md:max-h-[820px] flex flex-col">
         <div className="flex items-center gap-3 px-4 border-b border-surface-200">
           <Search className="w-5 h-5 text-surface-400 shrink-0" />
           <input
@@ -87,7 +84,7 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
         </div>
 
         {q.length >= 2 && (
-          <div className="max-h-72 overflow-y-auto p-2 space-y-0.5">
+          <div className="flex-1 overflow-y-auto min-h-0 p-2 space-y-0.5">
             {filtered.length === 0 ? (
               <div className="text-center py-8 text-sm text-surface-400">Aucun résultat</div>
             ) : (
@@ -111,11 +108,11 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
         )}
 
         {q.length > 0 && q.length < 2 && (
-          <div className="text-center py-8 text-sm text-surface-400">Tapez au moins 2 caractères</div>
+          <div className="text-center py-8 text-sm text-surface-400 shrink-0">Tapez au moins 2 caractères</div>
         )}
 
         {q.length === 0 && (
-          <div className="p-4 text-center text-xs text-surface-400">
+          <div className="p-4 text-center text-xs text-surface-400 shrink-0">
             Recherchez des produits, clients, fournisseurs ou factures
           </div>
         )}

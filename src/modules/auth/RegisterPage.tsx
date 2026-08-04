@@ -104,8 +104,9 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-surface-700 mb-1.5">Nom complet</label>
             <div className="relative">
               <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-              <input type="text" value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
-                placeholder="Votre nom" className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              <input type="text" inputMode="text" autoComplete="name"
+                value={form.name} onChange={e => setForm({ ...form, name: e.target.value })}
+                placeholder="Votre nom" className="w-full pl-10 pr-4 py-3 rounded-xl border border-surface-300 bg-white text-base focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
           </div>
 
@@ -114,16 +115,18 @@ export default function RegisterPage() {
               <label className="block text-sm font-medium text-surface-700 mb-1.5">Email</label>
               <div className="relative">
                 <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-                <input type="email" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
-                  placeholder="email@exemple.com" className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                <input type="email" inputMode="email" autoComplete="email"
+                  value={form.email} onChange={e => setForm({ ...form, email: e.target.value })}
+                  placeholder="email@exemple.com" className="w-full pl-10 pr-4 py-3 rounded-xl border border-surface-300 bg-white text-base focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
             </div>
             <div>
               <label className="block text-sm font-medium text-surface-700 mb-1.5">Téléphone</label>
               <div className="relative">
                 <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-                <input type="tel" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
-                  placeholder="+226 XX XX XX" className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                <input type="tel" inputMode="tel" autoComplete="tel"
+                  value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })}
+                  placeholder="+226 XX XX XX" className="w-full pl-10 pr-4 py-3 rounded-xl border border-surface-300 bg-white text-base focus:outline-none focus:ring-2 focus:ring-primary-500" />
               </div>
             </div>
           </div>
@@ -132,8 +135,9 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-surface-700 mb-1.5">Mot de passe</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-              <input type={showPwd ? 'text' : 'password'} value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
-                placeholder="••••••••" className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              <input type={showPwd ? 'text' : 'password'} autoComplete="new-password"
+                value={form.password} onChange={e => setForm({ ...form, password: e.target.value })}
+                placeholder="••••••••" className="w-full pl-10 pr-10 py-3 rounded-xl border border-surface-300 bg-white text-base focus:outline-none focus:ring-2 focus:ring-primary-500" />
               <button type="button" onClick={() => setShowPwd(!showPwd)} className="absolute right-3 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600">
                 {showPwd ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
               </button>
@@ -144,13 +148,14 @@ export default function RegisterPage() {
             <label className="block text-sm font-medium text-surface-700 mb-1.5">Confirmer le mot de passe</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
-              <input type={showPwd ? 'text' : 'password'} value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })}
-                placeholder="••••••••" className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              <input type={showPwd ? 'text' : 'password'} autoComplete="new-password"
+                value={form.confirm} onChange={e => setForm({ ...form, confirm: e.target.value })}
+                placeholder="••••••••" className="w-full pl-10 pr-4 py-3 rounded-xl border border-surface-300 bg-white text-base focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
           </div>
 
           <button type="submit" disabled={loading}
-            className="w-full py-3 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-200"
+            className="w-full min-h-[48px] py-3 bg-primary-600 hover:bg-primary-700 disabled:opacity-50 text-white font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-primary-200 active:scale-[0.98]"
           >
             <UserPlus className="w-4 h-4" />
             {loading ? 'Création...' : 'Créer mon compte'}
@@ -158,7 +163,7 @@ export default function RegisterPage() {
 
           <p className="text-center text-sm text-surface-400">
             Déjà un compte ?{' '}
-            <button type="button" onClick={() => navigate('/login')} className="text-primary-600 hover:text-primary-700 font-medium">
+            <button type="button" onClick={() => navigate('/login')} className="text-primary-600 hover:text-primary-700 font-medium min-h-[44px] inline-flex items-center">
               Se connecter
             </button>
           </p>

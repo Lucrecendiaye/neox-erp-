@@ -6,21 +6,16 @@ import db from '@/db'
 import { generateId, formatCurrency, formatDate } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { Search, DollarSign, CheckCircle, Clock, AlertTriangle, FileText } from 'lucide-react'
-import { useSupabaseQuery, sb } from '@/lib/supabase-db'
-import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAppStore } from '@/stores/appStore'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import type { Purchase, Supplier, AccountingEntry } from '@/types'
 
 export default function SupplierPaymentsPage() {
-  const isCloud = isSupabaseConfigured()
   const businessId = useBusinessId()
   const dexiePurchases = useLiveQuery(() => db.purchases.where('businessId').equals(businessId).sortBy('createdAt').then(arr => arr.reverse()), [])
-  const { data: supabasePurchases } = useSupabaseQuery<Purchase>('purchases', undefined, [])
-  const purchases = isCloud ? (supabasePurchases || []).sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()) : dexiePurchases
+  const purchases = dexiePurchases ?? []
   const dexieSuppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [])
-  const { data: supabaseSuppliers } = useSupabaseQuery<Supplier>('suppliers', undefined, [])
-  const suppliers = isCloud ? supabaseSuppliers : dexieSuppliers
+  const suppliers = dexieSuppliers ?? []
   const userId = useAppStore(s => s.user?.id || '')
   const [search, setSearch] = useState('')
   const [payModal, setPayModal] = useState(false)
@@ -58,7 +53,7 @@ export default function SupplierPaymentsPage() {
     const newStatus = newPaid >= purchase.total ? 'completed' : purchase.status
 
     try {
-      if (isCloud) { await sb.update('purchases', selectedPurchase, { paid: newPaid, status: newStatus }) } else { await db.purchases.update(selectedPurchase, { paid: newPaid, status: newStatus }) }
+      await db.purchases.update(selectedPurchase, { paid: newPaid, status: newStatus })
       toast('Paiement enregistré avec succès', 'success')
       setPayModal(false)
       setPayAmount(0)

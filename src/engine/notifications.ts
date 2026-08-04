@@ -63,7 +63,7 @@ export async function checkOverdueCredits(): Promise<Notification[]> {
         title: 'Crédit échu',
         message: `${credit.customerName} a un crédit de ${credit.balance} FCFA échu depuis ${new Date(credit.dueDate).toLocaleDateString('fr-FR')}`,
         read: false,
-        link: '/credit',
+        link: '/customers',
         createdAt: new Date().toISOString(),
       }
       await db.notifications.add(notif)
