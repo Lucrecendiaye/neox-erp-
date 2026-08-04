@@ -12,7 +12,7 @@ export function SalePaymentPanel({ pay, customerName, total }: {
   total: number
 }) {
   const showAmount = pay.paymentType === 'complet' && pay.payMethod === 'cash'
-  const showAcompte = pay.paymentType !== 'complet'
+  const showAcompte = pay.paymentType === 'partiel'
   const showDueDate = pay.paymentType !== 'complet'
   const customerRequired = pay.isCredit && !customerName.trim()
 

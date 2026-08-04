@@ -32,10 +32,10 @@ export function useSalePayment(total: number) {
   function setPaymentType(t: SalePaymentType) {
     setPaymentTypeState(t)
     if (t === 'complet') {
-      setAmountReceived(payMethodState === 'cash' ? 0 : total)
+      setAmountReceived(total)
       setDueDate('')
     } else if (t === 'partiel') {
-      setAmountReceived(total)
+      setAmountReceived(0)
     } else {
       setAmountReceived(0)
     }
@@ -43,7 +43,7 @@ export function useSalePayment(total: number) {
 
   function setPayMethod(m: PayMethod) {
     setPayMethodState(m)
-    if (paymentType === 'complet') setAmountReceived(m === 'cash' ? 0 : total)
+    if (paymentType === 'complet') setAmountReceived(total)
   }
 
   const paid = useMemo(() => {

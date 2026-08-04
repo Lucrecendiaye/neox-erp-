@@ -9,14 +9,14 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import db from '@/db'
 import { cn, formatCurrency, generateId, calculateMargin, getProductUnits, convertToMainUnit } from '@/lib/utils'
 import { toast } from '@/lib/toast'
-import { processStockAdjustment, processTransfer, getLocationStockValue, getLocationStats } from '@/engine/operations'
+import { processStockAdjustment, processTransfer, getLocationStockValue, getLocationStats, confirmTransferReception } from '@/engine/operations'
 import { exportBonSortiePDF } from '@/lib/pdf'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import type { Product } from '@/types'
 import PhotoUpload from '@/components/ui/PhotoUpload'
 import {
   Package, Search, ArrowLeft, ArrowRightLeft, Plus, Edit2, Eye, Trash2, History,
-  TrendingUp, AlertTriangle, DollarSign, Layers, Filter, Printer
+  TrendingUp, AlertTriangle, DollarSign, Layers, Filter, Printer, CheckCircle2
 } from 'lucide-react'
 
 export default function DepotStockPage() {
@@ -41,9 +41,11 @@ export default function DepotStockPage() {
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null)
   const [transferModal, setTransferModal] = useState(false)
   const [transferTarget, setTransferTarget] = useState('')
+  const [transferSearch, setTransferSearch] = useState('')
   const [transferItems, setTransferItems] = useState<{ productId: string; qty: number; unitName?: string; unitQuantity?: number }[]>([])
   const [bonModal, setBonModal] = useState(false)
   const [bonInfo, setBonInfo] = useState<{ id: string; bonNumber: string; from: string; to: string; date: string; items: { name: string; qty: number }[] } | null>(null)
+  const [receptName, setReceptName] = useState('')
   const [pinModalOpen, setPinModalOpen] = useState(false)
   const [pinAction, setPinAction] = useState<{ type: string; payload?: any } | null>(null)
 
@@ -160,11 +162,21 @@ export default function DepotStockPage() {
       id: transfer.id, bonNumber: transfer.bonNumber || '', from: fromName, to: toName, date: transfer.createdAt,
       items: items.map(i => ({ name: i.productName, qty: i.quantity })),
     })
+    setReceptName(currentUser?.name || '')
     setBonModal(true)
     setTransferModal(false); setTransferTarget(''); setTransferItems([])
   }
 
   const otherLocations = allLocations?.filter(l => l.id !== locationId) || []
+  const transferProducts = useMemo(() => {
+    const q = transferSearch.toLowerCase()
+    return (allProducts || []).filter(p => {
+      const available = stockMap.get(p.id)?.quantity || 0
+      if (available <= 0) return false
+      if (q && !p.name.toLowerCase().includes(q) && !p.barcode?.includes(q) && !p.reference?.toLowerCase().includes(q) && !p.brand?.toLowerCase().includes(q)) return false
+      return true
+    })
+  }, [allProducts, stockMap, transferSearch])
   const can = (action: string) => {
     if (currentUser?.role === 'admin') return true
     if (currentUser?.role === 'manager' && action !== 'delete') return true
@@ -376,43 +388,58 @@ export default function DepotStockPage() {
       </Modal>
 
       <Modal open={transferModal} onClose={() => setTransferModal(false)} title="Transférer vers">
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-3">
           <select value={transferTarget} onChange={e => setTransferTarget(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm">
             <option value="">Destination</option>
             {otherLocations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
           </select>
-          {allProducts?.map(p => {
-            const units = getProductUnits(p)
-            const item = transferItems.find(i => i.productId === p.id)
-            return (
-              <div key={p.id} className="flex items-center gap-2">
-                <span className="text-sm flex-1">{p.name}</span>
-                <select value={item?.unitName || 'Pièce'}
-                  onChange={e => {
-                    const unit = units.find(u => u.name === e.target.value) || units[0]
-                    setTransferItems(prev => {
-                      const ex = prev.find(i => i.productId === p.id)
-                      if (ex) return prev.map(i => i.productId === p.id ? { ...i, unitName: unit.name, unitQuantity: unit.quantity } : i)
-                      return [...prev, { productId: p.id, qty: 0, unitName: unit.name, unitQuantity: unit.quantity }]
-                    })
-                  }}
-                  className="text-xs px-2 py-1.5 rounded-lg border border-surface-300 bg-white">
-                  {units.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
-                </select>
-                <input type="number" min="0" placeholder="Qté" value={item?.qty ?? ''}
-                  onChange={e => {
-                    const qty = Number(e.target.value)
-                    setTransferItems(prev => {
-                      const ex = prev.find(i => i.productId === p.id)
-                      if (ex) return prev.map(i => i.productId === p.id ? { ...i, qty } : i)
-                      return [...prev, { productId: p.id, qty, unitName: 'Pièce', unitQuantity: 1 }]
-                    })
-                  }}
-                  className="w-20 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
-              </div>
-            )
-          })}
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
+            <input value={transferSearch} onChange={e => setTransferSearch(e.target.value)}
+              placeholder={`Rechercher parmi ${transferProducts.length} produit${transferProducts.length > 1 ? 's' : ''} en stock...`}
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+          </div>
+          <div className="max-h-[45vh] overflow-y-auto space-y-2">
+            {transferProducts.length === 0 && (
+              <p className="text-center text-sm text-surface-400 py-6">Aucun produit en stock pour ce transfert</p>
+            )}
+            {transferProducts.map(p => {
+              const units = getProductUnits(p)
+              const item = transferItems.find(i => i.productId === p.id)
+              const available = stockMap.get(p.id)?.quantity || 0
+              return (
+                <div key={p.id} className="flex items-center gap-2 bg-surface-50 rounded-lg px-3 py-2">
+                  <div className="text-sm flex-1 min-w-0">
+                    <p className="truncate font-medium text-surface-900">{p.name}</p>
+                    <p className="text-[11px] text-surface-400">Disponible : {available}</p>
+                  </div>
+                  <select value={item?.unitName || 'Pièce'}
+                    onChange={e => {
+                      const unit = units.find(u => u.name === e.target.value) || units[0]
+                      setTransferItems(prev => {
+                        const ex = prev.find(i => i.productId === p.id)
+                        if (ex) return prev.map(i => i.productId === p.id ? { ...i, unitName: unit.name, unitQuantity: unit.quantity } : i)
+                        return [...prev, { productId: p.id, qty: 0, unitName: unit.name, unitQuantity: unit.quantity }]
+                      })
+                    }}
+                    className="text-xs px-2 py-1.5 rounded-lg border border-surface-300 bg-white">
+                    {units.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
+                  </select>
+                  <input type="number" min="0" placeholder="Qté" value={item?.qty ?? ''}
+                    onChange={e => {
+                      const qty = Number(e.target.value)
+                      setTransferItems(prev => {
+                        const ex = prev.find(i => i.productId === p.id)
+                        if (ex) return prev.map(i => i.productId === p.id ? { ...i, qty } : i)
+                        return [...prev, { productId: p.id, qty, unitName: 'Pièce', unitQuantity: 1 }]
+                      })
+                    }}
+                    className="w-20 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
+                </div>
+              )
+            })}
+          </div>
           <Button onClick={handleTransfer} className="w-full">Transférer</Button>
         </div>
       </Modal>
@@ -537,8 +564,23 @@ export default function DepotStockPage() {
               </table>
               </div>
               <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                Le stock de destination sera ajouté à la confirmation de réception dans le module Bon de sortie.
+                La transaction est considérée effectuée après confirmation de la réception. Elle peut être annulée uniquement depuis l'onglet Bon de sortie.
               </p>
+              <div>
+                <label className="text-xs font-medium text-surface-500 mb-1 block">Nom du destinataire</label>
+                <input value={receptName} onChange={e => setReceptName(e.target.value)}
+                  placeholder="Nom du destinataire"
+                  className="w-full px-3 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              </div>
+              <Button className="w-full" onClick={async () => {
+                try {
+                  await confirmTransferReception(bonInfo.id, receptName || currentUser?.name || '')
+                  toast('Réception confirmée, transaction effectuée', 'success')
+                  setBonModal(false)
+                } catch (e: any) { toast(e.message || 'Erreur', 'error') }
+              }}>
+                <CheckCircle2 className="w-4 h-4" /> Confirmer la réception — transaction effectuée
+              </Button>
               <div className="flex gap-2 pt-2">
                 <Button onClick={() => {
                   const w = window.open('', '_blank')
