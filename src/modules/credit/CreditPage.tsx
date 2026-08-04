@@ -52,7 +52,7 @@ export default function CreditPage() {
   const [deletePayTarget, setDeletePayTarget] = useState<CreditPayment | null>(null)
 
   const totalOutstanding = credits.reduce((s, x) => s + x.balance, 0)
-  const overdue = credits.filter(c => c.status === 'overdue' || (c.status === 'active' && new Date(c.dueDate) < new Date()))
+  const overdue = credits.filter(c => c.status === 'overdue' || (c.status === 'active' && new Date(c.dueDate).getFullYear() < 2100 && new Date(c.dueDate) < new Date()))
   const totalOverdue = overdue.reduce((s, x) => s + x.balance, 0)
   const activeCount = credits.filter(c => c.status === 'active').length
 
@@ -167,7 +167,7 @@ export default function CreditPage() {
             </thead>
             <tbody className="divide-y divide-surface-100">
               {paginatedItems?.map((c) => {
-                const isOverdue = new Date(c.dueDate) < new Date() && c.status === 'active'
+                const isOverdue = new Date(c.dueDate).getFullYear() < 2100 && new Date(c.dueDate) < new Date() && c.status === 'active'
                 return (
                   <tr key={c.id} className="hover:bg-surface-50 transition-colors group">
                     <td data-label="Client" className="px-6 py-4">
@@ -177,7 +177,7 @@ export default function CreditPage() {
                     <td data-label="Montant" className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(c.amount)}</td>
                     <td data-label="Payé" className="px-6 py-4 text-right text-sm text-emerald-600 font-medium">{formatCurrency(c.paid)}</td>
                     <td data-label="Solde" className="px-6 py-4 text-right text-sm font-semibold text-surface-900">{formatCurrency(c.balance)}</td>
-                    <td data-label="Échéance" className="px-6 py-4 text-center text-sm text-surface-500">{formatDate(c.dueDate)}</td>
+                    <td data-label="Échéance" className="px-6 py-4 text-center text-sm text-surface-500">{new Date(c.dueDate).getFullYear() >= 2100 ? '—' : formatDate(c.dueDate)}</td>
                     <td data-label="Statut" className="px-6 py-4 text-center">
                       <Badge variant={c.status === 'paid' ? 'success' : isOverdue ? 'danger' : 'warning'}>
                         {c.status === 'paid' ? 'Payé' : isOverdue ? 'Échu' : c.status === 'defaulted' ? 'Défaut' : 'Actif'}

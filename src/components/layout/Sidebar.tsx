@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore'
 import { usePermission } from '@/hooks/usePermission'
 import {
   LayoutDashboard, ShoppingCart, Receipt, Building2, Package,
-  Users, Truck, ArrowDownToLine, CreditCard,
+  Users, Truck, ArrowDownToLine, CreditCard, HandCoins,
   BarChart3, UsersRound, Settings, Trash2,
 } from 'lucide-react'
 
@@ -21,6 +21,7 @@ const allNavItems: NavItem[] = [
   { to: '/', label: 'Tableau de bord', module: 'dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
   { to: '/pos', label: 'Point de Vente', module: 'pos', icon: <ShoppingCart className="w-5 h-5" /> },
   { to: '/sales', label: 'Ventes', module: 'sales', icon: <Receipt className="w-5 h-5" /> },
+  { to: '/credits', label: 'Crédits', module: 'sales', icon: <HandCoins className="w-5 h-5" /> },
   { to: '/depots', label: 'Dépôts', module: 'depots', icon: <Building2 className="w-5 h-5" /> },
   { to: '/products', label: 'Produits', module: 'products', icon: <Package className="w-5 h-5" /> },
   { to: '/customers', label: 'Clients', module: 'customers', icon: <Users className="w-5 h-5" /> },

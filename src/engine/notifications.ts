@@ -46,7 +46,7 @@ export async function checkOverdueCredits(): Promise<Notification[]> {
   const created: Notification[] = []
   const overdue = await db.credits
     .where('status').equals('active')
-    .filter(c => c.balance > 0 && new Date(c.dueDate) < new Date())
+    .filter(c => c.balance > 0 && new Date(c.dueDate).getFullYear() < 2100 && new Date(c.dueDate) < new Date())
     .toArray()
 
   for (const credit of overdue) {

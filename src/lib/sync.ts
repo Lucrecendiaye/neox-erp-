@@ -1,4 +1,5 @@
 import { isSupabaseConfigured, supabase } from './supabase'
+import { sanitizeForCloud } from './syncEngine'
 import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
 
@@ -57,7 +58,7 @@ export async function pushToSupabase(): Promise<{ success: number; failed: numbe
       const items = await query.toArray()
       for (const item of items) {
         const { id, ...data } = item
-        const { error } = await supabase.from(supabaseName).upsert({ id, ...data }, { onConflict: 'id' })
+        const { error } = await supabase.from(supabaseName).upsert(sanitizeForCloud(supabaseName, { id, ...data }), { onConflict: 'id' })
         if (error) failed++
         else success++
       }

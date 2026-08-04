@@ -45,16 +45,30 @@ const AUDIT_LOG_DB_COLUMNS = new Set([
   'id', 'businessId', 'userId', 'action', 'entity', 'entityId', 'details', 'createdAt',
 ])
 
-function sanitizeForTable(supabaseName: string, payload: Record<string, unknown>): Record<string, unknown> {
-  let clean = payload
+const CREDIT_DB_COLUMNS = new Set([
+  'id', 'businessId', 'customerId', 'customerName', 'amount', 'paid', 'balance', 'dueDate', 'status', 'reminderSent', 'createdAt',
+])
+
+export function sanitizeForCloud(supabaseName: string, payload: Record<string, unknown>): Record<string, unknown> {
   if (supabaseName === 'audit_logs') {
     const out: Record<string, unknown> = {}
-    for (const key of Object.keys(clean)) {
-      if (AUDIT_LOG_DB_COLUMNS.has(key)) out[key] = clean[key]
+    for (const key of Object.keys(payload)) {
+      if (AUDIT_LOG_DB_COLUMNS.has(key)) out[key] = payload[key]
     }
-    clean = out
+    return out
   }
-  return clean
+  if (supabaseName === 'credits') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(payload)) {
+      if (CREDIT_DB_COLUMNS.has(key)) out[key] = payload[key]
+    }
+    return out
+  }
+  return payload
+}
+
+function sanitizeForTable(supabaseName: string, payload: Record<string, unknown>): Record<string, unknown> {
+  return sanitizeForCloud(supabaseName, payload)
 }
 
 function getCurrentBusinessId(): string {

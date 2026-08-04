@@ -116,7 +116,7 @@ function getMainQty(item: { quantity: number; unitQuantity?: number }): number {
   return item.unitQuantity ? item.quantity * item.unitQuantity : item.quantity
 }
 
-export async function processSale(sale: Sale) {
+export async function processSale(sale: Sale, opts?: { downPaymentMethod?: PaymentMethod; dueDate?: string }) {
   requirePermission('pos', 'create')
   for (const item of sale.items) {
     const mainQty = getMainQty(item)
@@ -135,10 +135,10 @@ export async function processSale(sale: Sale) {
       customerId: sale.customerId,
       customerName: sale.customerName || 'Client',
       invoiceId: sale.id,
-      amount: creditAmount,
-      paid: 0,
+      amount: sale.total,
+      paid: sale.paid,
       balance: creditAmount,
-      dueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      dueDate: opts?.dueDate || new Date(Date.now() + 100 * 365 * 24 * 60 * 60 * 1000).toISOString(),
       status: 'active',
       reminderSent: [],
       createdAt: now(),
@@ -153,13 +153,12 @@ export async function processSale(sale: Sale) {
         saleId: sale.id,
         customerId: sale.customerId,
         amount: sale.paid,
-        method: sale.paymentMethod === 'credit' ? 'cash' : sale.paymentMethod,
+        method: opts?.downPaymentMethod || (sale.paymentMethod === 'credit' ? 'cash' : sale.paymentMethod),
         date: sale.createdAt,
         userId: currentUserId(),
         createdAt: now(),
       }
       await db.creditPayments.add(payment)
-      await db.credits.update(credit.id, { paid: sale.paid, balance: creditAmount - sale.paid })
     }
 
     const customer = await db.customers.get(sale.customerId)

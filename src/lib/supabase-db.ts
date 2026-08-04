@@ -3,6 +3,7 @@ import { supabase, isSupabaseConfigured } from './supabase'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { useAppStore } from '@/stores/appStore'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
+import { sanitizeForCloud } from './syncEngine'
 
 export type TableName =
   | 'products' | 'categories' | 'stock_movements' | 'customers'
@@ -176,6 +177,6 @@ export const sb = {
 
 export async function syncToSupabase(table: TableName, records: any[]) {
   if (!isSupabaseConfigured() || records.length === 0) return
-  const { error } = await supabase.from(table).upsert(records, { onConflict: 'id' })
+  const { error } = await supabase.from(table).upsert(records.map(r => sanitizeForCloud(table, r)), { onConflict: 'id' })
   if (error) console.error(`[Supabase] sync error [${table}]:`, error)
 }

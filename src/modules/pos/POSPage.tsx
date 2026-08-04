@@ -17,10 +17,10 @@ import type { SaleItem, Product, Sale, Customer } from '@/types'
 import type { ProductStock } from '@/engine/types'
 import { useAppStore } from '@/stores/appStore'
 import { processSale } from '@/engine/operations'
+import { useSalePayment, ensureCustomer } from './salePayment'
+import { SalePaymentPanel } from './SalePaymentPanel'
 
 type PriceMode = 'detail' | 'gros'
-type PaymentType = 'complet'
-type PayMethod = 'cash' | 'mobile' | 'card' | 'bank'
 
 export default function POSPage() {
   const businessId = useBusinessId()
@@ -56,8 +56,6 @@ export default function POSPage() {
   const [customerOpen, setCustomerOpen] = useState(false)
   const [discount, setDiscount] = useState(0)
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 16))
-  const [paymentType, setPaymentType] = useState<PaymentType>('complet')
-  const [payMethod, setPayMethod] = useState<PayMethod>('cash')
 
   const [saleSuccess, setSaleSuccess] = useState(false)
   const [lastSale, setLastSale] = useState<Sale | null>(null)
@@ -81,6 +79,7 @@ export default function POSPage() {
 
   const subtotal = useMemo(() => cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0), [cart])
   const total = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount])
+  const pay = useSalePayment(total)
   const margin = useMemo(() => {
     if (subtotal === 0) return 0
     const cost = cart.reduce((s, i) => {
@@ -191,6 +190,7 @@ function updateQuantity(itemKey: string, delta: number) {
     setCustomerAddress('')
     setCustomerId('')
     setDiscount(0)
+    pay.reset()
     setCartOpen(false)
   }
 
@@ -207,8 +207,24 @@ function updateQuantity(itemKey: string, delta: number) {
 
   async function handleSale() {
     if (cart.length === 0) return
+    if (pay.isCredit && !customerId && !customerName.trim()) {
+      toast('Client requis pour une vente à crédit', 'error')
+      return
+    }
+    if (pay.paymentType === 'complet' && pay.payMethod === 'cash' && pay.isShort) {
+      toast('Montant reçu insuffisant', 'error')
+      return
+    }
 
-    const customer = allCustomers.find(c => c.id === customerId)
+    const resolved = await ensureCustomer({
+      businessId,
+      name: customerName,
+      phone: customerPhone,
+      address: customerAddress,
+      customerId,
+      allCustomers,
+    })
+    const customer = allCustomers.find(c => c.id === resolved.id)
     const invNum = generateInvoiceNumber(settings?.invoicePrefix || 'INV-', settings?.invoiceNextNumber || 1)
 
     const sale: Sale = {
@@ -216,22 +232,22 @@ function updateQuantity(itemKey: string, delta: number) {
       businessId,
       locationId: shopId,
       invoiceNumber: invNum,
-      customerId: customerId || undefined,
-      customerName: customer?.name || customerName,
+      customerId: resolved.id,
+      customerName: customer?.name || resolved.name || customerName,
       items: cart,
       subtotal,
       discountTotal: discount,
       taxTotal: 0,
       total,
-      paid: total,
-      change: 0,
-      paymentMethod: payMethod === 'cash' ? 'cash' : payMethod === 'mobile' ? 'mobile' : 'card',
+      paid: pay.paid,
+      change: pay.change,
+      paymentMethod: pay.creditAmount > 0 ? 'credit' : pay.payMethod,
       status: 'completed',
       createdAt: saleDate,
       userId,
     }
 
-    await processSale(sale)
+    await processSale(sale, { downPaymentMethod: pay.payMethod, dueDate: pay.dueDate || undefined })
 
     if (settings) {
       const nextNum = (settings.invoiceNextNumber || 1) + 1
@@ -547,19 +563,11 @@ function updateQuantity(itemKey: string, delta: number) {
           </div>
 
           {/* Payment type */}
-          <div className="shrink-0 px-4 pt-2 pb-1 bg-white border-t border-surface-100">
-            <select value={payMethod} onChange={(e) => setPayMethod(e.target.value as PayMethod)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-3 py-2 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500">
-              <option value="cash">Espèces</option>
-              <option value="mobile">Mobile Money</option>
-              <option value="card">Carte</option>
-              <option value="bank">Virement</option>
-            </select>
-          </div>
+          <SalePaymentPanel pay={pay} customerName={customerName} total={total} />
 
           {/* Fixed bottom bar */}
           <div className="shrink-0 bg-white border-t border-surface-200 px-4 pt-3 pb-3 space-y-2" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 16px))' }}>
-            <button onClick={handleSale} disabled={cart.length === 0}
+            <button onClick={handleSale} disabled={cart.length === 0 || pay.isShort}
               className={cn(
                 'w-full py-3.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2',
                 cart.length > 0
@@ -572,7 +580,7 @@ function updateQuantity(itemKey: string, delta: number) {
             <div className="flex gap-2">
               <button onClick={async () => {
                 const customer = allCustomers.find(c => c.id === customerId)
-                const saleData = { invoiceNumber: generateInvoiceNumber(settings?.invoicePrefix || 'INV-', settings?.invoiceNextNumber || 1), items: cart.map(i => ({ productName: i.productName, quantity: i.quantity, unitName: i.unitName, unitPrice: i.unitPrice, total: i.total })), total, paid: total, change: 0, customerName: customer?.name || customerName, createdAt: saleDate, paymentMethod: payMethod }
+                const saleData = { invoiceNumber: generateInvoiceNumber(settings?.invoicePrefix || 'INV-', settings?.invoiceNextNumber || 1), items: cart.map(i => ({ productName: i.productName, quantity: i.quantity, unitName: i.unitName, unitPrice: i.unitPrice, total: i.total })), total, paid: pay.paid, change: pay.change, customerName: customer?.name || customerName, createdAt: saleDate, paymentMethod: pay.creditAmount > 0 ? 'credit' : pay.payMethod }
                 try { const connected = thermalPrinter.isConnected() || await thermalPrinter.connect()
                   if (connected) { await thermalPrinter.printReceipt([{ text: 'NEOX ERP', bold: true, doubleWidth: true, align: 'center' }, { text: 'Facture de vente', align: 'center' }, { text: '---' }, ...cart.map(i => ({ text: `${i.productName} x${i.quantity}  ${currency(i.total)}` })), { text: '---' }, { text: `Total: ${currency(total)}`, bold: true, align: 'right' }, { text: '', align: 'center' }, { text: 'Merci de votre visite !', align: 'center' }]); await thermalPrinter.cut(); toast('Ticket imprimé', 'success'); return }
                 } catch {}

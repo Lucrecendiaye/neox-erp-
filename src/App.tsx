@@ -31,6 +31,7 @@ const SuppliersPage = lazy(() => import('@/modules/suppliers/SuppliersPage'))
 const SupplierDetailPage = lazy(() => import('@/modules/suppliers/SupplierDetailPage'))
 const SupplierPaymentsPage = lazy(() => import('@/modules/payments/SupplierPaymentsPage'))
 const SalesPage = lazy(() => import('@/modules/sales/SalesPage'))
+const CreditPage = lazy(() => import('@/modules/credit/CreditPage'))
 const PurchasesPage = lazy(() => import('@/modules/purchases/PurchasesPage'))
 const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage'))
 const DepotsPage = lazy(() => import('@/modules/depots/DepotsPage'))
@@ -209,6 +210,7 @@ export default function App() {
           <Route path="/suppliers/:supplierId" element={<PermissionRoute module="suppliers"><SupplierDetailPage /></PermissionRoute>} />
           <Route path="/payments" element={<PermissionRoute module="payments"><SupplierPaymentsPage /></PermissionRoute>} />
           <Route path="/sales" element={<PermissionRoute module="sales"><SalesPage /></PermissionRoute>} />
+          <Route path="/credits" element={<PermissionRoute module="sales"><CreditPage /></PermissionRoute>} />
           <Route path="/purchases" element={<PermissionRoute module="purchases"><PurchasesPage /></PermissionRoute>} />
           <Route path="/reports" element={<PermissionRoute module="reports"><ReportsPage /></PermissionRoute>} />
           <Route path="/settings" element={<PermissionRoute module="settings"><SettingsPage /></PermissionRoute>} />
