@@ -1,7 +1,7 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import type { Invoice, Sale } from '@/types'
-import type { Transfer, TransferItem } from '@/engine/types'
+import type { Transfer, TransferItem, BonSortie } from '@/engine/types'
 import type { CompanySettings } from '@/types'
 
 const BLUE = '#1e40af'
@@ -625,4 +625,286 @@ export function exportReportPDF(title: string, headers: string[], data: string[]
   doc.text(`Généré le ${dateStr}`, 14, pageH - 4)
 
   doc.save(`${filename}.pdf`)
+}
+
+const STATUS_LABELS: Record<string, string> = {
+  en_attente: 'EN ATTENTE',
+  valide: 'VALIDÉ',
+  recu: 'REÇU',
+  annule: 'ANNULÉ',
+}
+
+function esc(s: string | undefined | null): string {
+  return String(s ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+}
+
+export function buildBonSortieHTML(bon: BonSortie, settings?: CompanySettings, format: 'a4' | 'a5' | 'thermal' = 'a4'): string {
+  const widths = { a4: 210, a5: 148, thermal: 80 }
+  const w = widths[format]
+  const compact = format === 'thermal'
+  const fs = compact ? 10 : 12
+  const small = compact ? 8 : 10
+
+  const rows = bon.items.map(item => `
+    <tr>
+      <td>${esc(item.reference)}</td>
+      <td>${esc(item.barcode)}</td>
+      <td>${esc(item.productName)}</td>
+      <td>${esc(item.variant)}</td>
+      <td class="r">${item.quantity}</td>
+      <td>${esc(item.unit)}</td>
+      <td class="r">${item.unitPrice ? fmt(item.unitPrice) : '—'}</td>
+      <td class="r">${item.total ? fmt(item.total) : '—'}</td>
+    </tr>`).join('')
+
+  const recep = bon.receivedAt
+    ? `<p><strong>Date de réception :</strong> ${new Date(bon.receivedAt).toLocaleDateString('fr-FR', { dateStyle: 'long' })} — ${bon.receivedTime || ''}</p>
+       <p><strong>Reçu par :</strong> ${esc(bon.receivedBy) || '—'}</p>`
+    : `<p class="muted">Réception non confirmée</p>`
+
+  const val = bon.validatedAt
+    ? `<p><strong>Validé le :</strong> ${new Date(bon.validatedAt).toLocaleDateString('fr-FR', { dateStyle: 'long' })} par ${esc(bon.validatedByName) || '—'}</p>`
+    : ''
+
+  const sigs = bon.signatures || {}
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bon de sortie ${bon.number}</title>
+<style>
+  @page { size: ${w}mm auto; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: ${fs}px; color: #111; margin: 0; }
+  .banner { display: flex; justify-content: space-between; align-items: center; background: #1e40af; color: #fff; padding: 10px 12px; border-radius: 4px; }
+  .banner .left { display: flex; align-items: center; gap: 10px; }
+  .banner img { height: 40px; width: 40px; object-fit: contain; }
+  .banner h1 { margin: 0; font-size: ${compact ? 13 : 18}px; }
+  .banner h2 { margin: 0; font-size: ${compact ? 11 : 16}px; font-weight: normal; }
+  .banner .num { text-align: right; font-size: ${compact ? 9 : 12}px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+  .box { border: 1px solid #dbe3f0; border-radius: 4px; padding: 8px 10px; }
+  .box h3 { margin: 0 0 4px; font-size: ${small}px; text-transform: uppercase; color: #1e40af; }
+  .box p { margin: 2px 0; }
+  .meta { margin-top: 10px; font-size: ${small}px; }
+  .meta p { margin: 2px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: ${compact ? 8 : 10}px; }
+  th { background: #1e40af; color: #fff; text-align: left; padding: 5px 6px; font-size: ${compact ? 7 : 9}px; text-transform: uppercase; }
+  td { border-bottom: 1px solid #e2e8f0; padding: 4px 6px; }
+  .r { text-align: right; }
+  .totals { display: flex; justify-content: flex-end; gap: 20px; margin-top: 8px; font-weight: bold; font-size: ${small}px; }
+  .sign { display: flex; justify-content: space-between; gap: 20px; margin-top: 28px; }
+  .sign .col { flex: 1; }
+  .sign .line { margin-top: 34px; border-top: 1px dashed #94a3b8; font-size: ${small}px; color: #475569; }
+  .sign .who { font-size: ${small}px; color: #1e40af; font-weight: bold; min-height: 14px; }
+  .footer { margin-top: 18px; padding-top: 6px; border-top: 2px solid #1e40af; font-size: ${compact ? 7 : 9}px; color: #64748b; text-align: center; }
+  .muted { color: #94a3b8; }
+</style></head><body>
+  <div class="banner">
+    <div class="left">
+      ${settings?.logo ? `<img src="${esc(settings.logo)}" alt="logo" />` : ''}
+      <div>
+        <h1>${esc(settings?.name || 'Entreprise')}</h1>
+        ${settings?.slogan ? `<h2>${esc(settings.slogan)}</h2>` : ''}
+        ${settings?.address ? `<h2>${esc(settings.address)}</h2>` : ''}
+        ${settings?.phone ? `<h2>Tel: ${esc(settings.phone)}</h2>` : ''}
+        ${settings?.email ? `<h2>${esc(settings.email)}</h2>` : ''}
+      </div>
+    </div>
+    <div class="num">
+      <div style="font-weight:bold;font-size:${compact ? 11 : 16}px;">BON DE SORTIE</div>
+      <div>N° ${esc(bon.number)}</div>
+      <div style="color:#fde047;font-weight:bold;">${STATUS_LABELS[bon.status] || bon.status}</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="box">
+      <h3>Provenance</h3>
+      <p><strong>${esc(bon.fromLocationName)}</strong> ${bon.fromLocationCode ? `(${esc(bon.fromLocationCode)})` : ''}</p>
+      ${bon.fromAddress ? `<p>${esc(bon.fromAddress)}</p>` : '<p class="muted">Adresse non renseignée</p>'}
+    </div>
+    <div class="box">
+      <h3>Destination</h3>
+      <p><strong>${esc(bon.toLocationName)}</strong> ${bon.toLocationCode ? `(${esc(bon.toLocationCode)})` : ''}</p>
+      ${bon.toAddress ? `<p>${esc(bon.toAddress)}</p>` : '<p class="muted">Adresse non renseignée</p>'}
+    </div>
+  </div>
+
+  <div class="meta">
+    <p><strong>Date de création :</strong> ${new Date(bon.createdAt).toLocaleDateString('fr-FR', { dateStyle: 'long' })} — ${esc(bon.createdTime)} &nbsp;&nbsp; <strong>Date d'expédition :</strong> ${bon.shippedAt ? new Date(bon.shippedAt).toLocaleDateString('fr-FR', { dateStyle: 'long' }) : '—'} ${bon.shippedTime ? '— ' + esc(bon.shippedTime) : ''}</p>
+    <p><strong>Destinateur :</strong> ${esc(bon.destinateurName)} ${bon.destinateurRole ? `(${esc(bon.destinateurRole)})` : ''} &nbsp;&nbsp; <strong>Destinataire :</strong> ${esc(bon.destinataireName) || '—'} ${bon.destinataireRole ? `(${esc(bon.destinataireRole)})` : ''}</p>
+    <p><strong>Référence :</strong> ${esc(bon.reference) || '—'} &nbsp;&nbsp; <strong>Motif :</strong> ${esc(bon.motif) || '—'}</p>
+    ${bon.comments ? `<p><strong>Observations :</strong> ${esc(bon.comments)}</p>` : ''}
+    ${val}
+  </div>
+
+  <table>
+    <thead><tr><th>Réf.</th><th>Code-barres</th><th>Produit</th><th>Variante</th><th>Qté</th><th>Unité</th><th>P.U.</th><th>Valeur</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  <div class="totals">
+    <span>Articles : ${bon.totalArticles}</span>
+    <span>Quantité totale : ${bon.totalQuantity}</span>
+    ${bon.totalValue ? `<span>Valeur totale : ${fmt(bon.totalValue)}</span>` : ''}
+  </div>
+
+  <div class="meta">
+    ${recep}
+  </div>
+
+  <div class="sign">
+    <div class="col">
+      <div class="who">${esc(sigs.destinateur || bon.destinateurName || 'Expéditeur')}</div>
+      <div class="line">Signature du destinateur</div>
+    </div>
+    <div class="col">
+      <div class="who">${esc(sigs.destinataire || bon.receivedBy || '')}</div>
+      <div class="line">Signature du destinataire</div>
+    </div>
+    <div class="col">
+      <div class="who">${esc(sigs.responsable || '')}</div>
+      <div class="line">Signature du responsable</div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Document généré par ${esc(settings?.name || 'NeoX ERP')} le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — N° ${esc(bon.number)}
+  </div>
+</body></html>`
+}
+
+export function printBonSortieDocument(bon: BonSortie, settings?: CompanySettings, format: 'a4' | 'a5' | 'thermal' = 'a4') {
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.open()
+  w.document.write(buildBonSortieHTML(bon, settings, format))
+  w.document.close()
+  setTimeout(() => { try { w.focus(); w.print() } catch { /* fenêtre fermée */ } }, 500)
+}
+
+export function downloadBonSortiePDF(bon: BonSortie, settings?: CompanySettings, format: 'a4' | 'a5' = 'a4') {
+  const isA5 = format === 'a5'
+  const doc = new jsPDF({ unit: 'mm', format: isA5 ? 'a5' : 'a4' })
+  const W = isA5 ? 148 : 210
+  const H = isA5 ? 210 : 297
+  const M = 10
+  const s = settings || {} as CompanySettings
+
+  rect(doc, 0, 0, W, 34, BLUE)
+  let lx = M
+  if (s.logo) { try { doc.addImage(s.logo, 'JPEG', M, 5, 18, 18) } catch { try { doc.addImage(s.logo, 'PNG', M, 5, 18, 18) } catch {} } lx = M + (s.logo ? 24 : 0) }
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold')
+  doc.text(s.name || 'Entreprise', lx, 12)
+  doc.setFontSize(7); doc.setFont('helvetica', 'normal')
+  let ly = 18
+  if (s.slogan) { doc.text(s.slogan, lx, ly); ly += 4 }
+  if (s.address) { doc.text(s.address, lx, ly); ly += 4 }
+  if (s.phone) { doc.text(`Tel: ${s.phone}`, lx, ly); ly += 4 }
+  if (s.email) { doc.text(s.email, lx, ly); ly += 4 }
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold')
+  doc.text('BON DE SORTIE', W - M, 14, { align: 'right' })
+  doc.setFontSize(9)
+  doc.text(`N° ${bon.number}`, W - M, 22, { align: 'right' })
+  doc.setFontSize(8)
+  doc.text(STATUS_LABELS[bon.status] || bon.status, W - M, 28, { align: 'right' })
+
+  let y = 40
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80)
+  doc.setFont('helvetica', 'bold'); doc.setTextColor(...hexToRgb(BLUE))
+  doc.text('PROVENANCE', M, y)
+  doc.setDrawColor(...hexToRgb(LIGHT_GRAY)); doc.setLineWidth(0.3)
+  doc.roundedRect(M, y + 1, W / 2 - M - 3, 18, 1.5, 1.5, 'S')
+  doc.setTextColor(30, 30, 30); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+  doc.text(bon.fromLocationName || bon.fromLocationId, M + 2, y + 7)
+  doc.setFontSize(6.5); doc.setTextColor(100, 100, 100)
+  doc.text(bon.fromAddress || 'Adresse non renseignée', M + 2, y + 12)
+  doc.text(bon.fromLocationCode ? `Code: ${bon.fromLocationCode}` : '', M + 2, y + 16)
+
+  doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(...hexToRgb(BLUE))
+  doc.text('DESTINATION', W / 2 + 2, y)
+  doc.roundedRect(W / 2 + 2, y + 1, W / 2 - M - 3, 18, 1.5, 1.5, 'S')
+  doc.setTextColor(30, 30, 30); doc.setFont('helvetica', 'normal'); doc.setFontSize(8)
+  doc.text(bon.toLocationName || bon.toLocationId, W / 2 + 4, y + 7)
+  doc.setFontSize(6.5); doc.setTextColor(100, 100, 100)
+  doc.text(bon.toAddress || 'Adresse non renseignée', W / 2 + 4, y + 12)
+  doc.text(bon.toLocationCode ? `Code: ${bon.toLocationCode}` : '', W / 2 + 4, y + 16)
+
+  y += 26
+  doc.setFontSize(6.5); doc.setTextColor(80, 80, 80); doc.setFont('helvetica', 'normal')
+  const meta = [
+    `Date de création : ${new Date(bon.createdAt).toLocaleDateString('fr-FR')}  ${bon.createdTime || ''}`,
+    `Date d'expédition : ${bon.shippedAt ? new Date(bon.shippedAt).toLocaleDateString('fr-FR') : '—'} ${bon.shippedTime ? ' ' + bon.shippedTime : ''}`,
+    `Destinateur : ${bon.destinateurName}${bon.destinateurRole ? ' (' + bon.destinateurRole + ')' : ''}`,
+    `Destinataire : ${bon.destinataireName || '—'}${bon.destinataireRole ? ' (' + bon.destinataireRole + ')' : ''}`,
+    `Référence : ${bon.reference || '—'}    Motif : ${bon.motif || '—'}`,
+    bon.comments ? `Observations : ${bon.comments}` : '',
+  ]
+  for (const line of meta) { if (line) { doc.text(line, M, y); y += 4 } }
+
+  y += 3
+  const head = ['Réf.', 'Code-barres', 'Produit', 'Variante', 'Qté', 'Unité', 'P.U.', 'Valeur']
+  const body = bon.items.map(it => [
+    it.reference || '',
+    it.barcode || '',
+    it.productName,
+    it.variant || '',
+    String(it.quantity),
+    it.unit || '',
+    it.unitPrice ? fmt(it.unitPrice) : '—',
+    it.total ? fmt(it.total) : '—',
+  ])
+  autoTable(doc, {
+    startY: y,
+    head: [head],
+    body,
+    theme: 'grid',
+    headStyles: { fillColor: hexToRgb(BLUE), textColor: 255, fontSize: 6, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 6 },
+    margin: { left: M, right: M },
+    columnStyles: { 4: { halign: 'center' }, 6: { halign: 'right' }, 7: { halign: 'right' } },
+  })
+
+  let fy = (doc as any).lastAutoTable.finalY + 5
+  doc.setFontSize(7); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30)
+  doc.text(`Nombre d'articles : ${bon.totalArticles}`, M, fy)
+  doc.text(`Quantité totale : ${bon.totalQuantity}`, M + 60, fy)
+  if (bon.totalValue) doc.text(`Valeur totale : ${fmt(bon.totalValue)}`, W - M, fy, { align: 'right' })
+
+  fy += 7
+  doc.setFontSize(6.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80)
+  if (bon.receivedAt) {
+    doc.text(`Réception confirmée le ${new Date(bon.receivedAt).toLocaleDateString('fr-FR')} à ${bon.receivedTime || ''} par ${bon.receivedBy || '—'}`, M, fy)
+  } else {
+    doc.text('Réception non confirmée', M, fy)
+  }
+  if (bon.validatedAt) {
+    fy += 4
+    doc.text(`Validé le ${new Date(bon.validatedAt).toLocaleDateString('fr-FR')} par ${bon.validatedByName || '—'}`, M, fy)
+  }
+
+  fy += 10
+  const sigTop = fy
+  doc.setFontSize(6.5)
+  doc.text((bon.signatures?.destinateur || bon.destinateurName || ''), M, sigTop + 2)
+  doc.text((bon.signatures?.destinataire || bon.receivedBy || ''), W / 2, sigTop + 2)
+  doc.text((bon.signatures?.responsable || ''), W - M, sigTop + 2, { align: 'right' })
+  doc.setDrawColor(...hexToRgb(BLUE)); doc.setLineDashPattern([1, 1], 0); doc.setLineWidth(0.2)
+  doc.line(M, sigTop + 6, M + 55, sigTop + 6)
+  doc.line(W / 2, sigTop + 6, W / 2 + 55, sigTop + 6)
+  doc.line(W - M - 55, sigTop + 6, W - M, sigTop + 6)
+  doc.setLineDashPattern([], 0)
+  doc.setTextColor(120, 120, 120); doc.setFontSize(6)
+  doc.text('Signature du destinateur', M, sigTop + 10)
+  doc.text('Signature du destinataire', W / 2, sigTop + 10)
+  doc.text('Signature du responsable', W - M, sigTop + 10, { align: 'right' })
+
+  const foot = H - 12
+  rect(doc, 0, foot, W, 12, BLUE)
+  doc.setFontSize(5.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(255, 255, 255)
+  const now = new Date()
+  doc.text(`Document généré par ${s.name || 'NeoX ERP'} le ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, M, foot + 5)
+  doc.text(`N° ${bon.number}`, W - M, foot + 5, { align: 'right' })
+
+  doc.save(`bon_sortie_${bon.number}.pdf`)
 }

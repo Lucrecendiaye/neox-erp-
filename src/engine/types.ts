@@ -138,6 +138,8 @@ export interface Transfer {
   status: 'pending' | 'completed' | 'cancelled'
   validatedBy?: string
   validatedAt?: string
+  receivedAt?: string
+  receivedBy?: string
   createdAt: string
   userId: string
 }
@@ -146,6 +148,73 @@ export interface TransferItem {
   productId: string
   productName: string
   quantity: number
+}
+
+export type BonSortieStatus = 'en_attente' | 'valide' | 'recu' | 'annule'
+
+export interface BonSortieItem {
+  productId: string
+  productName: string
+  barcode?: string
+  reference?: string
+  variant?: string
+  quantity: number
+  unit?: string
+  unitPrice?: number
+  total?: number
+}
+
+export interface BonSortieSignatures {
+  destinateur?: string
+  destinateurAt?: string
+  destinataire?: string
+  destinataireAt?: string
+  responsable?: string
+  responsableAt?: string
+}
+
+export interface BonSortie {
+  id: string
+  businessId: string
+  number: string
+  status: BonSortieStatus
+  transferId?: string
+  fromLocationId: string
+  fromLocationName: string
+  fromLocationCode?: string
+  fromAddress?: string
+  toLocationId: string
+  toLocationName: string
+  toLocationCode?: string
+  toAddress?: string
+  destinateurId?: string
+  destinateurName: string
+  destinateurRole?: string
+  destinataireId?: string
+  destinataireName?: string
+  destinataireRole?: string
+  createdBy: string
+  createdByName: string
+  createdAt: string
+  createdTime: string
+  shippedAt?: string
+  shippedTime?: string
+  receivedAt?: string
+  receivedTime?: string
+  receivedBy?: string
+  reference?: string
+  motif?: string
+  comments?: string
+  items: BonSortieItem[]
+  totalArticles: number
+  totalQuantity: number
+  totalValue: number
+  validatedBy?: string
+  validatedByName?: string
+  validatedAt?: string
+  deviceInfo?: string
+  signatures?: BonSortieSignatures
+  parentId?: string
 }
 
 

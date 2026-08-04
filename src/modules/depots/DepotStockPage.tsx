@@ -143,23 +143,21 @@ export default function DepotStockPage() {
     if (!transferTarget || transferItems.length === 0) return toast('Champs invalides', 'warning')
     const transferId = generateId()
     const now = new Date().toISOString()
-    const bonNumber = `BS-${String(Date.now()).slice(-8)}`
     const items = transferItems
       .filter(i => i.qty > 0)
       .map(i => ({
         productId: i.productId, productName: productMap.get(i.productId)?.name || '',
         quantity: convertToMainUnit(i.qty, i.unitQuantity || 1),
       }))
-    await processTransfer({
+    const transfer = await processTransfer({
       id: transferId, businessId, fromLocationId: locationId!, toLocationId: transferTarget,
-      bonNumber,
       items, status: 'pending', createdAt: now,
       userId: useAppStore.getState().user?.id || '',
     })
     const fromName = location?.name || ''
     const toName = allLocations?.find(l => l.id === transferTarget)?.name || ''
     setBonInfo({
-      id: transferId, bonNumber, from: fromName, to: toName, date: now,
+      id: transfer.id, bonNumber: transfer.bonNumber || '', from: fromName, to: toName, date: transfer.createdAt,
       items: items.map(i => ({ name: i.productName, qty: i.quantity })),
     })
     setBonModal(true)
@@ -233,7 +231,7 @@ export default function DepotStockPage() {
           <p className="text-surface-500 text-sm">{stats.totalProducts} produits · {stats.categoryCount} catégories</p>
         </div>
         <Button onClick={() => setTransferModal(true)}><ArrowRightLeft className="w-4 h-4" /> Transférer</Button>
-        <Button onClick={() => navigate(`/depots/history/${locationId}`)}><History className="w-4 h-4" /> Historique</Button>
+        <Button onClick={() => navigate(`/depots/history/${locationId}`)}><History className="w-4 h-4" /> Mouvement</Button>
       </div>
 
       {/* Stats */}
@@ -538,6 +536,9 @@ export default function DepotStockPage() {
                 </tbody>
               </table>
               </div>
+              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                Le stock de destination sera ajouté à la confirmation de réception dans le module Bon de sortie.
+              </p>
               <div className="flex gap-2 pt-2">
                 <Button onClick={() => {
                   const w = window.open('', '_blank')

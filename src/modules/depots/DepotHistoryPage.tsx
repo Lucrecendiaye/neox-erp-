@@ -1,10 +1,10 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
-import { ArrowLeft, History, Package, ArrowRightLeft, ShoppingCart, AlertTriangle, RefreshCw, Plus } from 'lucide-react'
+import { ArrowLeft, History, Package, ArrowRightLeft, ShoppingCart, AlertTriangle, RefreshCw, Plus, Search } from 'lucide-react'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import type { ProductHistoryAction } from '@/engine/types'
 
@@ -24,6 +24,16 @@ const actionLabels: Record<ProductHistoryAction, { label: string; icon: any; col
   supplier_exit: { label: 'Sortie fournisseur', icon: ArrowRightLeft, color: 'text-red-600 bg-red-50' },
 }
 
+function inPeriod(iso: string, period: string) {
+  const d = new Date(iso)
+  const now = new Date()
+  if (period === 'jour') return d.toDateString() === now.toDateString()
+  if (period === 'semaine') return (now.getTime() - d.getTime()) <= 7 * 86400000
+  if (period === 'mois') return d.getMonth() === now.getMonth() && d.getFullYear() === now.getFullYear()
+  if (period === 'annee') return d.getFullYear() === now.getFullYear()
+  return true
+}
+
 export default function DepotHistoryPage() {
   const { locationId } = useParams()
   const businessId = useBusinessId()
@@ -37,8 +47,26 @@ export default function DepotHistoryPage() {
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const users = useLiveQuery(() => db.users.where('businessId').equals(businessId).toArray(), [businessId])
 
+  const [search, setSearch] = useState('')
+  const [actionFilter, setActionFilter] = useState('all')
+  const [periodFilter, setPeriodFilter] = useState('all')
+
   const productMap = useMemo(() => new Map(products?.map(p => [p.id, p])), [products])
   const userMap = useMemo(() => new Map(users?.map(u => [u.id, u])), [users])
+
+  const filtered = useMemo(() => {
+    const q = search.toLowerCase()
+    return (history || []).filter(h => {
+      if (actionFilter !== 'all' && h.action !== actionFilter) return false
+      if (periodFilter !== 'all' && !inPeriod(h.createdAt, periodFilter)) return false
+      if (q) {
+        const prod = productMap.get(h.productId)
+        const hay = `${prod?.name || h.productId} ${h.comment || ''} ${h.reference || ''}`.toLowerCase()
+        if (!hay.includes(q)) return false
+      }
+      return true
+    })
+  }, [history, search, actionFilter, periodFilter, productMap])
 
   const actionIcons: Record<string, any> = {
     sold: ShoppingCart,
@@ -56,9 +84,31 @@ export default function DepotHistoryPage() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-surface-900">Historique — {location?.name}</h1>
-          <p className="text-surface-500 text-sm">Mouvements de stock</p>
+          <h1 className="text-2xl font-bold text-surface-900">Mouvements — {location?.name}</h1>
+          <p className="text-surface-500 text-sm">Historique des mouvements de stock</p>
         </div>
+      </div>
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
+          <input value={search} onChange={e => setSearch(e.target.value)}
+            placeholder="Produit, commentaire, référence..."
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+        </div>
+        <select value={actionFilter} onChange={e => setActionFilter(e.target.value)}
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          <option value="all">Toutes les actions</option>
+          {Object.entries(actionLabels).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+        </select>
+        <select value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          <option value="all">Toutes périodes</option>
+          <option value="jour">Aujourd'hui</option>
+          <option value="semaine">7 derniers jours</option>
+          <option value="mois">Ce mois-ci</option>
+          <option value="annee">Cette année</option>
+        </select>
       </div>
 
       <Card className="overflow-hidden p-0">
@@ -77,7 +127,7 @@ export default function DepotHistoryPage() {
               </tr>
             </thead>
             <tbody className="divide-y divide-surface-100">
-              {history?.map(h => {
+              {filtered.map(h => {
                 const action = actionLabels[h.action] || { label: h.action, icon: RefreshCw, color: 'text-surface-600 bg-surface-100' }
                 const Icon = action.icon
                 const product = productMap.get(h.productId)
@@ -103,8 +153,8 @@ export default function DepotHistoryPage() {
                   </tr>
                 )
               })}
-              {(!history || history.length === 0) && (
-                <tr><td colSpan={8} className="px-6 py-8 text-center text-surface-400">Aucun mouvement</td></tr>
+              {filtered.length === 0 && (
+                <tr><td colSpan={8} className="px-6 py-8 text-center text-surface-400">Aucun mouvement trouvé</td></tr>
               )}
             </tbody>
           </table>

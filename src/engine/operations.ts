@@ -8,7 +8,7 @@ import { softDelete } from '@/lib/softDelete'
 import type {
   Location, ProductStock, ProductHistory, ProductHistoryAction,
   SupplierInvoice, SupplierInvoiceItem, SupplierPayment, PaymentLine,
-  Compensation, CompensationItem, Transfer, TransferItem,
+  Compensation, CompensationItem, Transfer, TransferItem, BonSortie, BonSortieItem,
 } from './types'
 import type { Sale, SaleItem, StockMovement, Purchase, AccountingEntry, AuditLog, Product, Credit, CreditPayment, PaymentMethod } from '@/types'
 
@@ -259,26 +259,234 @@ export async function processPurchase(purchase: Purchase) {
   await audit('create', 'purchase', purchase.id, `Achat ${purchase.total} FCFA (${currentUserName()})`)
 }
 
+function timeStr(iso: string): string {
+  return new Date(iso).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+}
+
+function getDeviceInfo(): string {
+  try {
+    return `${navigator.platform || ''} - ${(navigator.userAgent || '').slice(0, 90)}`
+  } catch {
+    return 'appareil inconnu'
+  }
+}
+
+function locationCode(loc?: Location): string {
+  if (!loc) return ''
+  const initials = (loc.name || '')
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(w => w[0])
+    .join('')
+    .toUpperCase()
+    .slice(0, 4)
+  return initials || loc.id.slice(0, 4).toUpperCase()
+}
+
+export async function generateBonNumber(): Promise<string> {
+  const biz = currentBizId()
+  const year = new Date().getFullYear()
+  let max = 0
+  try {
+    const all = await db.bonSorties.where('businessId').equals(biz).toArray()
+    for (const b of all) {
+      const parts = b.number?.split('-') || []
+      const seq = parseInt(parts[parts.length - 1], 10)
+      if (!isNaN(seq) && seq > max) max = seq
+    }
+  } catch { /* premier bon */ }
+  return `BS-${year}-${String(max + 1).padStart(6, '0')}`
+}
+
+async function createBonSortieFromTransfer(transfer: Transfer): Promise<BonSortie> {
+  const fromLoc = await db.locations.get(transfer.fromLocationId)
+  const toLoc = await db.locations.get(transfer.toLocationId)
+  const state = useAppStore.getState()
+  const uname = state.user?.name || ''
+  const urole = state.user?.role || ''
+
+  const items: BonSortieItem[] = []
+  let totalQty = 0
+  let totalVal = 0
+  for (const item of transfer.items) {
+    const prod = await db.products.get(item.productId)
+    const unitPrice = prod?.sellingPrice || 0
+    const qty = item.quantity
+    items.push({
+      productId: item.productId,
+      productName: item.productName || prod?.name || '',
+      barcode: prod?.barcode,
+      reference: prod?.reference,
+      variant: prod?.brand,
+      quantity: qty,
+      unit: prod?.unit || 'piece',
+      unitPrice,
+      total: unitPrice * qty,
+    })
+    totalQty += qty
+    totalVal += unitPrice * qty
+  }
+
+  const bon: BonSortie = {
+    id: generateId(),
+    businessId: currentBizId(),
+    number: transfer.bonNumber || await generateBonNumber(),
+    status: 'en_attente',
+    transferId: transfer.id,
+    fromLocationId: transfer.fromLocationId,
+    fromLocationName: fromLoc?.name || transfer.fromLocationId,
+    fromLocationCode: locationCode(fromLoc),
+    fromAddress: fromLoc?.address,
+    toLocationId: transfer.toLocationId,
+    toLocationName: toLoc?.name || transfer.toLocationId,
+    toLocationCode: locationCode(toLoc),
+    toAddress: toLoc?.address,
+    destinateurId: transfer.userId,
+    destinateurName: uname,
+    destinateurRole: urole,
+    createdBy: transfer.userId,
+    createdByName: uname,
+    createdAt: transfer.createdAt,
+    createdTime: timeStr(transfer.createdAt),
+    shippedAt: transfer.createdAt,
+    shippedTime: timeStr(transfer.createdAt),
+    reference: transfer.bonNumber,
+    motif: 'Transfert de stock',
+    items,
+    totalArticles: items.length,
+    totalQuantity: totalQty,
+    totalValue: totalVal,
+    deviceInfo: getDeviceInfo(),
+    signatures: {},
+  }
+  await db.bonSorties.add(bon)
+  return bon
+}
+
 export async function processTransfer(transfer: Transfer) {
   requirePermission('depots', 'transfer')
   transfer.id = transfer.id || generateId()
   transfer.businessId = currentBizId()
   transfer.createdAt = now()
   transfer.userId = currentUserId()
-  transfer.status = 'completed'
-  transfer.bonNumber = transfer.bonNumber || `BS-${String(Date.now()).slice(-8)}`
+  transfer.status = 'pending'
+  transfer.bonNumber = await generateBonNumber()
 
   for (const item of transfer.items) {
     const fromQty = await getStock(item.productId, transfer.fromLocationId)
     if (fromQty < item.quantity) throw new Error(`Stock insuffisant pour ${item.productName} dans l'emplacement source`)
     await adjustStock(item.productId, transfer.fromLocationId, -item.quantity, 'transferred_out', transfer.id, `Transfert vers ${transfer.toLocationId}`)
-    await adjustStock(item.productId, transfer.toLocationId, item.quantity, 'transferred_in', transfer.id, `Transfert depuis ${transfer.fromLocationId}`)
   }
 
   await db.transfers.add(transfer)
   await syncAfter('transfers', transfer)
+
+  await createBonSortieFromTransfer(transfer)
+
   await audit('create', 'transfer', transfer.id, `Transfert ${transfer.bonNumber} - ${transfer.fromLocationId} → ${transfer.toLocationId} (${currentUserName()})`)
   return transfer
+}
+
+export async function confirmTransferReception(transferId: string, receivedByName?: string) {
+  requirePermission('depots', 'edit')
+  const transfer = await db.transfers.get(transferId)
+  if (!transfer) throw new Error('Transfert introuvable')
+  if (transfer.status === 'completed') throw new Error('Ce transfert a déjà été reçu')
+  const bon = await db.bonSorties.where('transferId').equals(transferId).first()
+  const name = receivedByName?.trim() || currentUserName()
+
+  for (const item of transfer.items) {
+    await adjustStock(item.productId, transfer.toLocationId, item.quantity, 'transferred_in', transfer.id, `Réception bon ${bon?.number || transfer.bonNumber} par ${name}`)
+  }
+
+  const iso = now()
+  await db.transfers.update(transferId, { status: 'completed', receivedAt: iso, receivedBy: name })
+  if (isSupabaseConfigured()) {
+    await syncWrite('transfers', { id: transferId, status: 'completed', receivedAt: iso, receivedBy: name }).catch(() => {})
+  }
+  if (bon) {
+    await db.bonSorties.update(bon.id, {
+      status: 'recu',
+      receivedAt: iso,
+      receivedTime: timeStr(iso),
+      receivedBy: name,
+      destinataireName: name,
+      signatures: { ...(bon.signatures || {}), destinataire: name, destinataireAt: iso },
+    })
+  }
+  await audit('receive', 'transfer', transferId, `Réception du transfert ${bon?.number || transfer.bonNumber} par ${name}`)
+  return bon
+}
+
+export async function validateBonSortie(bonId: string) {
+  const bon = await db.bonSorties.get(bonId)
+  if (!bon) throw new Error('Bon de sortie introuvable')
+  if (bon.status !== 'en_attente') throw new Error('Seul un bon en attente peut être validé')
+  const iso = now()
+  const uname = currentUserName()
+  await db.bonSorties.update(bonId, {
+    status: 'valide',
+    validatedBy: currentUserId(),
+    validatedByName: uname,
+    validatedAt: iso,
+  })
+  await audit('validate', 'bon_sortie', bonId, `Bon de sortie ${bon.number} validé par ${uname}`)
+}
+
+export async function cancelBonSortie(bonId: string) {
+  const bon = await db.bonSorties.get(bonId)
+  if (!bon) throw new Error('Bon de sortie introuvable')
+  if (bon.status === 'recu') throw new Error('Un bon reçu ne peut pas être annulé')
+  for (const item of bon.items) {
+    await adjustStock(item.productId, bon.fromLocationId, item.quantity, 'returned', bon.id, `Annulation bon ${bon.number}`)
+  }
+  await db.bonSorties.update(bonId, { status: 'annule' })
+  if (bon.transferId) await db.transfers.update(bon.transferId, { status: 'cancelled' })
+  await audit('cancel', 'bon_sortie', bonId, `Bon de sortie ${bon.number} annulé`)
+}
+
+export async function duplicateBonSortie(bonId: string): Promise<BonSortie> {
+  const bon = await db.bonSorties.get(bonId)
+  if (!bon) throw new Error('Bon de sortie introuvable')
+  const num = await generateBonNumber()
+  const iso = now()
+  const copy: BonSortie = {
+    ...bon,
+    id: generateId(),
+    number: num,
+    status: 'en_attente',
+    parentId: bon.id,
+    createdAt: iso,
+    createdTime: timeStr(iso),
+    shippedAt: iso,
+    shippedTime: timeStr(iso),
+    receivedAt: undefined,
+    receivedTime: undefined,
+    receivedBy: undefined,
+    validatedBy: undefined,
+    validatedByName: undefined,
+    validatedAt: undefined,
+    createdBy: currentUserId(),
+    createdByName: currentUserName(),
+    destinateurId: currentUserId(),
+    destinateurName: currentUserName(),
+    signatures: {},
+  }
+  await db.bonSorties.add(copy)
+  await audit('duplicate', 'bon_sortie', copy.id, `Bon de sortie ${num} dupliqué depuis ${bon.number}`)
+  return copy
+}
+
+export async function signBonSortie(bonId: string, sig: { destinateur?: string; responsable?: string }) {
+  const bon = await db.bonSorties.get(bonId)
+  if (!bon) throw new Error('Bon de sortie introuvable')
+  const cur = bon.signatures || {}
+  const iso = now()
+  const next = { ...cur }
+  if (sig.destinateur) { next.destinateur = sig.destinateur; next.destinateurAt = iso }
+  if (sig.responsable) { next.responsable = sig.responsable; next.responsableAt = iso }
+  await db.bonSorties.update(bonId, { signatures: next })
+  await audit('sign', 'bon_sortie', bonId, `Bon de sortie ${bon.number} signé par ${currentUserName()}`)
 }
 
 export async function processStockAdjustment(productId: string, locationId: string, newQty: number, note?: string) {

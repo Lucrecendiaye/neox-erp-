@@ -7,7 +7,7 @@ import type {
 } from '@/types'
 import type {
   Location, ProductStock, ProductHistory,
-  SupplierInvoice, SupplierPayment, Compensation, Transfer,
+  SupplierInvoice, SupplierPayment, Compensation, Transfer, BonSortie,
 } from '@/engine/types'
 import type { DeletedRecord } from '@/lib/softDelete'
 
@@ -42,10 +42,14 @@ class NeoXDB extends Dexie {
   supplierPayments!: EntityTable<SupplierPayment, 'id'>
   compensations!: EntityTable<Compensation, 'id'>
   transfers!: EntityTable<Transfer, 'id'>
+  bonSorties!: EntityTable<BonSortie, 'id'>
   deletedRecords!: EntityTable<DeletedRecord, 'id'>
 
   constructor() {
     super('neox_erp')
+    this.version(8).stores({
+      bonSorties: 'id, businessId, number, status, fromLocationId, toLocationId, transferId, createdAt',
+    })
     this.version(7).stores({
       products: 'id, businessId, name, barcode, categoryId, supplierId, status',
       categories: 'id, businessId, name, parentId',
