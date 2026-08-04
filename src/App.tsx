@@ -35,7 +35,6 @@ const PurchasesPage = lazy(() => import('@/modules/purchases/PurchasesPage'))
 const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage'))
 const DepotsPage = lazy(() => import('@/modules/depots/DepotsPage'))
 const DepotStockPage = lazy(() => import('@/modules/depots/DepotStockPage'))
-const DepotPOSPage = lazy(() => import('@/modules/depots/DepotPOSPage'))
 const DepotStatsPage = lazy(() => import('@/modules/depots/DepotStatsPage'))
 const DepotGlobalPOSPage = lazy(() => import('@/modules/depots/DepotGlobalPOSPage'))
 const DepotHistoryPage = lazy(() => import('@/modules/depots/DepotHistoryPage'))
@@ -215,7 +214,6 @@ export default function App() {
           <Route path="/settings" element={<PermissionRoute module="settings"><SettingsPage /></PermissionRoute>} />
           <Route path="/depots" element={<PermissionRoute module="depots"><DepotsPage /></PermissionRoute>} />
           <Route path="/depots/stock/:locationId" element={<PermissionRoute module="depots"><DepotStockPage /></PermissionRoute>} />
-          <Route path="/depots/pos/:locationId" element={<PermissionRoute module="depots"><DepotPOSPage /></PermissionRoute>} />
           <Route path="/depots/stats/:locationId" element={<PermissionRoute module="depots"><DepotStatsPage /></PermissionRoute>} />
           <Route path="/depots/vente" element={<PermissionRoute module="depots"><DepotGlobalPOSPage /></PermissionRoute>} />
           <Route path="/depots/history/:locationId" element={<PermissionRoute module="depots"><DepotHistoryPage /></PermissionRoute>} />

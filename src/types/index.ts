@@ -94,6 +94,7 @@ export interface SaleItem {
   total: number
   unitName?: string
   unitQuantity?: number
+  locationId?: string
 }
 
 export interface SplitPaymentItem {

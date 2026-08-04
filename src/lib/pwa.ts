@@ -1,3 +1,5 @@
+import { registerSW as registerPWA } from 'virtual:pwa-register'
+
 type BeforeInstallPromptEvent = Event & {
   prompt: () => Promise<void>
   userChoice: Promise<{ outcome: 'accepted' | 'dismissed' }>
@@ -7,8 +9,13 @@ let deferredPrompt: BeforeInstallPromptEvent | null = null
 let listeners: Array<(installable: boolean) => void> = []
 
 export function registerSW() {
-  // Service worker is auto-registered by VitePWA plugin (registerType: 'autoUpdate')
-  // This function exists as a hook point for future customizations
+  // registerType: 'autoUpdate' — le SW appelle skipWaiting() + clientsClaim()
+  // et workbox nettoie les anciens precaches (cleanupOutdatedCaches) à l'activation.
+  // Quand un nouveau SW s'active (nouveau déploiement), la page se recharge
+  // automatiquement pour servir les nouveaux chunks (évite l'ancien code base64).
+  registerPWA({
+    immediate: true,
+  })
 }
 
 export function listenInstallPrompt(callback: (installable: boolean) => void) {

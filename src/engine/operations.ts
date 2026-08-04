@@ -118,10 +118,10 @@ function getMainQty(item: { quantity: number; unitQuantity?: number }): number {
 
 export async function processSale(sale: Sale) {
   requirePermission('pos', 'create')
-  const locationId = sale.locationId
   for (const item of sale.items) {
     const mainQty = getMainQty(item)
-    await adjustStock(item.productId, locationId, -mainQty, 'sold', sale.invoiceNumber, `Vente #${sale.invoiceNumber} par ${currentUserName()}`)
+    const itemLocationId = (item as { locationId?: string }).locationId || sale.locationId
+    await adjustStock(item.productId, itemLocationId, -mainQty, 'sold', sale.invoiceNumber, `Vente #${sale.invoiceNumber} par ${currentUserName()}`)
   }
   await db.sales.add(sale)
   await syncAfter('sales', sale)
@@ -177,7 +177,8 @@ export async function cancelSale(saleId: string) {
   if (!sale) throw new Error('Vente introuvable')
   for (const item of sale.items) {
     const mainQty = getMainQty(item)
-    await adjustStock(item.productId, sale.locationId, mainQty, 'returned', sale.invoiceNumber, `Annulation vente #${sale.invoiceNumber} par ${currentUserName()}`)
+    const itemLocationId = (item as { locationId?: string }).locationId || sale.locationId
+    await adjustStock(item.productId, itemLocationId, mainQty, 'returned', sale.invoiceNumber, `Annulation vente #${sale.invoiceNumber} par ${currentUserName()}`)
   }
   await db.sales.update(saleId, { status: 'cancelled' })
   await audit('cancel', 'sale', saleId, `Vente ${sale.invoiceNumber} annulée (${currentUserName()})`)
@@ -189,7 +190,8 @@ export async function deleteSale(saleId: string) {
   if (!sale) throw new Error('Vente introuvable')
   for (const item of sale.items) {
     const mainQty = getMainQty(item)
-    await adjustStock(item.productId, sale.locationId, mainQty, 'returned', sale.invoiceNumber, `Suppression vente #${sale.invoiceNumber} par ${currentUserName()}`)
+    const itemLocationId = (item as { locationId?: string }).locationId || sale.locationId
+    await adjustStock(item.productId, itemLocationId, mainQty, 'returned', sale.invoiceNumber, `Suppression vente #${sale.invoiceNumber} par ${currentUserName()}`)
   }
 
   if (sale.paymentMethod === 'credit' && sale.customerId) {
@@ -225,7 +227,8 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
   // Restore old stock
   for (const item of oldSale.items) {
     const mainQty = getMainQty(item)
-    await adjustStock(item.productId, oldSale.locationId, mainQty, 'returned', oldSale.invoiceNumber, `Modification - restitution ancien stock #${oldSale.invoiceNumber}`)
+    const itemLocationId = (item as { locationId?: string }).locationId || oldSale.locationId
+    await adjustStock(item.productId, itemLocationId, mainQty, 'returned', oldSale.invoiceNumber, `Modification - restitution ancien stock #${oldSale.invoiceNumber}`)
   }
 
   // Apply new stock deduction if items changed
@@ -233,7 +236,8 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
   const newLocationId = updatedSale.locationId || oldSale.locationId
   for (const item of newItems) {
     const mainQty = getMainQty(item)
-    await adjustStock(item.productId, newLocationId, -mainQty, 'sold', oldSale.invoiceNumber, `Modification - nouveau stock #${oldSale.invoiceNumber} (${currentUserName()})`)
+    const itemLocationId = (item as { locationId?: string }).locationId || newLocationId
+    await adjustStock(item.productId, itemLocationId, -mainQty, 'sold', oldSale.invoiceNumber, `Modification - nouveau stock #${oldSale.invoiceNumber} (${currentUserName()})`)
   }
 
   await db.sales.update(saleId, {

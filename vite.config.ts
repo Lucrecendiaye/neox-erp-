@@ -49,7 +49,7 @@ export default defineConfig({
         },
       ],
     },
-    injectRegister: 'auto',
+    injectRegister: false,
   })],
   resolve: {
     alias: {

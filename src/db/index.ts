@@ -46,7 +46,7 @@ class NeoXDB extends Dexie {
 
   constructor() {
     super('neox_erp')
-    this.version(6).stores({
+    this.version(7).stores({
       products: 'id, businessId, name, barcode, categoryId, supplierId, status',
       categories: 'id, businessId, name, parentId',
       stockMovements: 'id, businessId, locationId, productId, type, createdAt',
@@ -71,7 +71,7 @@ class NeoXDB extends Dexie {
       leads: 'id, businessId, name, phone, status, source',
       businessCards: 'id, businessId, name, design',
       locations: 'id, businessId, type, isActive',
-      productStocks: 'id, businessId, productId, locationId',
+      productStocks: 'id, businessId, productId, locationId, [productId+locationId]',
       productHistory: 'id, businessId, productId, locationId, action, createdAt',
       supplierInvoices: 'id, businessId, supplierId, number, status, createdAt',
       supplierPayments: 'id, businessId, invoiceId, date',

@@ -17,6 +17,7 @@ import { toast } from '@/lib/toast'
 import { printBarcodeLabels } from '@/lib/barcodePrint'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import { softDelete } from '@/lib/softDelete'
+import { syncDeleteObject } from '@/lib/realtime'
 import {
   Search, Plus, Package, Edit2, Trash2, ScanLine, Printer,
   ChevronDown, Filter, Layers, Tags, Download, Eye,
@@ -299,7 +300,13 @@ export default function ProductsPage() {
   async function confirmDeleteProduct(id: string) {
     const product = await db.products.get(id)
     if (product) await softDelete('products', id, product as any, product.name)
+    const stocks = await db.productStocks.where('productId').equals(id).toArray()
+    await db.productStocks.where('productId').equals(id).delete()
     await db.products.delete(id)
+    try { await syncDeleteObject('products', id) } catch {}
+    for (const stock of stocks) {
+      try { await syncDeleteObject('productStocks', stock.id) } catch {}
+    }
     toast('Produit supprimé', 'success')
   }
 

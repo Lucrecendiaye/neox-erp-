@@ -17,7 +17,6 @@
 
 ## 📦 Avant mise en production
 - [ ] Estimer le nombre max de boutiques/produits avant la limite 500 Mo (calcul de capacité).
-- [ ] Migration des données du 1er ERP (`D:\erp-cloud-fresh\erp-cloud-fresh`) : Supabase bloqué 402 — attendre le paiement du plan Pro ($25/mois) puis appliquer le plan `TODO-RECUPERATION-DONNEES.md` (photos → Cloudinary également).
 - [ ] Vérifier que le bucket `erp-images` Supabase Storage est bien configuré (fallback si Cloudinary indisponible).
 
 ## Commandes utiles
@@ -27,4 +26,3 @@
 
 ## Références
 - Suivi quota : `TODO-PREVENTION-QUOTA.md`
-- Récupération 1er ERP : `D:\erp-cloud-fresh\erp-cloud-fresh\TODO-RECUPERATION-DONNEES.md`

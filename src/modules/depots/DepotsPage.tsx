@@ -146,9 +146,6 @@ export default function DepotsPage() {
                 <button onClick={() => navigate('/depots/stock/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
                   <Package className="w-3 h-3" /> Stock
                 </button>
-                <button onClick={() => navigate('/depots/pos/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
-                  <TrendingUp className="w-3 h-3" /> Ventes
-                </button>
                 <button onClick={() => navigate(`/depots/stock/${w.id}`)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
                   <ArrowRightLeft className="w-3 h-3" /> Transférer
                 </button>
