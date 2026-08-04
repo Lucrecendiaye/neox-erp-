@@ -40,7 +40,7 @@ export default function DepotGlobalPOSPage() {
 
   const allProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const allStocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
-  const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).filter(l => l.type === 'warehouse').toArray(), [businessId])
+  const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
   const allCustomers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const dexieSettings = useLiveQuery(() => db.settings.get('default'), [])
   const userId = useAppStore(s => s.user?.id || '')
