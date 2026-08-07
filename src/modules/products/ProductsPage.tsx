@@ -660,15 +660,8 @@ export default function ProductsPage() {
               </p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              {form.unit === 'dozen' && (
-                <Input label="Prix par douzaine" type="number" value={form.priceDozen} onChange={(e) => setForm({ ...form, priceDozen: +e.target.value })} />
-              )}
-              {form.unit === 'pack' && (
-                <>
-                  <Input label="Prix par douzaine" type="number" value={form.priceDozen} onChange={(e) => setForm({ ...form, priceDozen: +e.target.value })} />
-                  <Input label="Prix par paquet" type="number" value={form.pricePack} onChange={(e) => setForm({ ...form, pricePack: +e.target.value })} />
-                </>
-              )}
+              <Input label="Prix par douzaine" type="number" value={form.priceDozen} onChange={(e) => setForm({ ...form, priceDozen: +e.target.value })} />
+              <Input label="Prix par paquet" type="number" value={form.pricePack} onChange={(e) => setForm({ ...form, pricePack: +e.target.value })} />
             </div>
           </div>
 

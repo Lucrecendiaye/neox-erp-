@@ -1,7 +1,7 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
-import { sanitizePayloadForSync } from './imageStorage'
+import { sanitizePayloadForSync, mergePhotosForSync } from './imageStorage'
 import { sanitizeForCloud } from './syncEngine'
 
 const SUBSCRIPTIONS: { table: string; dexieTable: keyof typeof db }[] = [
@@ -68,6 +68,12 @@ export async function subscribeAll(onChange?: (table: string, event: string, dat
                 const flat = { ...row }
                 const key = row.id
                 delete flat.id
+                if (Array.isArray(flat.photos)) {
+                  const local = await dexie.get(key)
+                  if (local && Array.isArray(local.photos) && local.photos.length > 0) {
+                    flat.photos = mergePhotosForSync(local.photos, flat.photos)
+                  }
+                }
                 await dexie.put({ id: key, ...flat })
               }
             } else if (payload.eventType === 'DELETE') {

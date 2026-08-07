@@ -2,7 +2,7 @@ import Dexie, { type EntityTable } from 'dexie'
 import type {
   Product, Category, StockMovement, Customer, Supplier,
   Sale, Purchase, Invoice, AccountingEntry, Account,
-  Credit, CreditPayment, AuditLog, User, CompanySettings, Notification, Business,
+  Credit, CreditPayment, CreditModification, AuditLog, User, CompanySettings, Notification, Business,
   Employee, Attendance, Payroll, CashBookEntry, Lead, BusinessCard,
 } from '@/types'
 import type {
@@ -24,6 +24,7 @@ class NeoXDB extends Dexie {
   accounts!: EntityTable<Account, 'id'>
   credits!: EntityTable<Credit, 'id'>
   creditPayments!: EntityTable<CreditPayment, 'id'>
+  creditModifications!: EntityTable<CreditModification, 'id'>
   auditLogs!: EntityTable<AuditLog, 'id'>
   users!: EntityTable<User, 'id'>
   settings!: EntityTable<CompanySettings, 'id'>
@@ -47,10 +48,7 @@ class NeoXDB extends Dexie {
 
   constructor() {
     super('neox_erp')
-    this.version(8).stores({
-      bonSorties: 'id, businessId, number, status, fromLocationId, toLocationId, transferId, createdAt',
-    })
-    this.version(7).stores({
+    const fullSchema = {
       products: 'id, businessId, name, barcode, categoryId, supplierId, status',
       categories: 'id, businessId, name, parentId',
       stockMovements: 'id, businessId, locationId, productId, type, createdAt',
@@ -81,8 +79,15 @@ class NeoXDB extends Dexie {
       supplierPayments: 'id, businessId, invoiceId, date',
       compensations: 'id, businessId, partyId, direction, status',
       transfers: 'id, businessId, fromLocationId, toLocationId, status, createdAt',
+      bonSorties: 'id, businessId, number, status, fromLocationId, toLocationId, transferId, createdAt',
       deletedRecords: 'id, businessId, entity, entityId, deletedAt',
+    }
+    this.version(9).stores({
+      ...fullSchema,
+      creditModifications: 'id, businessId, creditId, saleId, createdAt',
     })
+    this.version(8).stores(fullSchema)
+    this.version(7).stores(fullSchema)
   }
 }
 

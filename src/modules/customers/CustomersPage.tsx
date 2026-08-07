@@ -8,9 +8,10 @@ import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { generateId, formatCurrency, openWhatsApp, pickContact } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import { shareViaWeChat } from '@/lib/share'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import { softDelete } from '@/lib/softDelete'
-import { Search, Plus, Edit2, Trash2, Users, Phone, Mail, MapPin, CreditCard, MessageSquare } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Users, Phone, Mail, MapPin, CreditCard, MessageSquare, MessageCircle } from 'lucide-react'
 import type { Customer } from '@/types'
 
 export default function CustomersPage() {
@@ -149,6 +150,9 @@ export default function CustomersPage() {
             <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
               <button onClick={() => handleWhatsApp(c.phone)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600">
                 <MessageSquare className="w-4 h-4" />
+              </button>
+              <button onClick={() => shareViaWeChat(`Contact: ${c.name}${c.phone ? ` — ${c.phone}` : ''}`, `Contact ${c.name}`)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Partager par WeChat">
+                <MessageCircle className="w-4 h-4" />
               </button>
               <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
                 <Edit2 className="w-4 h-4" />

@@ -6,17 +6,20 @@ import db from '@/db'
 import { cn, formatCurrency, generateId, generateInvoiceNumber, getProductUnits, getUnitPrice, getUnitStep, getUnitMinQty, pickContact } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { processSale } from '@/engine/operations'
-import { exportSalePDF, shareSalePDF } from '@/lib/pdf'
+import { exportSalePDF, shareSalePDF, buildProductPhotos } from '@/lib/pdf'
+import { shareViaWeChat } from '@/lib/share'
 import { thermalPrinter, printReceiptHTML } from '@/lib/thermalPrinter'
 import {
   ShoppingCart, Plus, Minus, Trash2, Search, Package, X,
   CreditCard, Printer, Download, Tag, User, Phone, MapPin, Calendar,
-  Check, Send, ChevronDown, Contact as ContactIcon
+  Check, Send, ChevronDown, Contact as ContactIcon, MessageCircle, Edit2
 } from 'lucide-react'
 import type { Product, Sale } from '@/types'
 import { useAppStore } from '@/stores/appStore'
 import { useSalePayment, ensureCustomer } from '@/modules/pos/salePayment'
 import { SalePaymentPanel } from '@/modules/pos/SalePaymentPanel'
+import UnitPriceModal from '@/components/pos/UnitPriceModal'
+import { CreditSaleEditModal } from '@/components/credit/CreditSaleModals'
 
 interface CartItem {
   productId: string
@@ -49,9 +52,10 @@ export default function DepotGlobalPOSPage() {
   const [cart, setCart] = useState<CartItem[]>([])
   const [search, setSearch] = useState('')
   const [cartOpen, setCartOpen] = useState(false)
-  const [priceMode, setPriceMode] = useState<PriceMode>('detail')
+  const [priceMode, setPriceMode] = useState<PriceMode>('gros')
   const [pickModal, setPickModal] = useState<{ product: Product; unitName: string } | null>(null)
   const [splitModal, setSplitModal] = useState<{ item: CartItem; targetQty: number } | null>(null)
+  const [unitPriceModal, setUnitPriceModal] = useState<{ product: Product; unitName: string; itemKey?: string; locationId?: string } | null>(null)
 
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
@@ -63,6 +67,7 @@ export default function DepotGlobalPOSPage() {
 
   const [saleSuccess, setSaleSuccess] = useState(false)
   const [lastSale, setLastSale] = useState<Sale | null>(null)
+  const [editSaleId, setEditSaleId] = useState<string | null>(null)
 
   const locationMap = useMemo(() => new Map(locations?.map(l => [l.id, l])), [locations])
 
@@ -97,18 +102,48 @@ export default function DepotGlobalPOSPage() {
     return ((subtotal - discount - cost) / (subtotal - discount || 1)) * 100
   }, [cart, subtotal, discount, allProducts])
 
-  function addToCart(productId: string, unitName?: string, locationId?: string) {
+  function needsUnitPrice(p: Product, unitName: string) {
+    if (unitName === 'Douzaine' && !p.priceDozen) return true
+    if (unitName === 'Paquet' && !p.pricePack) return true
+    return false
+  }
+
+  async function handleUnitPriceConfirm(price: number) {
+    if (!unitPriceModal) return
+    const { product, unitName, itemKey, locationId } = unitPriceModal
+    await db.products.update(product.id, unitName === 'Douzaine' ? { priceDozen: price } : { pricePack: price })
+    setUnitPriceModal(null)
+    if (itemKey) {
+      const u = getProductUnits(product).find(x => x.name === unitName)
+      if (!u) return
+      setCart(prev => prev.map(i =>
+        cartItemKey(i) === itemKey
+          ? { ...i, unitName: u.name, unitQuantity: u.quantity, unitPrice: price }
+          : i
+      ))
+    } else if (locationId) {
+      addToCart(product.id, unitName, locationId, price)
+    } else {
+      handleProductClick(product, unitName, price)
+    }
+  }
+
+  function addToCart(productId: string, unitName?: string, locationId?: string, priceOverride?: number) {
     const p = allProducts?.find(x => x.id === productId)
     if (!p) return
     const units = getProductUnits(p)
     const unit = units.find(u => u.name === unitName) || units[0]
+    if (priceOverride === undefined && needsUnitPrice(p, unit.name)) {
+      setUnitPriceModal({ product: p, unitName: unit.name })
+      return
+    }
     const locId = locationId
     if (!locId) return
     const stockHere = allStocks?.find(s => s.productId === productId && s.locationId === locId)?.quantity || 0
     if (stockHere < unit.quantity) { toast('Stock insuffisant dans ce dépôt', 'error'); return }
-    const effectivePrice = priceMode === 'gros'
+    const effectivePrice = priceOverride ?? (priceMode === 'gros'
       ? (p.wholesalePrice || getUnitPrice(p, unit.name))
-      : getUnitPrice(p, unit.name)
+      : getUnitPrice(p, unit.name))
 
     setCart(prev => {
       const key = `${productId}::${unit.name}::${locId}`
@@ -119,7 +154,7 @@ export default function DepotGlobalPOSPage() {
         const neededPieces = Math.ceil(newQty * unit.quantity)
         if (neededPieces > stockHere) { toast('Stock insuffisant', 'error'); return prev }
         return prev.map(i =>
-          cartItemKey(i) === key ? { ...i, quantity: newQty } : i
+          cartItemKey(i) === key ? { ...i, quantity: newQty, unitPrice: priceOverride ?? i.unitPrice } : i
         )
       }
       return [...prev, {
@@ -131,15 +166,21 @@ export default function DepotGlobalPOSPage() {
     })
   }
 
-  function handleProductClick(product: Product, unitName?: string) {
+  function handleProductClick(product: Product, unitName?: string, priceOverride?: number) {
     const available = (stockByProduct.get(product.id) || []).filter(s => s.quantity > 0)
     if (available.length === 0) { toast('Aucun stock disponible', 'warning'); return }
-    if (available.length === 1) { addToCart(product.id, unitName, available[0].locationId); return }
+    if (available.length === 1) { addToCart(product.id, unitName, available[0].locationId, priceOverride); return }
     setPickModal({ product, unitName: unitName || 'Pièce' })
   }
 
   function handlePickDepot(locationId: string) {
     if (!pickModal) return
+    const p = pickModal.product
+    if (needsUnitPrice(p, pickModal.unitName)) {
+      setUnitPriceModal({ product: p, unitName: pickModal.unitName, locationId })
+      setPickModal(null)
+      return
+    }
     addToCart(pickModal.product.id, pickModal.unitName, locationId)
     setPickModal(null)
   }
@@ -170,9 +211,14 @@ export default function DepotGlobalPOSPage() {
   }
 
   function updateCartUnit(itemKey: string, newUnitName: string) {
+    const item = cart.find(i => cartItemKey(i) === itemKey)
+    const prod = item ? allProducts?.find(p => p.id === item.productId) : undefined
+    if (prod && needsUnitPrice(prod, newUnitName)) {
+      setUnitPriceModal({ product: prod, unitName: newUnitName, itemKey })
+      return
+    }
     setCart(prev => prev.map(i => {
       if (cartItemKey(i) !== itemKey) return i
-      const prod = allProducts?.find(p => p.id === i.productId)
       if (!prod) return i
       const u = getProductUnits(prod).find(x => x.name === newUnitName)
       if (!u) return i
@@ -347,7 +393,7 @@ export default function DepotGlobalPOSPage() {
                         {units.map(u => (
                           <button key={u.name} onClick={() => handleProductClick(p, u.name)}
                             className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-100 text-surface-500 hover:bg-primary-100 hover:text-primary-600 transition-colors"
-                            title={`1 ${u.name} = ${u.quantity} pièces`}>
+                            title={needsUnitPrice(p, u.name) ? `1 ${u.name} = ${u.quantity} pièces (prix non défini)` : `1 ${u.name} = ${u.quantity} pièces`}>
                             1 {u.name}
                           </button>
                         ))}
@@ -567,7 +613,7 @@ export default function DepotGlobalPOSPage() {
                 className={cn('flex-1 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 border border-surface-200', cart.length > 0 ? 'bg-white text-surface-700 hover:bg-surface-50' : 'bg-surface-50 text-surface-300 cursor-not-allowed')}>
                 <Printer className="w-3.5 h-3.5" /> Ticket
               </button>
-              <button onClick={() => { if (lastSale) exportSalePDF(lastSale, dexieSettings as any) }} disabled={cart.length === 0}
+              <button onClick={async () => { if (lastSale) exportSalePDF(lastSale, dexieSettings as any, await buildProductPhotos(allProducts as any)) }} disabled={cart.length === 0}
                 className={cn('flex-1 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 border border-surface-200', cart.length > 0 ? 'bg-white text-surface-700 hover:bg-surface-50' : 'bg-surface-50 text-surface-300 cursor-not-allowed')}>
                 <Download className="w-3.5 h-3.5" /> PDF
               </button>
@@ -629,6 +675,15 @@ export default function DepotGlobalPOSPage() {
         onClose={() => setSplitModal(null)}
       />
 
+      <UnitPriceModal
+        open={!!unitPriceModal}
+        productName={unitPriceModal?.product.name || ''}
+        unitName={unitPriceModal?.unitName || ''}
+        suggestedPrice={unitPriceModal ? Math.round(unitPriceModal.product.sellingPrice * (unitPriceModal.unitName === 'Douzaine' ? 12 : (unitPriceModal.product.packSize || 1))) : 0}
+        onConfirm={handleUnitPriceConfirm}
+        onClose={() => setUnitPriceModal(null)}
+      />
+
       {saleSuccess && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in p-4">
           <div className="relative text-center py-8 px-6 bg-white rounded-[20px] border border-surface-200 shadow-2xl animate-slide-up w-[95%] sm:w-[90%] md:w-[640px] max-w-[640px] max-h-[95vh] md:max-h-[820px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
@@ -641,9 +696,9 @@ export default function DepotGlobalPOSPage() {
             <p className="text-lg font-bold text-surface-900">Vente confirmée !</p>
             <p className="text-sm text-surface-500 mt-1">{currency(total)}</p>
             <div className="flex flex-col gap-3 mt-5">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => { if (lastSale) { exportSalePDF(lastSale, dexieSettings as any); toast('PDF téléchargé', 'success') } }}
+                  onClick={async () => { if (lastSale) { exportSalePDF(lastSale, dexieSettings as any, await buildProductPhotos(allProducts as any)); toast('PDF téléchargé', 'success') } }}
                   className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
                 >
                   <Download className="w-5 h-5" /> PDF
@@ -676,10 +731,22 @@ export default function DepotGlobalPOSPage() {
                   <Printer className="w-5 h-5" /> Imprimer
                 </button>
                 <button
-                  onClick={() => { if (lastSale) { shareSalePDF(lastSale, dexieSettings as any); toast('Partage en cours...', 'success') } }}
+                  onClick={async () => { if (lastSale) { shareSalePDF(lastSale, dexieSettings as any, await buildProductPhotos(allProducts as any)); toast('Partage en cours...', 'success') } }}
                   className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
                 >
                   <Send className="w-5 h-5" /> WhatsApp
+                </button>
+                <button
+                  onClick={() => { if (lastSale) shareViaWeChat(`Facture ${lastSale.invoiceNumber} — ${lastSale.customerName || 'Client divers'}\nTotal: ${currency(lastSale.total)}\nPayé: ${currency(lastSale.paid)}\nRestant: ${currency(lastSale.total - lastSale.paid)}`, `Facture ${lastSale.invoiceNumber}`) }}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
+                >
+                  <MessageCircle className="w-5 h-5" /> WeChat
+                </button>
+                <button
+                  onClick={() => { if (lastSale) setEditSaleId(lastSale.id) }}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl border border-amber-200 text-amber-700 text-xs font-medium hover:bg-amber-50 transition-colors"
+                >
+                  <Edit2 className="w-5 h-5" /> Modifier la vente
                 </button>
               </div>
               <button
@@ -692,6 +759,13 @@ export default function DepotGlobalPOSPage() {
           </div>
         </div>
       )}
+
+      <CreditSaleEditModal
+        open={editSaleId !== null}
+        onClose={() => setEditSaleId(null)}
+        saleId={editSaleId || undefined}
+        onSaved={() => { setEditSaleId(null); setSaleSuccess(false); clearCart() }}
+      />
     </div>
   )
 }

@@ -26,8 +26,11 @@ export function useSalePayment(total: number) {
   const [dueDate, setDueDate] = useState('')
 
   useEffect(() => {
-    setAmountReceived(a => Math.min(a, total))
-  }, [total])
+    setAmountReceived(a => {
+      if (paymentType === 'complet') return total
+      return Math.min(a, total)
+    })
+  }, [total, paymentType])
 
   function setPaymentType(t: SalePaymentType) {
     setPaymentTypeState(t)

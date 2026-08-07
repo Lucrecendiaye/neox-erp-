@@ -5,7 +5,8 @@ import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { generateId, formatCurrency, formatDate, openWhatsApp } from '@/lib/utils'
 import { toast } from '@/lib/toast'
-import { Search, MessageSquare, Send, CheckCircle, Clock, AlertTriangle, History } from 'lucide-react'
+import { shareViaWeChat } from '@/lib/share'
+import { Search, MessageSquare, Send, CheckCircle, Clock, AlertTriangle, History, MessageCircle } from 'lucide-react'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import type { Credit } from '@/types'
 
@@ -214,6 +215,13 @@ export default function SmsRemindersPage() {
                           title="Envoyer rappel WhatsApp"
                         >
                           <MessageSquare className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => shareViaWeChat(buildMessage(credit), 'Rappel de crédit')}
+                          className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600"
+                          title="Envoyer rappel WeChat"
+                        >
+                          <MessageCircle className="w-4 h-4" />
                         </button>
                       </div>
                     </td>

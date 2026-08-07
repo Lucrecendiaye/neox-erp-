@@ -7,8 +7,9 @@ import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
 import { generateId, formatCurrency, formatDate, openWhatsApp } from '@/lib/utils'
 import { toast } from '@/lib/toast'
-import { Search, Plus, Edit2, Trash2, FileText, Download, Send, ChevronDown, ChevronUp, X, Plus as PlusIcon, Printer } from 'lucide-react'
-import { exportInvoicePDF } from '@/lib/pdf'
+import { shareViaWeChat } from '@/lib/share'
+import { Search, Plus, Edit2, Trash2, FileText, Download, Send, ChevronDown, ChevronUp, X, Plus as PlusIcon, Printer, MessageCircle } from 'lucide-react'
+import { exportInvoicePDF, buildProductPhotos } from '@/lib/pdf'
 import { softDelete } from '@/lib/softDelete'
 import type { Invoice, SaleItem, Customer, Supplier, Product } from '@/types'
 
@@ -244,7 +245,10 @@ export default function InvoicesPage() {
                   <button onClick={() => { if (inv.partyId) { const p = [...(customers || []), ...(suppliers || [])].find(x => x.id === inv.partyId); if (p) openWhatsApp(p.phone, `Bonjour, veuillez trouver ci-joint la facture ${inv.number} d'un montant de ${formatCurrency(inv.total)}.`) } }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Envoyer via WhatsApp">
                     <Send className="w-4 h-4" />
                   </button>
-                  <button onClick={() => exportInvoicePDF(inv)} className="p-1.5 rounded-lg hover:bg-violet-50 text-surface-400 hover:text-violet-600" title="Télécharger PDF">
+                  <button onClick={() => { const p = [...(customers || []), ...(suppliers || [])].find(x => x.id === inv.partyId); shareViaWeChat(`Bonjour, veuillez trouver ci-joint la facture ${inv.number} d'un montant de ${formatCurrency(inv.total)}${p?.name ? ` (${p.name})` : ''}.`, `Facture ${inv.number}`) }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Envoyer via WeChat">
+                    <MessageCircle className="w-4 h-4" />
+                  </button>
+                  <button onClick={async () => exportInvoicePDF(inv, settings, await buildProductPhotos(products))} className="p-1.5 rounded-lg hover:bg-violet-50 text-surface-400 hover:text-violet-600" title="Télécharger PDF">
                     <Download className="w-4 h-4" />
                   </button>
                   {inv.status !== 'paid' && (

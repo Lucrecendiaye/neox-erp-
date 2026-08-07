@@ -21,6 +21,7 @@ export default function Dashboard() {
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const customers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId])
   const credits = useLiveQuery(() => db.credits.where('businessId').equals(businessId).filter(c => c.status === 'active' || c.status === 'overdue').toArray(), [businessId])
+  const creditPayments = useLiveQuery(() => db.creditPayments.where('businessId').equals(businessId).toArray(), [businessId])
   const stocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
   const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
   const supplierInvoices = useLiveQuery(() => db.supplierInvoices.where('businessId').equals(businessId).toArray(), [businessId])
@@ -60,7 +61,9 @@ export default function Dashboard() {
   )
 
   const stats = useMemo(() => {
-    const totalSales = periodSales.reduce((s, x) => s + x.paid, 0)
+    const cashSalesPaid = periodSales.filter(s => s.paymentMethod !== 'credit').reduce((s, x) => s + x.paid, 0)
+    const creditCollected = creditPayments?.filter(p => new Date(p.date) >= periodFilter).reduce((s, x) => s + x.amount, 0) || 0
+    const totalSales = cashSalesPaid + creditCollected
     const totalCost = purchases?.filter(p => new Date(p.createdAt) >= periodFilter).reduce((s, x) => s + x.total, 0) || 0
     const totalCredits = credits?.reduce((s, x) => s + x.balance, 0) || 0
     const totalSalesCount = periodSales.length
@@ -69,8 +72,9 @@ export default function Dashboard() {
     const profit = totalSales - totalCost
     const prevPeriodStart = new Date(periodFilter)
     prevPeriodStart.setMonth(prevPeriodStart.getMonth() - 1)
-    const prevSales = sales?.filter(s => new Date(s.createdAt) >= prevPeriodStart && new Date(s.createdAt) < periodFilter) || []
-    const prevRevenue = prevSales.reduce((s, x) => s + x.paid, 0)
+    const prevCashSales = sales?.filter(s => new Date(s.createdAt) >= prevPeriodStart && new Date(s.createdAt) < periodFilter && s.paymentMethod !== 'credit') || []
+    const prevCreditCollected = creditPayments?.filter(p => new Date(p.date) >= prevPeriodStart && new Date(p.date) < periodFilter).reduce((s, x) => s + x.amount, 0) || 0
+    const prevRevenue = prevCashSales.reduce((s, x) => s + x.paid, 0) + prevCreditCollected
     const revenueChange = prevRevenue > 0 ? ((totalSales - prevRevenue) / prevRevenue) * 100 : 0
 
     const cashInflows = cashBook?.filter(e => e.type === 'in').reduce((s, x) => s + x.amount, 0) || 0
@@ -117,19 +121,20 @@ export default function Dashboard() {
       expenseCategories: [...expenseCategories.entries()].map(([name, amount]) => ({ name, amount })),
       avgTicket: totalSalesCount > 0 ? totalSales / totalSalesCount : 0,
     }
-  }, [periodSales, sales, purchases, credits, customers, stocks, products, supplierInvoices, cashBook, locations, periodFilter])
+  }, [periodSales, sales, purchases, credits, customers, stocks, products, supplierInvoices, cashBook, locations, periodFilter, creditPayments])
 
   const monthlyData = useMemo(() => {
     const months = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc']
     const revenue = new Array(12).fill(0)
     const expense = new Array(12).fill(0)
     const profit = new Array(12).fill(0)
-    sales?.forEach(s => { const m = new Date(s.createdAt).getMonth(); revenue[m] += s.paid })
+    sales?.forEach(s => { if (s.paymentMethod !== 'credit') { const m = new Date(s.createdAt).getMonth(); revenue[m] += s.paid } })
+    creditPayments?.forEach(p => { const m = new Date(p.date).getMonth(); revenue[m] += p.amount })
     cashBook?.filter(e => e.type === 'out').forEach(e => { const m = new Date(e.date).getMonth(); expense[m] += e.amount })
     purchases?.forEach(p => { const m = new Date(p.createdAt).getMonth(); expense[m] += p.total })
     revenue.forEach((r, i) => { profit[i] = r - expense[i] })
     return { labels: months, revenue, expense, profit }
-  }, [sales, cashBook, purchases])
+  }, [sales, cashBook, purchases, creditPayments])
 
   const dailyData = useMemo(() => {
     const days: string[] = []
@@ -139,38 +144,45 @@ export default function Dashboard() {
     for (let i = 6; i >= 0; i--) {
       const d = new Date(Date.now() - i * 86400000)
       days.push(d.toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric' }))
-      const daySales = sales?.filter(s => new Date(s.createdAt).toDateString() === d.toDateString()) || []
+      const daySales = sales?.filter(s => new Date(s.createdAt).toDateString() === d.toDateString() && s.paymentMethod !== 'credit') || []
+      const dayCredit = creditPayments?.filter(p => new Date(p.date).toDateString() === d.toDateString()) || []
       const dayExpenses = cashBook?.filter(e => e.type === 'out' && new Date(e.date).toDateString() === d.toDateString()) || []
-      const r = daySales.reduce((s, x) => s + x.paid, 0)
+      const r = daySales.reduce((s, x) => s + x.paid, 0) + dayCredit.reduce((s, x) => s + x.amount, 0)
       const e = dayExpenses.reduce((s, x) => s + x.amount, 0)
       revenue.push(r)
       expenses.push(e)
       profits.push(r - e)
     }
     return { labels: days, revenue, expenses, profits }
-  }, [sales, cashBook])
+  }, [sales, cashBook, creditPayments])
 
   const recentTransactions = useMemo(() => {
     const txns: { id: string; ref: string; amount: number; date: string; status: string; type: string }[] = []
     sales?.slice(-10).reverse().forEach(s => {
       txns.push({ id: s.id, ref: s.invoiceNumber || s.id, amount: s.paid, date: s.createdAt, status: 'complété', type: 'Vente' })
     })
+    creditPayments?.forEach(p => {
+      txns.push({ id: p.id, ref: `Crédit ${p.customerId?.slice(0, 6) || ''}`, amount: p.amount, date: p.date, status: 'Paiement crédit', type: 'Revenu' })
+    })
     cashBook?.slice(-10).reverse().forEach(e => {
       txns.push({ id: e.id, ref: e.id.slice(0, 8), amount: e.amount, date: e.date, status: e.type === 'in' ? 'Entrée' : 'Sortie', type: e.type === 'in' ? 'Revenu' : 'Dépense' })
     })
     return txns.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 10)
-  }, [sales, cashBook])
+  }, [sales, creditPayments, cashBook])
 
   const recentActivities = useMemo(() => {
     const activities: { id: string; action: string; detail: string; time: string; icon: string }[] = []
     sales?.slice(-5).reverse().forEach(s => {
       activities.push({ id: s.id, action: 'Nouvelle vente', detail: `${s.invoiceNumber} - ${formatCurrency(s.paid)}`, time: s.createdAt, icon: 'sale' })
     })
+    creditPayments?.forEach(p => {
+      activities.push({ id: p.id, action: 'Paiement de crédit', detail: `${formatCurrency(p.amount)} reçus`, time: p.date, icon: 'in' })
+    })
     cashBook?.slice(-5).reverse().forEach(e => {
       activities.push({ id: e.id, action: e.type === 'in' ? 'Entrée de caisse' : 'Sortie de caisse', detail: formatCurrency(e.amount), time: e.date, icon: e.type === 'in' ? 'in' : 'out' })
     })
     return activities.sort((a, b) => new Date(b.time).getTime() - new Date(a.time).getTime()).slice(0, 8)
-  }, [sales, cashBook])
+  }, [sales, creditPayments, cashBook])
 
   const categoryChartData = {
     labels: stats.salesByCategory.map(c => c.name),

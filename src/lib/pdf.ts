@@ -4,6 +4,50 @@ import type { Invoice, Sale } from '@/types'
 import type { Transfer, TransferItem, BonSortie } from '@/engine/types'
 import type { CompanySettings } from '@/types'
 
+function isDataUrl(photo: string): boolean {
+  return photo.startsWith('data:')
+}
+
+function isHttpUrl(photo: string): boolean {
+  return photo.startsWith('http://') || photo.startsWith('https://')
+}
+
+async function urlToDataUrl(url: string): Promise<string | null> {
+  try {
+    const res = await fetch(url)
+    if (!res.ok) return null
+    const blob = await res.blob()
+    return await new Promise<string | null>((resolve) => {
+      const reader = new FileReader()
+      reader.onload = () => resolve(reader.result as string)
+      reader.onerror = () => resolve(null)
+      reader.readAsDataURL(blob)
+    })
+  } catch {
+    return null
+  }
+}
+
+export async function buildProductPhotos(products: { id: string; photos?: string[] }[]): Promise<Record<string, string>> {
+  const map: Record<string, string> = {}
+  const pending: Promise<void>[] = []
+  for (const p of products) {
+    const photo = p.photos?.[0]
+    if (!photo) continue
+    if (isDataUrl(photo)) {
+      map[p.id] = photo
+    } else if (isHttpUrl(photo)) {
+      pending.push(urlToDataUrl(photo).then(d => { if (d) map[p.id] = d }))
+    }
+  }
+  await Promise.all(pending)
+  return map
+}
+
+function photoFormat(photo: string): string {
+  return photo.includes('image/png') ? 'PNG' : 'JPEG'
+}
+
 const BLUE = '#1e40af'
 const RED = '#dc2626'
 const WHITE = '#ffffff'
@@ -164,7 +208,7 @@ function getPaymentStatusLabel(sale: Sale): string {
   return 'En attente'
 }
 
-export function exportSalePDF(sale: Sale, settings?: CompanySettings) {
+export function exportSalePDF(sale: Sale, settings?: CompanySettings, productPhotos?: Record<string, string>) {
   const doc = new jsPDF({ format: 'a5' })
   const s = settings || {} as CompanySettings
 
@@ -205,6 +249,24 @@ export function exportSalePDF(sale: Sale, settings?: CompanySettings) {
     tableLineColor: hexToRgb(LIGHT_GRAY),
     tableLineWidth: 0.3,
     styles: { cellPadding: 1.5 },
+    didParseCell: (data) => {
+      if (data.section === 'body' && data.column.index === 0) {
+        const photo = productPhotos?.[sale.items[data.row.index]?.productId]
+        if (photo) {
+          data.cell.styles.minCellHeight = 12
+          data.cell.styles.cellPadding = { left: 14, right: 2, top: 2, bottom: 2 }
+        }
+      }
+    },
+    didDrawCell: (data) => {
+      if (data.section === 'body' && data.column.index === 0) {
+        const photo = productPhotos?.[sale.items[data.row.index]?.productId]
+        if (photo) {
+          const imgH = Math.max(data.cell.height - 2, 8)
+          try { doc.addImage(photo, photoFormat(photo), data.cell.x + 1.5, data.cell.y + (data.cell.height - imgH) / 2, 10, imgH) } catch { /* image invalide */ }
+        }
+      }
+    },
   })
 
   const finalY = (doc as any).lastAutoTable.finalY + 4
@@ -347,7 +409,7 @@ export function exportSalePDF(sale: Sale, settings?: CompanySettings) {
   doc.save(`facture_${sale.invoiceNumber || 'vente'}.pdf`)
 }
 
-export function shareSalePDF(sale: Sale, settings?: CompanySettings) {
+export function shareSalePDF(sale: Sale, settings?: CompanySettings, productPhotos?: Record<string, string>) {
   const doc = new jsPDF({ format: 'a5' })
   const s = settings || {} as CompanySettings
   drawBanner(doc, s)
@@ -382,6 +444,24 @@ export function shareSalePDF(sale: Sale, settings?: CompanySettings) {
     tableLineColor: hexToRgb(LIGHT_GRAY),
     tableLineWidth: 0.3,
     styles: { cellPadding: 1.5 },
+    didParseCell: (data) => {
+      if (data.section === 'body' && data.column.index === 0) {
+        const photo = productPhotos?.[sale.items[data.row.index]?.productId]
+        if (photo) {
+          data.cell.styles.minCellHeight = 12
+          data.cell.styles.cellPadding = { left: 14, right: 2, top: 2, bottom: 2 }
+        }
+      }
+    },
+    didDrawCell: (data) => {
+      if (data.section === 'body' && data.column.index === 0) {
+        const photo = productPhotos?.[sale.items[data.row.index]?.productId]
+        if (photo) {
+          const imgH = Math.max(data.cell.height - 2, 8)
+          try { doc.addImage(photo, photoFormat(photo), data.cell.x + 1.5, data.cell.y + (data.cell.height - imgH) / 2, 10, imgH) } catch { /* image invalide */ }
+        }
+      }
+    },
   })
   const finalY = (doc as any).lastAutoTable.finalY + 4
   const subtotal = sale.subtotal || sale.items.reduce((s, i) => s + i.total, 0)
@@ -499,7 +579,7 @@ export function shareSalePDF(sale: Sale, settings?: CompanySettings) {
   }
 }
 
-export function exportInvoicePDF(invoice: Invoice, settings?: CompanySettings) {
+export function exportInvoicePDF(invoice: Invoice, settings?: CompanySettings, productPhotos?: Record<string, string>) {
   const paid = invoice.status === 'paid' ? invoice.total : invoice.paid
   const sale: Sale = {
     id: invoice.id,
@@ -509,7 +589,7 @@ export function exportInvoicePDF(invoice: Invoice, settings?: CompanySettings) {
     customerId: invoice.partyId,
     customerName: invoice.partyName,
     items: invoice.items.map(i => ({
-      productId: '',
+      productId: i.productId,
       productName: i.productName,
       quantity: i.quantity,
       unitPrice: i.unitPrice,
@@ -528,7 +608,7 @@ export function exportInvoicePDF(invoice: Invoice, settings?: CompanySettings) {
     createdAt: invoice.createdAt,
     userId: invoice.userId,
   }
-  exportSalePDF(sale, settings)
+  exportSalePDF(sale, settings, productPhotos)
 }
 
 export function exportBonSortiePDF(
@@ -625,6 +705,184 @@ export function exportReportPDF(title: string, headers: string[], data: string[]
   doc.text(`Généré le ${dateStr}`, 14, pageH - 4)
 
   doc.save(`${filename}.pdf`)
+}
+
+export interface SupplierFicheRow {
+  date: string
+  label: string
+  reference: string
+  debit: number
+  credit: number
+  balance: number
+}
+
+export interface SupplierFicheTotals {
+  debit: number
+  credit: number
+  balance: number
+}
+
+export function exportSupplierFichePDF(
+  supplierName: string,
+  phone: string | undefined,
+  rows: SupplierFicheRow[],
+  totals: SupplierFicheTotals,
+  settings?: CompanySettings,
+  filename?: string,
+) {
+  const doc = new jsPDF()
+  const s = settings || {} as CompanySettings
+
+  rect(doc, 0, 0, 210, 30, BLUE)
+  let lx = 14
+  if (s.logo) { try { doc.addImage(s.logo, 'JPEG', 14, 5, 20, 20) } catch { try { doc.addImage(s.logo, 'PNG', 14, 5, 20, 20) } catch {} } lx = s.logo ? 40 : 14 }
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(13)
+  doc.setFont('helvetica', 'bold')
+  doc.text(s.name || 'Entreprise', lx, 12)
+  doc.setFontSize(7)
+  doc.setFont('helvetica', 'normal')
+  let ly = 18
+  if (s.address) { doc.text(s.address, lx, ly); ly += 4 }
+  if (s.phone) { doc.text(`Tel: ${s.phone}`, lx, ly); ly += 4 }
+  if (s.email) { doc.text(s.email, lx, ly); ly += 4 }
+  doc.setFontSize(16)
+  doc.setFont('helvetica', 'bold')
+  doc.text('FICHE COMPTABLE', 210 - 14, 14, { align: 'right' })
+  doc.setFontSize(9)
+  doc.text(supplierName, 210 - 14, 22, { align: 'right' })
+  if (phone) { doc.setFontSize(7); doc.text(`Tel: ${phone}`, 210 - 14, 27, { align: 'right' }) }
+
+  let y = 36
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(80, 80, 80)
+  const now = new Date()
+  doc.text(`Généré le ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 14, y)
+  y += 5
+  doc.text(`Fournisseur : ${supplierName}`, 14, y)
+
+  autoTable(doc, {
+    startY: y + 4,
+    head: [['Date', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Solde']],
+    body: rows.map(r => [
+      new Date(r.date).toLocaleDateString('fr-FR'),
+      r.label,
+      r.reference,
+      r.debit > 0 ? fmt(r.debit) : '—',
+      r.credit > 0 ? fmt(r.credit) : '—',
+      fmt(r.balance),
+    ]),
+    foot: [['', 'TOTAL', '', fmt(totals.debit), fmt(totals.credit), fmt(totals.balance)]],
+    theme: 'grid',
+    headStyles: { fillColor: hexToRgb(BLUE), textColor: 255, fontSize: 8, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 8 },
+    footStyles: { fillColor: hexToRgb(LIGHT_GRAY), textColor: hexToRgb('#0f172a'), fontSize: 8, fontStyle: 'bold' },
+    margin: { top: 40, left: 14, right: 14 },
+    columnStyles: {
+      0: { cellWidth: 32 },
+      2: { cellWidth: 30 },
+      3: { halign: 'right', cellWidth: 32 },
+      4: { halign: 'right', cellWidth: 32 },
+      5: { halign: 'right', cellWidth: 34 },
+    },
+    tableLineColor: hexToRgb(LIGHT_GRAY),
+    tableLineWidth: 0.4,
+  })
+
+  const pageH = 297
+  rect(doc, 0, pageH - 14, 210, 14, BLUE)
+  doc.setFontSize(7)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(255, 255, 255)
+  doc.text(`Fiche comptable ${supplierName} — ${now.toLocaleDateString('fr-FR')}`, 14, pageH - 5)
+  doc.text('NeoX ERP', 210 - 14, pageH - 5, { align: 'right' })
+
+  doc.save(`${filename || 'fiche_comptable'}.pdf`)
+}
+
+export function buildSupplierFicheHTML(
+  supplierName: string,
+  phone: string | undefined,
+  rows: SupplierFicheRow[],
+  totals: SupplierFicheTotals,
+  settings?: CompanySettings,
+): string {
+  const escS = (v: string | number | null | undefined) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+  const body = rows.map(r => `
+    <tr>
+      <td>${escS(new Date(r.date).toLocaleDateString('fr-FR'))}</td>
+      <td>${escS(r.label)}</td>
+      <td>${escS(r.reference)}</td>
+      <td class="r">${r.debit > 0 ? fmt(r.debit) : '—'}</td>
+      <td class="r">${r.credit > 0 ? fmt(r.credit) : '—'}</td>
+      <td class="r strong">${fmt(r.balance)}</td>
+    </tr>`).join('')
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fiche comptable ${escS(supplierName)}</title>
+<style>
+  @page { size: A4; margin: 10mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 12px; }
+  .banner { display: flex; justify-content: space-between; align-items: center; background: #1e40af; color: #fff; padding: 12px 14px; border-radius: 4px; }
+  .banner h1 { margin: 0; font-size: 20px; }
+  .banner h2 { margin: 2px 0 0; font-size: 14px; font-weight: normal; }
+  .banner .right { text-align: right; }
+  .banner .right .title { font-size: 18px; font-weight: bold; }
+  .meta { margin: 10px 0; font-size: 11px; color: #475569; }
+  table { width: 100%; border-collapse: collapse; margin-top: 6px; font-size: 11px; }
+  th { background: #1e40af; color: #fff; text-align: left; padding: 6px 8px; text-transform: uppercase; font-size: 10px; }
+  td { border-bottom: 1px solid #e2e8f0; padding: 5px 8px; }
+  .r { text-align: right; }
+  .strong { font-weight: bold; }
+  tfoot td { background: #f1f5f9; font-weight: bold; border-top: 2px solid #1e40af; }
+  .footer { margin-top: 20px; padding-top: 8px; border-top: 2px solid #1e40af; font-size: 10px; color: #64748b; text-align: center; }
+</style></head><body>
+  <div class="banner">
+    <div>
+      <h1>${escS(settings?.name || 'Entreprise')}</h1>
+      ${settings?.slogan ? `<h2>${escS(settings.slogan)}</h2>` : ''}
+      ${settings?.address ? `<h2>${escS(settings.address)}</h2>` : ''}
+      ${settings?.phone ? `<h2>Tel: ${escS(settings.phone)}</h2>` : ''}
+    </div>
+    <div class="right">
+      <div class="title">FICHE COMPTABLE</div>
+      <div style="font-weight:bold;">${escS(supplierName)}</div>
+      ${phone ? `<div style="font-size:11px;">Tel: ${escS(phone)}</div>` : ''}
+    </div>
+  </div>
+
+  <div class="meta">
+    <strong>Fournisseur :</strong> ${escS(supplierName)} &nbsp;|&nbsp;
+    <strong>Générée le :</strong> ${new Date().toLocaleDateString('fr-FR', { dateStyle: 'long' })} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+  </div>
+
+  <table>
+    <thead><tr><th>Date</th><th>Libellé</th><th>Référence</th><th class="r">Débit</th><th class="r">Crédit</th><th class="r">Solde</th></tr></thead>
+    <tbody>${body}</tbody>
+    <tfoot><tr><td></td><td>TOTAL</td><td></td><td class="r">${fmt(totals.debit)}</td><td class="r">${fmt(totals.credit)}</td><td class="r">${fmt(totals.balance)}</td></tr></tfoot>
+  </table>
+
+  <div class="footer">
+    Document généré par ${escS(settings?.name || 'NeoX ERP')} le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+  </div>
+</body></html>`
+}
+
+export function printSupplierFiche(
+  supplierName: string,
+  phone: string | undefined,
+  rows: SupplierFicheRow[],
+  totals: SupplierFicheTotals,
+  settings?: CompanySettings,
+) {
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.open()
+  w.document.write(buildSupplierFicheHTML(supplierName, phone, rows, totals, settings))
+  w.document.close()
+  setTimeout(() => { try { w.focus(); w.print() } catch { /* fenêtre fermée */ } }, 500)
 }
 
 const STATUS_LABELS: Record<string, string> = {

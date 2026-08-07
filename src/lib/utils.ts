@@ -121,13 +121,25 @@ export interface UnitInfo {
 
 export function getProductUnits(product: { unit: string; packSize?: number }): UnitInfo[] {
   const units: UnitInfo[] = [{ name: 'Pièce', quantity: 1 }]
-  if (product.unit === 'dozen' || product.unit === 'pack') {
-    units.push({ name: 'Douzaine', quantity: 12 })
-  }
-  if (product.unit === 'pack' && product.packSize && product.packSize > 0) {
+  units.push({ name: 'Douzaine', quantity: 12 })
+  if (product.packSize && product.packSize > 0) {
     units.push({ name: 'Paquet', quantity: product.packSize })
   }
   return units
+}
+
+export function getProductUnitInfo(product: { unit: string; packSize?: number }): UnitInfo {
+  if (product.unit === 'dozen') return { name: 'Douzaine', quantity: 12 }
+  if (product.unit === 'pack') return { name: 'Paquet', quantity: product.packSize || 1 }
+  return { name: 'Pièce', quantity: 1 }
+}
+
+export function getPurchaseUnits(product: { unit: string; packSize?: number }): UnitInfo[] {
+  return [
+    { name: 'Pièce', quantity: 1 },
+    { name: 'Douzaine', quantity: 12 },
+    { name: 'Paquet', quantity: product.packSize || 10 },
+  ]
 }
 
 export function getUnitPrice(product: { sellingPrice: number; priceDozen?: number; pricePack?: number }, unitName: string): number {

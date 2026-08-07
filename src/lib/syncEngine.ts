@@ -1,7 +1,7 @@
 import { isSupabaseConfigured, supabase } from './supabase'
 import db from '@/db'
 import { useAppStore, useSyncStore } from '@/stores/appStore'
-import { sanitizePayloadForSync } from './imageStorage'
+import { sanitizePayloadForSync, mergePhotosForSync } from './imageStorage'
 
 type TableName = keyof typeof db & string
 
@@ -213,9 +213,17 @@ async function pullTable(
     const newRows = allData.filter(row => !hasBeenProcessed(row.id))
 
     if (newRows.length > 0) {
+      const mergedRows: any[] = []
+      for (const row of newRows) {
+        const local = await table.get(row.id)
+        if (local && Array.isArray(local.photos) && local.photos.length > 0) {
+          row.photos = mergePhotosForSync(local.photos, row.photos)
+        }
+        mergedRows.push(row)
+      }
       const batchSize = SMALL_TABLES.has(supabaseName) ? 500 : 100
-      for (let i = 0; i < newRows.length; i += batchSize) {
-        const batch = newRows.slice(i, i + batchSize)
+      for (let i = 0; i < mergedRows.length; i += batchSize) {
+        const batch = mergedRows.slice(i, i + batchSize)
         try {
           await table.bulkPut(batch)
           success += batch.length
@@ -225,7 +233,7 @@ async function pullTable(
           }
         }
       }
-      addProcessedIds(newRows.map(r => r.id))
+      addProcessedIds(mergedRows.map(r => r.id))
     }
   } catch {
     failed++

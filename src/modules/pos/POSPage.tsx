@@ -8,10 +8,11 @@ import {
   Search, ScanLine, ShoppingCart, Minus, Plus, X, Trash2,
   CreditCard, Printer, Download, Camera, Package, AlertTriangle,
   ChevronDown, User, Phone, MapPin, Calendar, Tag, Percent,
-  Check, Send, SplitSquareVertical as SplitIcon, Banknote, Boxes, Contact as ContactIcon
+  Check, Send, SplitSquareVertical as SplitIcon, Banknote, Boxes, Contact as ContactIcon, MessageCircle, Edit2
 } from 'lucide-react'
 import BarcodeScanner from '@/components/ui/BarcodeScanner'
-import { exportSalePDF, shareSalePDF } from '@/lib/pdf'
+import { exportSalePDF, shareSalePDF, buildProductPhotos } from '@/lib/pdf'
+import { shareViaWeChat } from '@/lib/share'
 import { thermalPrinter, printReceiptHTML } from '@/lib/thermalPrinter'
 import type { SaleItem, Product, Sale, Customer } from '@/types'
 import type { ProductStock } from '@/engine/types'
@@ -19,6 +20,8 @@ import { useAppStore } from '@/stores/appStore'
 import { processSale } from '@/engine/operations'
 import { useSalePayment, ensureCustomer } from './salePayment'
 import { SalePaymentPanel } from './SalePaymentPanel'
+import UnitPriceModal from '@/components/pos/UnitPriceModal'
+import { CreditSaleEditModal } from '@/components/credit/CreditSaleModals'
 
 type PriceMode = 'detail' | 'gros'
 
@@ -44,7 +47,7 @@ export default function POSPage() {
 
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState('all')
-  const [priceMode, setPriceMode] = useState<PriceMode>('detail')
+  const [priceMode, setPriceMode] = useState<PriceMode>('gros')
   const [scannerOpen, setScannerOpen] = useState(false)
   const [cartOpen, setCartOpen] = useState(false)
 
@@ -59,6 +62,9 @@ export default function POSPage() {
 
   const [saleSuccess, setSaleSuccess] = useState(false)
   const [lastSale, setLastSale] = useState<Sale | null>(null)
+  const [editSaleId, setEditSaleId] = useState<string | null>(null)
+
+  const [unitPriceModal, setUnitPriceModal] = useState<{ product: Product; unitName: string; itemKey?: string } | null>(null)
 
 
   const filteredCategories = useMemo(() => {
@@ -98,13 +104,41 @@ export default function POSPage() {
     return `${i.productId}::${i.unitName || 'Pièce'}`
   }
 
-  function addToCart(product: Product, unitName?: string) {
+  function needsUnitPrice(product: Product, unitName: string) {
+    if (unitName === 'Douzaine' && !product.priceDozen) return true
+    if (unitName === 'Paquet' && !product.pricePack) return true
+    return false
+  }
+
+  async function handleUnitPriceConfirm(price: number) {
+    if (!unitPriceModal) return
+    const { product, unitName, itemKey } = unitPriceModal
+    await db.products.update(product.id, unitName === 'Douzaine' ? { priceDozen: price } : { pricePack: price })
+    setUnitPriceModal(null)
+    if (itemKey) {
+      const unit = getProductUnits(product).find(u => u.name === unitName)
+      if (!unit) return
+      setCart(prev => prev.map(i =>
+        cartItemKey(i) === itemKey
+          ? { ...i, unitName, unitQuantity: unit.quantity, unitPrice: price, total: i.quantity * price - i.discount }
+          : i
+      ))
+    } else {
+      addToCart(product, unitName, price)
+    }
+  }
+
+  function addToCart(product: Product, unitName?: string, priceOverride?: number) {
     const units = getProductUnits(product)
     const unit = units.find(u => u.name === unitName) || units[0]
+    if (priceOverride === undefined && needsUnitPrice(product, unit.name)) {
+      setUnitPriceModal({ product, unitName: unit.name })
+      return
+    }
     const unitQty = unit.quantity
-    const effectivePrice = priceMode === 'gros'
+    const effectivePrice = priceOverride ?? (priceMode === 'gros'
       ? (product.wholesalePrice || getUnitPrice(product, unit.name))
-      : getUnitPrice(product, unit.name)
+      : getUnitPrice(product, unit.name))
 
     setCart(prev => {
       const key = `${product.id}::${unit.name}`
@@ -148,9 +182,14 @@ function updateQuantity(itemKey: string, delta: number) {
 }
 
   function updateCartUnit(itemKey: string, newUnitName: string) {
+    const item = cart.find(i => cartItemKey(i) === itemKey)
+    const product = item ? products.find(p => p.id === item.productId) : undefined
+    if (product && needsUnitPrice(product, newUnitName)) {
+      setUnitPriceModal({ product, unitName: newUnitName, itemKey })
+      return
+    }
     setCart(prev => prev.map(i => {
       if (cartItemKey(i) !== itemKey) return i
-      const product = products.find(p => p.id === i.productId)
       if (!product) return i
       const units = getProductUnits(product)
       const unit = units.find(u => u.name === newUnitName)
@@ -368,7 +407,7 @@ function updateQuantity(itemKey: string, delta: number) {
                               key={u.name}
                               onClick={() => addToCart(p, u.name)}
                               className="px-1.5 py-0.5 rounded text-[10px] font-medium bg-surface-100 text-surface-500 hover:bg-primary-100 hover:text-primary-600 transition-colors"
-                              title={`1 ${u.name} = ${u.quantity} pièces (${currency(unitPrice)})`}
+                              title={needsUnitPrice(p, u.name) ? `1 ${u.name} = ${u.quantity} pièces (prix non défini)` : `1 ${u.name} = ${u.quantity} pièces (${currency(unitPrice)})`}
                             >
                               1 {u.name}
                             </button>
@@ -589,7 +628,7 @@ function updateQuantity(itemKey: string, delta: number) {
                 className={cn('flex-1 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 border border-surface-200', cart.length > 0 ? 'bg-white text-surface-700 hover:bg-surface-50' : 'bg-surface-50 text-surface-300 cursor-not-allowed')}>
                 <Printer className="w-3.5 h-3.5" /> Ticket
               </button>
-              <button onClick={() => { if (lastSale) exportSalePDF(lastSale, settings) }} disabled={cart.length === 0}
+              <button onClick={async () => { if (lastSale) exportSalePDF(lastSale, settings, await buildProductPhotos(products)) }} disabled={cart.length === 0}
                 className={cn('flex-1 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 border border-surface-200', cart.length > 0 ? 'bg-white text-surface-700 hover:bg-surface-50' : 'bg-surface-50 text-surface-300 cursor-not-allowed')}>
                 <Download className="w-3.5 h-3.5" /> PDF
               </button>
@@ -620,9 +659,17 @@ function updateQuantity(itemKey: string, delta: number) {
 
       <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleBarcodeScan} />
 
+      <UnitPriceModal
+        open={!!unitPriceModal}
+        productName={unitPriceModal?.product.name || ''}
+        unitName={unitPriceModal?.unitName || ''}
+        suggestedPrice={unitPriceModal ? Math.round(unitPriceModal.product.sellingPrice * (unitPriceModal.unitName === 'Douzaine' ? 12 : (unitPriceModal.product.packSize || 1))) : 0}
+        onConfirm={handleUnitPriceConfirm}
+        onClose={() => setUnitPriceModal(null)}
+      />
+
       {saleSuccess && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in p-4">
-          <div className="relative text-center py-8 px-6 bg-white rounded-[20px] border border-surface-200 shadow-2xl animate-slide-up w-[95%] sm:w-[90%] md:w-[640px] max-w-[640px] max-h-[95vh] md:max-h-[820px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in p-4">          <div className="relative text-center py-8 px-6 bg-white rounded-[20px] border border-surface-200 shadow-2xl animate-slide-up w-[95%] sm:w-[90%] md:w-[640px] max-w-[640px] max-h-[95vh] md:max-h-[820px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <button onClick={() => { setSaleSuccess(false); clearCart() }} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-100 text-surface-400">
               <X className="w-5 h-5" />
             </button>
@@ -632,9 +679,9 @@ function updateQuantity(itemKey: string, delta: number) {
             <p className="text-lg font-bold text-surface-900">Vente confirmée !</p>
             <p className="text-sm text-surface-500 mt-1">{currency(total)}</p>
             <div className="flex flex-col gap-3 mt-5">
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={() => { if (lastSale) { exportSalePDF(lastSale, settings); toast('PDF téléchargé', 'success') } }}
+                  onClick={async () => { if (lastSale) { exportSalePDF(lastSale, settings, await buildProductPhotos(products)); toast('PDF téléchargé', 'success') } }}
                   className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
                 >
                   <Download className="w-5 h-5" /> PDF
@@ -667,10 +714,22 @@ function updateQuantity(itemKey: string, delta: number) {
                   <Printer className="w-5 h-5" /> Imprimer
                 </button>
                 <button
-                  onClick={() => { if (lastSale) { shareSalePDF(lastSale, settings); toast('Partage en cours...', 'success') } }}
+                  onClick={async () => { if (lastSale) { shareSalePDF(lastSale, settings, await buildProductPhotos(products)); toast('Partage en cours...', 'success') } }}
                   className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
                 >
                   <Send className="w-5 h-5" /> WhatsApp
+                </button>
+                <button
+                  onClick={() => { if (lastSale) shareViaWeChat(`Facture ${lastSale.invoiceNumber} — ${lastSale.customerName || 'Client divers'}\nTotal: ${currency(lastSale.total)}\nPayé: ${currency(lastSale.paid)}\nRestant: ${currency(lastSale.total - lastSale.paid)}`, `Facture ${lastSale.invoiceNumber}`) }}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
+                >
+                  <MessageCircle className="w-5 h-5" /> WeChat
+                </button>
+                <button
+                  onClick={() => { if (lastSale) setEditSaleId(lastSale.id) }}
+                  className="flex flex-col items-center gap-1 py-3 rounded-xl border border-amber-200 text-amber-700 text-xs font-medium hover:bg-amber-50 transition-colors"
+                >
+                  <Edit2 className="w-5 h-5" /> Modifier la vente
                 </button>
               </div>
               <button
@@ -683,6 +742,13 @@ function updateQuantity(itemKey: string, delta: number) {
           </div>
         </div>
       )}
+
+      <CreditSaleEditModal
+        open={editSaleId !== null}
+        onClose={() => setEditSaleId(null)}
+        saleId={editSaleId || undefined}
+        onSaved={() => { setEditSaleId(null); setSaleSuccess(false); clearCart() }}
+      />
     </div>
   )
 }

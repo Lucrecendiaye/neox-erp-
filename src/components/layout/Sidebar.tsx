@@ -5,8 +5,7 @@ import { useAppStore } from '@/stores/appStore'
 import { usePermission } from '@/hooks/usePermission'
 import {
   LayoutDashboard, ShoppingCart, Receipt, Building2, Package,
-  Users, Truck, ArrowDownToLine, CreditCard, HandCoins, FileText,
-  BarChart3, UsersRound, Settings, Trash2,
+  Users, Truck, HandCoins, BarChart3, UsersRound, Settings, Trash2, Palette,
 } from 'lucide-react'
 
 interface NavItem {
@@ -23,16 +22,14 @@ const allNavItems: NavItem[] = [
   { to: '/sales', label: 'Ventes', module: 'sales', icon: <Receipt className="w-5 h-5" /> },
   { to: '/credits', label: 'Crédits', module: 'sales', icon: <HandCoins className="w-5 h-5" /> },
   { to: '/depots', label: 'Dépôts', module: 'depots', icon: <Building2 className="w-5 h-5" /> },
-  { to: '/bons-sortie', label: 'Bon de sortie', module: 'depots', icon: <FileText className="w-5 h-5" /> },
   { to: '/products', label: 'Produits', module: 'products', icon: <Package className="w-5 h-5" /> },
   { to: '/customers', label: 'Clients', module: 'customers', icon: <Users className="w-5 h-5" /> },
   { to: '/suppliers', label: 'Fournisseurs', module: 'suppliers', icon: <Truck className="w-5 h-5" /> },
-  { to: '/purchases', label: 'Achats', module: 'purchases', icon: <ArrowDownToLine className="w-5 h-5" /> },
-  { to: '/payments', label: 'Paiements', module: 'payments', icon: <CreditCard className="w-5 h-5" /> },
   { to: '/reports', label: 'Rapports', module: 'reports', icon: <BarChart3 className="w-5 h-5" /> },
   { to: '/users', label: 'Utilisateurs', module: 'users', icon: <UsersRound className="w-5 h-5" /> },
   { to: '/settings', label: 'Paramètres', module: 'settings', icon: <Settings className="w-5 h-5" /> },
   { to: '/trash', label: 'Corbeille', module: 'trash', icon: <Trash2 className="w-5 h-5" /> },
+  { to: '/maquette', label: 'Maquette UI', module: 'settings', icon: <Palette className="w-5 h-5" /> },
 ]
 
 export default function Sidebar() {

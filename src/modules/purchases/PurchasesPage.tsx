@@ -4,15 +4,16 @@ import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
-import { generateId, generateInvoiceNumber, formatCurrency, getProductUnits, convertToMainUnit } from '@/lib/utils'
+import { generateId, generateInvoiceNumber, formatCurrency, getProductUnitInfo, getPurchaseUnits, calculateMargin } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { Search, Plus, Edit2, Trash2, Package, DollarSign, FileText, ChevronDown, ChevronUp, X, Minus, Plus as PlusIcon } from 'lucide-react'
-import type { Purchase, SaleItem, Product, Supplier, StockMovement, AuditLog, AccountingEntry } from '@/types'
+import type { Purchase, SaleItem, Product, Supplier, StockMovement, AuditLog, AccountingEntry, ProductUnit } from '@/types'
 
 
 import { useAppStore } from '@/stores/appStore'
 import { processPurchase, deletePurchase } from '@/engine/operations'
 import type { Location } from '@/engine/types'
+import SupplierTabs from '@/modules/suppliers/SupplierTabs'
 
 const statusColors = {
   pending: 'warning',
@@ -32,6 +33,9 @@ export default function PurchasesPage() {
   const [editing, setEditing] = useState<Purchase | null>(null)
   const userId = useAppStore(s => s.user?.id || '')
   const [expandedId, setExpandedId] = useState<string | null>(null)
+
+  const [newProductOpen, setNewProductOpen] = useState(false)
+  const [npForm, setNpForm] = useState({ name: '', unit: 'piece' as ProductUnit, purchasePrice: 0, sellingPrice: 0, packSize: 10, quantity: 1 })
 
   const [supplierId, setSupplierId] = useState('')
   const [locationId, setLocationId] = useState('')
@@ -83,24 +87,25 @@ export default function PurchasesPage() {
       setItems(items.map(i => i.productId === productId ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * i.unitPrice * (1 + i.taxRate / 100) - i.discount } : i))
       return
     }
+    const info = getProductUnitInfo(product)
+    const unitPrice = product.purchasePrice * info.quantity
     setItems([...items, {
       productId: product.id,
       productName: product.name,
       quantity: 1,
-      unitPrice: product.purchasePrice,
+      unitPrice,
       discount: 0,
       taxRate: product.taxRate,
-      total: product.purchasePrice * (1 + product.taxRate / 100),
-      unitName: product.unit,
-      unitQuantity: 1,
+      total: unitPrice * (1 + product.taxRate / 100),
+      unitName: info.name,
+      unitQuantity: info.quantity,
     }])
   }
 
   function changeItemUnit(productId: string, unitName: string, unitQuantity: number, unitPrice: number) {
     setItems(items.map(i => {
       if (i.productId !== productId) return i
-      const newUnitPrice = unitQuantity > 1 ? unitPrice : i.unitPrice
-      return { ...i, unitName, unitQuantity, unitPrice: newUnitPrice, total: i.quantity * newUnitPrice * (1 + i.taxRate / 100) - i.discount }
+      return { ...i, unitName, unitQuantity, unitPrice, total: i.quantity * unitPrice * (1 + i.taxRate / 100) - i.discount }
     }))
   }
 
@@ -111,6 +116,41 @@ export default function PurchasesPage() {
       updated.total = updated.unitPrice * updated.quantity * (1 + updated.taxRate / 100) - updated.discount
       return updated
     }))
+  }
+
+  async function handleCreateProduct() {
+    if (!npForm.name.trim()) { toast('Nom du produit requis', 'warning'); return }
+    const now = new Date().toISOString()
+    const packSize = npForm.unit === 'pack' ? Math.max(1, npForm.packSize || 1) : undefined
+    const id = generateId()
+    try {
+      const product: Product = {
+        id, businessId, name: npForm.name.trim(), description: '', photos: [],
+        unit: npForm.unit, purchasePrice: npForm.purchasePrice,
+        sellingPrice: npForm.sellingPrice, wholesalePrice: 0,
+        priceDozen: npForm.unit !== 'piece' ? Math.round(npForm.sellingPrice * (npForm.unit === 'dozen' ? 12 : packSize!)) : 0,
+        pricePack: npForm.unit === 'pack' ? Math.round(npForm.sellingPrice * packSize!) : 0,
+        packSize,
+        margin: calculateMargin(npForm.purchasePrice, npForm.sellingPrice),
+        taxRate: 0, stockAlert: 0, status: 'active',
+        createdAt: now, updatedAt: now,
+      }
+      await db.products.add(product)
+      const info = getProductUnitInfo(product)
+      const unitPrice = npForm.purchasePrice * info.quantity
+      const quantity = Math.max(1, npForm.quantity || 1)
+      setItems([...items, {
+        productId: id, productName: product.name,
+        quantity, unitPrice, discount: 0, taxRate: 0,
+        total: unitPrice * quantity,
+        unitName: info.name, unitQuantity: info.quantity,
+      }])
+      setNpForm({ name: '', unit: 'piece', purchasePrice: 0, sellingPrice: 0, packSize: 10, quantity: 1 })
+      setNewProductOpen(false)
+      toast('Produit créé et ajouté à l\'achat', 'success')
+    } catch {
+      toast('Erreur lors de la création du produit', 'error')
+    }
   }
 
   function removeItem(productId: string) {
@@ -180,6 +220,7 @@ export default function PurchasesPage() {
 
   return (
     <div className="w-full h-full flex flex-col gap-6">
+      <SupplierTabs />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Achats</h1>
@@ -300,14 +341,15 @@ export default function PurchasesPage() {
             <div className="space-y-2">
               {items.map((item) => {
                 const product = products?.find(p => p.id === item.productId)
-                const units = product ? getProductUnits(product) : [{ name: 'Pièce', quantity: 1 }]
+                const units = product ? getPurchaseUnits(product) : [{ name: 'Pièce', quantity: 1 }]
+                const selectedUnit = units.find(u => u.name === (item.unitName || 'Pièce')) || units[0]
                 return (
-                  <div key={item.productId} className="flex items-center gap-2 p-2 bg-surface-50 rounded-xl">
+                  <div key={item.productId} className="flex flex-wrap items-center gap-2 p-2 bg-surface-50 rounded-xl">
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-surface-900 truncate">{item.productName}</p>
                     </div>
                     <select
-                      value={item.unitName || 'Pièce'}
+                      value={selectedUnit.name}
                       onChange={(e) => {
                         const val = e.target.value
                         if (!product) return
@@ -320,6 +362,19 @@ export default function PurchasesPage() {
                         <option key={u.name} value={u.name}>{u.name}</option>
                       ))}
                     </select>
+                    {selectedUnit.name === 'Paquet' && product && !product.packSize && (
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number" min={1} value={item.unitQuantity || 10}
+                          onChange={(e) => {
+                            const v = Math.max(1, Number(e.target.value) || 1)
+                            changeItemUnit(item.productId, 'Paquet', v, v * product.purchasePrice)
+                          }}
+                          className="w-14 text-xs px-2 py-1 rounded-lg border border-surface-200 text-right"
+                        />
+                        <span className="text-[10px] text-surface-400">pcs/pqt</span>
+                      </div>
+                    )}
                     <div className="flex items-center gap-1">
                       <button onClick={() => updateItem(item.productId, 'quantity', Math.max(1, item.quantity - 1))} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><Minus className="w-3 h-3" /></button>
                       <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
@@ -336,15 +391,20 @@ export default function PurchasesPage() {
                 )
               })}
             </div>
-            <Select
-              value=""
-              onChange={(e) => { if (e.target.value) { addItem(e.target.value); e.target.value = '' } }}
-              options={(products || [])
-                .filter(p => !items.find(i => i.productId === p.id))
-                .map(p => ({ value: p.id, label: `${p.name} - ${formatCurrency(p.purchasePrice)}` }))
-              }
-              placeholder="+ Ajouter un produit"
-            />
+            <div className="flex gap-2">
+              <div className="flex-1">
+                <Select
+                  value=""
+                  onChange={(e) => { if (e.target.value) { addItem(e.target.value); e.target.value = '' } }}
+                  options={(products || [])
+                    .filter(p => !items.find(i => i.productId === p.id))
+                    .map(p => ({ value: p.id, label: `${p.name} - ${formatCurrency(p.purchasePrice)}` }))
+                  }
+                  placeholder="+ Ajouter un produit"
+                />
+              </div>
+              <Button variant="outline" onClick={() => setNewProductOpen(true)}><Plus className="w-4 h-4" /> Nouveau produit</Button>
+            </div>
           </div>
 
           <div className="bg-surface-50 rounded-xl p-4 space-y-1 text-sm">
@@ -360,6 +420,34 @@ export default function PurchasesPage() {
         <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
           <Button variant="ghost" onClick={() => setModalOpen(false)}>Annuler</Button>
           <Button onClick={handleSave} disabled={items.length === 0}>{editing ? 'Mettre à jour' : 'Créer l\'achat'}</Button>
+        </div>
+      </Modal>
+
+      <Modal open={newProductOpen} onClose={() => setNewProductOpen(false)} title="Nouveau produit" size="md">
+        <div className="p-6 space-y-4">
+          <Input label="Nom du produit *" value={npForm.name} onChange={(e) => setNpForm({ ...npForm, name: e.target.value })} placeholder="Ex: Riz 25kg" />
+          <div className="grid grid-cols-2 gap-4">
+            <Input label="Prix d'achat" type="number" value={npForm.purchasePrice} onChange={(e) => setNpForm({ ...npForm, purchasePrice: Number(e.target.value) })} />
+            <Input label="Prix de vente" type="number" value={npForm.sellingPrice} onChange={(e) => setNpForm({ ...npForm, sellingPrice: Number(e.target.value) })} />
+          </div>
+          <Select
+            label="Unité"
+            value={npForm.unit}
+            onChange={(e) => setNpForm({ ...npForm, unit: e.target.value as ProductUnit })}
+            options={[
+              { value: 'piece', label: 'Pièce' },
+              { value: 'dozen', label: 'Douzaine' },
+              { value: 'pack', label: 'Paquet' },
+            ]}
+          />
+          {npForm.unit === 'pack' && (
+            <Input label="Pièces par paquet" type="number" min={1} value={npForm.packSize} onChange={(e) => setNpForm({ ...npForm, packSize: Number(e.target.value) })} />
+          )}
+          <Input label="Quantité à acheter" type="number" min={1} value={npForm.quantity} onChange={(e) => setNpForm({ ...npForm, quantity: Number(e.target.value) })} />
+          <div className="flex justify-end gap-3 pt-2">
+            <Button variant="ghost" onClick={() => setNewProductOpen(false)}>Annuler</Button>
+            <Button onClick={handleCreateProduct} disabled={!npForm.name.trim()}>Créer et ajouter</Button>
+          </div>
         </div>
       </Modal>
     </div>

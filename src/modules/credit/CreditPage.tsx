@@ -5,12 +5,14 @@ import { usePagination } from '@/hooks/usePagination'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePermission } from '@/hooks/usePermission'
 import db from '@/db'
-import { formatCurrency, formatDate, formatDateTime, openWhatsApp } from '@/lib/utils'
+import { formatCurrency, formatDate, formatDateTime, openWhatsApp, cn } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import { shareViaWeChat } from '@/lib/share'
 import { recordCreditPayment, modifyCreditPayment, deleteCreditPayment } from '@/engine/operations'
+import { CreditSaleEditModal } from '@/components/credit/CreditSaleModals'
 import {
-  Search, AlertTriangle, Clock, CheckCircle, MessageSquare,
-  CreditCard, DollarSign, History, Edit2, Trash2, X, Save, Plus
+  Search, AlertTriangle, Clock, MessageSquare,
+  CreditCard, DollarSign, History, Edit2, Trash2, Save, Plus, MessageCircle
 } from 'lucide-react'
 import type { Credit, CreditPayment, PaymentMethod } from '@/types'
 
@@ -37,6 +39,12 @@ export default function CreditPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all')
   const [selectedCredit, setSelectedCredit] = useState<Credit | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [editSaleId, setEditSaleId] = useState<string | null>(null)
+
+  const modifications = useLiveQuery(
+    () => db.creditModifications.where('businessId').equals(businessId).reverse().sortBy('createdAt'),
+    [businessId]
+  ) || []
 
   const [payModal, setPayModal] = useState(false)
   const [payAmount, setPayAmount] = useState('')
@@ -160,6 +168,7 @@ export default function CreditPage() {
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Montant</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Payé</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Solde</th>
+                <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Avancement</th>
                 <th className="text-center text-xs font-semibold text-surface-500 uppercase px-6 py-4">Échéance</th>
                 <th className="text-center text-xs font-semibold text-surface-500 uppercase px-6 py-4">Statut</th>
                 <th className="text-center text-xs font-semibold text-surface-500 uppercase px-6 py-4">Actions</th>
@@ -177,6 +186,15 @@ export default function CreditPage() {
                     <td data-label="Montant" className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(c.amount)}</td>
                     <td data-label="Payé" className="px-6 py-4 text-right text-sm text-emerald-600 font-medium">{formatCurrency(c.paid)}</td>
                     <td data-label="Solde" className="px-6 py-4 text-right text-sm font-semibold text-surface-900">{formatCurrency(c.balance)}</td>
+                    <td data-label="Avancement" className="px-6 py-4">
+                      <div className="flex items-center gap-2">
+                        <div className="h-2 flex-1 min-w-[80px] bg-surface-100 rounded-full overflow-hidden">
+                          <div className={cn('h-full rounded-full', c.amount > 0 && c.paid >= c.amount ? 'bg-emerald-500' : 'bg-amber-500')}
+                            style={{ width: `${c.amount > 0 ? Math.min(100, Math.round((c.paid / c.amount) * 100)) : 0}%` }} />
+                        </div>
+                        <span className="text-xs text-surface-500 w-9 text-right">{c.amount > 0 ? Math.round((c.paid / c.amount) * 100) : 0}%</span>
+                      </div>
+                    </td>
                     <td data-label="Échéance" className="px-6 py-4 text-center text-sm text-surface-500">{new Date(c.dueDate).getFullYear() >= 2100 ? '—' : formatDate(c.dueDate)}</td>
                     <td data-label="Statut" className="px-6 py-4 text-center">
                       <Badge variant={c.status === 'paid' ? 'success' : isOverdue ? 'danger' : 'warning'}>
@@ -191,6 +209,11 @@ export default function CreditPage() {
                         <button onClick={() => openHistory(c)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Voir paiements">
                           <DollarSign className="w-4 h-4" />
                         </button>
+                        {c.invoiceId && canEdit && (
+                          <button onClick={() => setEditSaleId(c.invoiceId!)} className="p-1.5 rounded-lg hover:bg-amber-50 text-surface-400 hover:text-amber-600" title="Modifier le crédit / la vente">
+                            <Edit2 className="w-4 h-4" />
+                          </button>
+                        )}
                         {c.status !== 'paid' && canCreate && (
                           <button onClick={() => openPayModal(c)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Enregistrer un paiement">
                             <Plus className="w-4 h-4" />
@@ -206,13 +229,21 @@ export default function CreditPage() {
                             <MessageSquare className="w-4 h-4" />
                           </button>
                         )}
+                        {c.status !== 'paid' && (
+                          <button onClick={() => {
+                            const msg = `Bonjour ${c.customerName},\nRappel: solde impayé de ${formatCurrency(c.balance)}. Merci de régulariser.`
+                            shareViaWeChat(msg, 'Rappel de crédit')
+                          }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Envoyer rappel WeChat">
+                            <MessageCircle className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
                 )
               })}
               {(!filtered || filtered.length === 0) && (
-                <tr><td colSpan={7} className="text-center py-16 text-surface-400">
+                <tr><td colSpan={8} className="text-center py-16 text-surface-400">
                   <CreditCard className="w-14 h-14 mx-auto mb-4 text-surface-300" />
                   <p className="text-sm font-medium">Aucun crédit</p>
                   <p className="text-xs mt-1">Les crédits apparaîtront ici après les ventes à crédit</p>
@@ -319,6 +350,23 @@ export default function CreditPage() {
               </Button>
             </div>
           )}
+
+          {selectedCredit && modifications.filter(m => m.creditId === selectedCredit.id).length > 0 && (
+            <div className="pt-2 border-t border-surface-200">
+              <h3 className="text-sm font-semibold text-surface-700 mb-2">Journal des modifications</h3>
+              <div className="space-y-1.5 max-h-40 overflow-y-auto">
+                {modifications.filter(m => m.creditId === selectedCredit.id).map(m => (
+                  <div key={m.id} className="p-2.5 bg-surface-50 rounded-lg border border-surface-200">
+                    <p className="text-xs text-surface-600">
+                      <span className="font-medium text-surface-800">{m.field === 'payment' ? 'Paiement enregistré' : m.field === 'payment_edit' ? 'Paiement modifié' : m.field === 'payment_deleted' ? 'Paiement supprimé' : 'Vente modifiée'}</span>
+                      {m.field === 'sale_edit' && <span className="text-surface-400"> — {m.newValue}</span>}
+                    </p>
+                    <p className="text-[11px] text-surface-400">{formatDateTime(m.createdAt)}{m.reason ? ` · ${m.reason}` : ''}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -361,6 +409,13 @@ export default function CreditPage() {
           </div>
         </div>
       </Modal>
+
+      <CreditSaleEditModal
+        open={editSaleId !== null}
+        onClose={() => setEditSaleId(null)}
+        saleId={editSaleId || undefined}
+        onSaved={() => setEditSaleId(null)}
+      />
     </div>
   )
 }

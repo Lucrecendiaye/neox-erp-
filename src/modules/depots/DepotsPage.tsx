@@ -107,7 +107,7 @@ export default function DepotsPage() {
           <button onClick={() => navigate('/depots/vente')} className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium hover:bg-primary-500 transition-all flex items-center gap-2">
             <TrendingUp className="w-4 h-4" /> Vente
           </button>
-          <button onClick={() => navigate('/bons-sortie')} className="px-4 py-2 rounded-xl border border-surface-300 text-surface-700 text-sm font-medium hover:bg-surface-50 transition-all flex items-center gap-2">
+          <button onClick={() => navigate('/depots/bons-sortie')} className="px-4 py-2 rounded-xl border border-surface-300 text-surface-700 text-sm font-medium hover:bg-surface-50 transition-all flex items-center gap-2">
             <FileText className="w-4 h-4" /> Bon de sortie
           </button>
           <Button onClick={() => setModalOpen(true)}>
@@ -158,7 +158,7 @@ export default function DepotsPage() {
                 <button onClick={() => navigate('/depots/history/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
                   <History className="w-3 h-3" /> Mouvement
                 </button>
-                <button onClick={() => navigate(`/bons-sortie?from=${w.id}`)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
+                <button onClick={() => navigate(`/depots/bons-sortie?from=${w.id}`)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
                   <FileText className="w-3 h-3" /> Bon de sortie
                 </button>
                 <button onClick={() => openEdit(w)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">

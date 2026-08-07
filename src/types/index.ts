@@ -119,6 +119,7 @@ export interface Sale {
   paymentMethod: PaymentMethod
   splitPayments?: SplitPaymentItem[]
   status: SaleStatus
+  paymentStatus?: 'unpaid' | 'partial' | 'paid'
   note?: string
   createdAt: string
   userId: string
@@ -213,6 +214,19 @@ export interface Credit {
   dueDate: string
   status: 'active' | 'paid' | 'overdue' | 'defaulted'
   reminderSent: string[]
+  createdAt: string
+}
+
+export interface CreditModification {
+  id: string
+  businessId: string
+  creditId: string
+  saleId?: string
+  field: string
+  oldValue: string
+  newValue: string
+  reason?: string
+  userId: string
   createdAt: string
 }
 
@@ -362,6 +376,7 @@ export interface CashBookEntry {
   paymentMethod: PaymentMethod
   reference?: string
   attachment?: string
+  linkedId?: string
   createdAt: string
   userId: string
 }

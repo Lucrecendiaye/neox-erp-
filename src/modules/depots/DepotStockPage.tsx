@@ -501,13 +501,8 @@ export default function DepotStockPage() {
               <p className="text-sm text-surface-500 mt-3">Marge : <span className="font-semibold text-success">{calculateMargin(editForm.purchasePrice, editForm.sellingPrice).toFixed(1)}%</span></p>
             )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              {editForm.unit === 'dozen' && <Input label="Prix par douzaine" type="number" value={editForm.priceDozen} onChange={(e) => setEditForm({ ...editForm, priceDozen: +e.target.value })} />}
-              {editForm.unit === 'pack' && (
-                <>
-                  <Input label="Prix par douzaine" type="number" value={editForm.priceDozen} onChange={(e) => setEditForm({ ...editForm, priceDozen: +e.target.value })} />
-                  <Input label="Prix par paquet" type="number" value={editForm.pricePack} onChange={(e) => setEditForm({ ...editForm, pricePack: +e.target.value })} />
-                </>
-              )}
+              <Input label="Prix par douzaine" type="number" value={editForm.priceDozen} onChange={(e) => setEditForm({ ...editForm, priceDozen: +e.target.value })} />
+              <Input label="Prix par paquet" type="number" value={editForm.pricePack} onChange={(e) => setEditForm({ ...editForm, pricePack: +e.target.value })} />
             </div>
           </div>
 

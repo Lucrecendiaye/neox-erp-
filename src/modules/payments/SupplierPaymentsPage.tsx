@@ -9,6 +9,7 @@ import { Search, DollarSign, CheckCircle, Clock, AlertTriangle, FileText } from 
 import { useAppStore } from '@/stores/appStore'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import type { Purchase, Supplier, AccountingEntry } from '@/types'
+import SupplierTabs from '@/modules/suppliers/SupplierTabs'
 
 export default function SupplierPaymentsPage() {
   const businessId = useBusinessId()
@@ -65,6 +66,7 @@ export default function SupplierPaymentsPage() {
 
   return (
     <div className="w-full h-full flex flex-col gap-6">
+      <SupplierTabs />
       <div>
         <h1 className="text-2xl font-bold text-surface-900">Paiements fournisseurs</h1>
         <p className="text-surface-500 text-sm mt-1">{unpaid.length} fournisseur{unpaid.length > 1 ? 's' : ''} avec solde impayé</p>

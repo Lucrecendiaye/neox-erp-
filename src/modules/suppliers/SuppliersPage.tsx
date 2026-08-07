@@ -9,10 +9,12 @@ import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { generateId, openWhatsApp, pickContact } from '@/lib/utils'
 import { toast } from '@/lib/toast'
+import { shareViaWeChat } from '@/lib/share'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import { softDelete } from '@/lib/softDelete'
-import { Search, Plus, Edit2, Trash2, Truck, Phone, Mail, MapPin, MessageSquare } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Truck, Phone, Mail, MapPin, MessageSquare, MessageCircle, Scale } from 'lucide-react'
 import type { Supplier } from '@/types'
+import SupplierTabs from './SupplierTabs'
 
 export default function SuppliersPage() {
   const navigate = useNavigate()
@@ -83,6 +85,7 @@ export default function SuppliersPage() {
 
   return (
     <div className="w-full h-full flex flex-col gap-6">
+      <SupplierTabs />
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Fournisseurs</h1>
@@ -117,8 +120,14 @@ export default function SuppliersPage() {
               </div>
             </div>
             <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button onClick={(e) => { e.stopPropagation(); navigate(`/suppliers/${s.id}?comp=1`) }} className="p-1.5 rounded-lg hover:bg-primary-50 text-surface-400 hover:text-primary-600" title="Compensation">
+                <Scale className="w-4 h-4" />
+              </button>
               <button onClick={(e) => { e.stopPropagation(); openWhatsApp(s.phone) }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600">
                 <MessageSquare className="w-4 h-4" />
+              </button>
+              <button onClick={(e) => { e.stopPropagation(); shareViaWeChat(`Contact: ${s.name}${s.phone ? ` — ${s.phone}` : ''}`, `Contact ${s.name}`) }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Partager par WeChat">
+                <MessageCircle className="w-4 h-4" />
               </button>
               <button onClick={(e) => { e.stopPropagation(); openEdit(s) }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
                 <Edit2 className="w-4 h-4" />

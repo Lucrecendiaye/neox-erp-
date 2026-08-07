@@ -127,7 +127,7 @@ export async function uploadImage(dataUrl: string, folder: string = 'products'):
 /**
  * Prépare un objet avant envoi à Supabase :
  * toute photo encore en data URL est téléversée vers un stockage externe.
- * Si le téléversement échoue, la photo est retirée pour ne jamais remplir la base.
+ * Si le téléversement échoue, la photo est conservée telle quelle pour ne jamais la perdre.
  */
 export async function sanitizePayloadForSync(data: Record<string, any>): Promise<Record<string, any>> {
   if (!data || !Array.isArray(data.photos)) return data
@@ -137,8 +137,19 @@ export async function sanitizePayloadForSync(data: Record<string, any>): Promise
       sanitized.photos.push(photo)
     } else if (isDataUrl(photo)) {
       const url = await uploadToCloudinary(photo, 'products') || await uploadToSupabaseStorage(photo, 'products')
-      if (url) sanitized.photos.push(url)
+      sanitized.photos.push(url || photo)
     }
   }
   return sanitized
+}
+
+/**
+ * Fusionne les photos à l'arrivée d'une ligne distante :
+ * si le cloud ne contient aucune photo mais que la copie locale en a,
+ * on conserve les photos locales pour ne jamais écraser un produit photo-less.
+ */
+export function mergePhotosForSync(localPhotos: string[] | undefined, remotePhotos: string[] | undefined): string[] | undefined {
+  if (remotePhotos && remotePhotos.length > 0) return remotePhotos
+  if (localPhotos && localPhotos.length > 0) return localPhotos
+  return remotePhotos
 }

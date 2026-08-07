@@ -1,0 +1,866 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NeoX — Maquette UI · Deux Thèmes Dark SaaS/POS</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<style>
+  /* ════════════════════════════════════════════════════════════
+     PAGE PRÉSENTATION — dark, galerie
+  ════════════════════════════════════════════════════════════ */
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { -webkit-font-smoothing:antialiased; }
+  body {
+    font-family:'Plus Jakarta Sans','Inter',system-ui,sans-serif;
+    background:#05060a;
+    color:#e7e9ee;
+    min-height:100vh;
+    padding:40px 28px 72px;
+  }
+  .wrap { max-width:1780px; margin:0 auto; }
+
+  /* ── Header présentation ── */
+  .pres-head { display:flex; align-items:flex-end; justify-content:space-between; gap:24px; flex-wrap:wrap; margin-bottom:36px; }
+  .pres-brand { display:flex; align-items:center; gap:14px; }
+  .pres-logo { width:46px; height:46px; border-radius:14px; background:linear-gradient(135deg,#3b82f6,#10b981); display:flex; align-items:center; justify-content:center; box-shadow:0 0 24px rgba(16,185,129,.35); }
+  .pres-title { font-size:13px; letter-spacing:.18em; font-weight:600; color:#8b93a7; text-transform:uppercase; }
+  .pres-title h1 { font-size:26px; letter-spacing:-.02em; font-weight:800; color:#fff; text-transform:none; margin-top:4px; }
+  .pres-sub { font-size:13px; color:#7a8296; margin-top:6px; }
+  .pres-meta { display:flex; gap:10px; flex-wrap:wrap; }
+  .chip { padding:7px 14px; border-radius:999px; border:1px solid rgba(255,255,255,.1); background:rgba(255,255,255,.04); font-size:11.5px; color:#aab2c4; font-weight:600; }
+  .chip b { color:#fff; font-weight:700; }
+
+  /* ── Galerie ── */
+  .gallery { display:grid; grid-template-columns:repeat(auto-fit,minmax(880px,1fr)); gap:40px; justify-content:center; }
+  .screen-block { min-width:0; }
+  .screen-label { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:14px; }
+  .screen-name { font-size:17px; font-weight:800; letter-spacing:-.01em; color:#fff; }
+  .screen-tag { font-size:11px; font-weight:700; letter-spacing:.08em; text-transform:uppercase; padding:5px 12px; border-radius:999px; }
+  .screen-desc { font-size:12px; color:#8b93a7; margin-top:3px; font-weight:500; }
+  .palette { display:flex; gap:6px; align-items:center; }
+  .swatch { width:16px; height:16px; border-radius:5px; border:1px solid rgba(255,255,255,.14); }
+  .swatch-n { width:20px; height:20px; display:flex; align-items:center; justify-content:center; border-radius:6px; border:1px solid rgba(255,255,255,.14); }
+
+  /* ════════════════════════════════════════════════════════════
+     THÈMES
+  ════════════════════════════════════════════════════════════ */
+  .theme-cafe {
+    --accent:#D97706; --accent-rgb:217,119,6;
+    --bg1:#121214; --bg2:#0A0E17;
+    --text:#FFFFFF; --muted:#D1D5DB; --muted2:#9CA3AF;
+    --glass:rgba(18,18,20,.62);
+    --stroke:rgba(255,255,255,.10);
+    --nav-act:rgba(217,119,6,.16);
+    --nav-act-stroke:rgba(217,119,6,.4);
+  }
+  .theme-noir {
+    --accent:#10B981; --accent-rgb:16,185,129;
+    --bg1:#000000; --bg2:#1E293B;
+    --text:#F8FAFC; --muted:#64748B; --muted2:#94A3B8;
+    --glass:rgba(8,10,14,.60);
+    --stroke:rgba(255,255,255,.09);
+    --nav-act:rgba(16,185,129,.15);
+    --nav-act-stroke:rgba(16,185,129,.45);
+  }
+
+  /* ════════════════════════════════════════════════════════════
+     CADRE ÉCRAN (fenêtre app)
+  ════════════════════════════════════════════════════════════ */
+  .screen {
+    position:relative;
+    height:660px;
+    border-radius:22px;
+    overflow:hidden;
+    border:1px solid var(--stroke);
+    box-shadow:0 30px 80px -20px rgba(0,0,0,.85), 0 0 0 1px rgba(255,255,255,.02) inset;
+  }
+  /* fond photo floutée */
+  .screen-bg { position:absolute; inset:0; }
+  .screen-bg::before { content:''; position:absolute; inset:0; }
+  .screen-bg::after {
+    content:''; position:absolute; inset:0;
+    backdrop-filter:blur(3px) saturate(120%);
+  }
+  .bokeh { position:absolute; inset:0; opacity:.9; filter:blur(10px); }
+  .bokeh i { position:absolute; border-radius:50%; display:block; }
+
+  .theme-cafe .screen-bg::before {
+    background:
+      radial-gradient(120% 90% at 85% 10%, rgba(217,119,6,.22), transparent 55%),
+      radial-gradient(90% 80% at 10% 95%, rgba(120,80,40,.28), transparent 60%),
+      radial-gradient(60% 50% at 50% 40%, rgba(70,55,90,.32), transparent 70%),
+      linear-gradient(160deg, #121214 0%, #0A0E17 70%, #0a0d13 100%);
+  }
+  .theme-cafe .bokeh i {
+    background:radial-gradient(circle, rgba(217,119,6,.5), transparent 70%);
+    box-shadow:0 0 18px 6px rgba(217,119,6,.08);
+  }
+  .theme-cafe .bokeh i:nth-child(1){ width:200px;height:200px; top:-30px; right:8%; }
+  .theme-cafe .bokeh i:nth-child(2){ width:140px;height:140px; bottom:12%; left:22%; background:radial-gradient(circle,rgba(200,150,70,.4),transparent 70%); }
+  .theme-cafe .bokeh i:nth-child(3){ width:90px;height:90px; top:34%; right:34%; }
+  .theme-cafe .bokeh i:nth-child(4){ width:220px;height:220px; bottom:-60px; right:-40px; background:radial-gradient(circle,rgba(150,95,40,.34),transparent 70%); }
+
+  .theme-noir .screen-bg::before {
+    background:
+      radial-gradient(110% 80% at 78% 0%, rgba(59,130,246,.14), transparent 55%),
+      radial-gradient(80% 70% at 5% 90%, rgba(16,185,129,.10), transparent 60%),
+      radial-gradient(70% 55% at 45% 45%, rgba(30,41,59,.65), transparent 75%),
+      linear-gradient(160deg, #000000 0%, #000000 55%, #0b0f14 100%);
+  }
+  .theme-noir .bokeh i {
+    background:radial-gradient(circle, rgba(100,116,139,.4), transparent 70%);
+    box-shadow:0 0 18px 6px rgba(59,130,246,.06);
+  }
+  .theme-noir .bokeh i:nth-child(1){ width:180px;height:180px; top:-40px; left:28%; }
+  .theme-noir .bokeh i:nth-child(2){ width:240px;height:240px; bottom:-70px; right:-30px; background:radial-gradient(circle,rgba(16,185,129,.16),transparent 70%); }
+  .theme-noir .bokeh i:nth-child(3){ width:110px;height:110px; top:40%; right:20%; background:radial-gradient(circle,rgba(148,163,184,.3),transparent 70%); }
+  .theme-noir .bokeh i:nth-child(4){ width:80px;height:80px; bottom:18%; left:44%; }
+
+  /* ════════════════════════════════════════════════════════════
+     APP GRID
+  ════════════════════════════════════════════════════════════ */
+  .app { position:relative; z-index:2; display:grid; grid-template-columns:176px 1fr 236px; height:100%; color:var(--text); }
+
+  /* ── GLASS primitives ── */
+  .glass {
+    background:var(--glass);
+    backdrop-filter:blur(20px) saturate(180%);
+    -webkit-backdrop-filter:blur(20px) saturate(180%);
+    border:1px solid var(--stroke);
+    border-radius:16px;
+    box-shadow:0 20px 40px rgba(0,0,0,.4);
+    position:relative;
+  }
+  .glass::before {
+    content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+    background:linear-gradient(135deg, rgba(255,255,255,.07), transparent 26%);
+    mask:linear-gradient(#000 0 0) top left / 60% 60% no-repeat;
+    -webkit-mask:linear-gradient(#000 0 0) top left / 60% 60% no-repeat;
+  }
+
+  /* ════════════════════════════════════════════════════════════
+     SIDEBAR
+  ════════════════════════════════════════════════════════════ */
+  .sidebar { display:flex; flex-direction:column; padding:20px 12px 16px; border-right:1px solid var(--stroke); background:rgba(0,0,0,.25); backdrop-filter:blur(16px); }
+  .logo { display:flex; align-items:center; gap:10px; padding:0 8px; margin-bottom:26px; }
+  .logo-badge { width:34px; height:34px; border-radius:11px; background:linear-gradient(135deg, var(--accent), color-mix(in srgb,var(--accent) 55%, #fff)); display:flex; align-items:center; justify-content:center; box-shadow:0 0 18px rgba(var(--accent-rgb),.4); }
+  .logo-badge svg { width:17px; height:17px; color:#0c0f14; }
+  .logo-name { font-weight:800; font-size:14.5px; letter-spacing:-.01em; }
+  .logo-name span { display:block; font-size:9.5px; font-weight:600; letter-spacing:.14em; text-transform:uppercase; color:var(--muted2); margin-top:1px; }
+
+  .nav { display:flex; flex-direction:column; gap:4px; flex:1; }
+  .nav-section { font-size:9.5px; font-weight:700; letter-spacing:.14em; text-transform:uppercase; color:var(--muted2); padding:0 10px; margin:10px 0 4px; }
+  .nav-item { display:flex; align-items:center; gap:11px; padding:8px 10px; border-radius:11px; font-size:12.5px; font-weight:600; color:var(--muted); cursor:pointer; border:1px solid transparent; transition:all .18s ease; }
+  .nav-item svg { width:17px; height:17px; stroke-width:1.5; flex-shrink:0; }
+  .nav-item:hover { color:var(--text); background:rgba(255,255,255,.045); }
+  .nav-item.active { color:var(--text); background:var(--nav-act); border-color:var(--nav-act-stroke); box-shadow:0 0 16px rgba(var(--accent-rgb),.14); }
+  .nav-item.active svg { color:var(--accent); }
+  .nav-item.danger { color:#9f6b6b; }
+  .nav-item.danger:hover { color:#ef4444; }
+  .nav-badge { margin-left:auto; font-size:9.5px; font-weight:700; padding:2px 7px; border-radius:999px; background:var(--accent); color:#0b0d10; }
+
+  .sidebar-foot { margin-top:10px; }
+  .plan-card { border-radius:14px; padding:12px; border:1px solid var(--stroke); background:rgba(255,255,255,.035); }
+  .plan-card .p-t { font-size:11px; font-weight:700; }
+  .plan-card .p-s { font-size:10px; color:var(--muted2); margin-top:2px; }
+  .plan-bar { height:5px; border-radius:99px; background:rgba(255,255,255,.1); margin:9px 0 7px; overflow:hidden; }
+  .plan-bar i { display:block; height:100%; width:68%; border-radius:99px; background:linear-gradient(90deg,var(--accent),color-mix(in srgb,var(--accent) 40%,#fff)); box-shadow:0 0 8px rgba(var(--accent-rgb),.5); }
+  .plan-card .p-x { font-size:9.5px; color:var(--muted2); font-weight:600; }
+
+  /* ════════════════════════════════════════════════════════════
+     MAIN
+  ════════════════════════════════════════════════════════════ */
+  .main { display:flex; flex-direction:column; min-width:0; padding:20px 22px 18px; gap:16px; }
+
+  .m-top { display:flex; align-items:center; gap:14px; }
+  .m-head h2 { font-size:17px; font-weight:800; letter-spacing:-.02em; }
+  .m-head p { font-size:11.5px; color:var(--muted2); margin-top:2px; font-weight:500; }
+  .searchbar { flex:1; display:flex; align-items:center; gap:9px; padding:9px 13px; border-radius:12px; border:1px solid var(--stroke); background:rgba(255,255,255,.04); color:var(--muted2); font-size:12.5px; max-width:360px; }
+  .searchbar svg { width:15px; height:15px; stroke-width:1.8; flex-shrink:0; color:var(--muted2); }
+  .searchbar .kbd { margin-left:auto; font-size:9.5px; font-weight:700; padding:2px 6px; border-radius:6px; border:1px solid var(--stroke); background:rgba(255,255,255,.05); color:var(--muted2); letter-spacing:.04em; }
+  .icon-btn { position:relative; width:36px; height:36px; border-radius:11px; border:1px solid var(--stroke); background:rgba(255,255,255,.04); display:flex; align-items:center; justify-content:center; color:var(--muted); cursor:pointer; transition:all .18s; }
+  .icon-btn:hover { color:var(--text); background:rgba(255,255,255,.08); }
+  .icon-btn svg { width:16px; height:16px; stroke-width:1.6; }
+  .icon-btn .dot { position:absolute; top:7px; right:7px; width:6px; height:6px; border-radius:50%; background:var(--accent); box-shadow:0 0 8px rgba(var(--accent-rgb),.8); }
+  .avatar { width:36px; height:36px; border-radius:50%; border:1px solid rgba(var(--accent-rgb),.5); background:linear-gradient(135deg, rgba(var(--accent-rgb),.5), rgba(255,255,255,.08)); display:flex; align-items:center; justify-content:center; font-size:12px; font-weight:700; color:var(--text); box-shadow:0 0 12px rgba(var(--accent-rgb),.25); cursor:pointer; }
+
+  /* KPI strip */
+  .kpis { display:grid; grid-template-columns:repeat(4,1fr); gap:10px; }
+  .kpi { padding:12px 14px; border-radius:14px; border:1px solid var(--stroke); background:rgba(255,255,255,.035); }
+  .kpi .k-l { display:flex; align-items:center; gap:7px; font-size:9.5px; font-weight:700; letter-spacing:.1em; text-transform:uppercase; color:var(--muted2); }
+  .kpi .k-l svg { width:12px; height:12px; color:var(--accent); stroke-width:2; }
+  .kpi .k-v { font-size:17px; font-weight:800; letter-spacing:-.02em; margin-top:6px; }
+  .kpi .k-d { font-size:9.5px; font-weight:600; margin-top:2px; }
+  .kpi .k-d.up { color:#10B981; }
+  .kpi .k-d.down { color:#EF4444; }
+
+  /* Tabs */
+  .tabs { display:flex; gap:8px; overflow-x:auto; scrollbar-width:none; }
+  .tabs::-webkit-scrollbar { display:none; }
+  .tab { padding:7px 15px; border-radius:999px; font-size:11.5px; font-weight:600; color:var(--muted); border:1px solid transparent; cursor:pointer; white-space:nowrap; transition:all .18s; }
+  .tab:hover { color:var(--text); box-shadow:0 0 16px rgba(var(--accent-rgb),.18); border-color:var(--stroke); }
+  .tab.active { color:#0c0f14; background:linear-gradient(135deg, var(--accent), color-mix(in srgb,var(--accent) 60%,#fff)); box-shadow:0 0 18px rgba(var(--accent-rgb),.4); font-weight:700; }
+  .tabs-grow { flex:1; }
+
+  /* Produits grid */
+  .products { flex:1; overflow-y:auto; display:grid; grid-template-columns:repeat(auto-fill,minmax(148px,1fr)); gap:12px; padding:2px 4px 4px; align-content:start; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.15) transparent; }
+  .products::-webkit-scrollbar { width:5px; }
+  .products::-webkit-scrollbar-thumb { background:rgba(255,255,255,.15); border-radius:3px; }
+
+  /* ── Carte produit 80/20 ── */
+  .pcard { border-radius:16px; border:1px solid var(--stroke); background:var(--glass); backdrop-filter:blur(20px) saturate(180%); overflow:hidden; display:flex; flex-direction:column; cursor:pointer; box-shadow:0 20px 40px rgba(0,0,0,.4); position:relative; transition:transform .2s ease, box-shadow .2s ease; }
+  .pcard:hover { transform:translateY(-3px); box-shadow:0 26px 50px rgba(0,0,0,.5), 0 0 0 1px rgba(var(--accent-rgb),.25); }
+  .pcard::before { content:''; position:absolute; inset:0; border-radius:inherit; pointer-events:none; z-index:2; background:linear-gradient(135deg, rgba(255,255,255,.08), transparent 30%); mask:linear-gradient(#000 0 0) top left / 55% 55% no-repeat; -webkit-mask:linear-gradient(#000 0 0) top left / 55% 55% no-repeat; }
+  .pcard-img { flex:4; position:relative; min-height:0; }
+  .pcard-img .art { position:absolute; inset:0; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+  .pcard-img .art::before { content:''; position:absolute; width:130%; height:130%; background:radial-gradient(circle at 30% 25%, rgba(var(--accent-rgb),.32), transparent 55%), radial-gradient(circle at 75% 85%, rgba(255,255,255,.05), transparent 50%); }
+  .pcard-img svg { position:relative; width:54%; height:54%; filter:drop-shadow(0 6px 14px rgba(0,0,0,.5)); }
+  .pcard-img .img-tint { position:absolute; inset:0; }
+  .pcard-off { position:absolute; top:8px; left:8px; z-index:3; font-size:9px; font-weight:800; padding:3px 8px; border-radius:999px; background:linear-gradient(135deg,#ef4444,#f97316); color:#fff; box-shadow:0 4px 12px rgba(239,68,68,.4); }
+  .pcard-star { position:absolute; top:8px; right:8px; z-index:3; width:22px; height:22px; border-radius:7px; display:flex; align-items:center; justify-content:center; background:rgba(0,0,0,.4); backdrop-filter:blur(6px); border:1px solid rgba(255,255,255,.12); }
+  .pcard-star svg { width:11px; height:11px; color:#fbbf24; fill:#fbbf24; }
+  .pcard-info { flex:1; padding:8px 11px 9px; border-top:1px solid var(--stroke); background:linear-gradient(to top, rgba(0,0,0,.9), transparent); display:flex; flex-direction:column; justify-content:center; gap:5px; }
+  .pcard-info h4 { font-size:11.5px; font-weight:700; color:var(--text); letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pcard-meta { display:flex; align-items:center; justify-content:space-between; gap:6px; }
+  .price { font-size:11.5px; font-weight:800; color:var(--text); }
+  .price small { font-weight:500; color:var(--muted2); font-size:9.5px; }
+  .stock { display:inline-flex; align-items:center; gap:4px; font-size:8.5px; font-weight:700; letter-spacing:.02em; padding:2px 7px; border-radius:999px; }
+  .stock i { width:5px; height:5px; border-radius:50%; }
+  .stock.ok { background:rgba(16,185,129,.14); color:#34d399; } .stock.ok i { background:#10B981; box-shadow:0 0 6px #10B981; }
+  .stock.low { background:rgba(245,158,11,.14); color:#fbbf24; } .stock.low i { background:#F59E0B; box-shadow:0 0 6px #F59E0B; }
+  .stock.out { background:rgba(239,68,68,.14); color:#f87171; } .stock.out i { background:#EF4444; box-shadow:0 0 6px #EF4444; }
+
+  /* ════════════════════════════════════════════════════════════
+     PANEL CART
+  ════════════════════════════════════════════════════════════ */
+  .panel { display:flex; flex-direction:column; border-left:1px solid var(--stroke); background:rgba(0,0,0,.22); backdrop-filter:blur(16px); padding:18px 14px 14px; }
+  .panel-head { display:flex; align-items:center; gap:9px; padding:0 4px 14px; }
+  .panel-head svg { width:18px; height:18px; color:var(--accent); stroke-width:1.6; }
+  .panel-head h3 { font-size:13.5px; font-weight:800; letter-spacing:-.01em; }
+  .panel-head .cnt { margin-left:auto; font-size:10px; font-weight:800; padding:3px 9px; border-radius:999px; background:var(--nav-act); color:var(--text); border:1px solid var(--nav-act-stroke); }
+  .cart-items { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:9px; padding-right:2px; scrollbar-width:thin; scrollbar-color:rgba(255,255,255,.15) transparent; }
+  .cart-items::-webkit-scrollbar { width:5px; }
+  .cart-items::-webkit-scrollbar-thumb { background:rgba(255,255,255,.15); border-radius:3px; }
+
+  .citem { display:flex; gap:10px; padding:9px; border-radius:14px; border:1px solid var(--stroke); background:rgba(255,255,255,.035); align-items:center; }
+  .citem .c-thumb { width:38px; height:38px; border-radius:11px; flex-shrink:0; display:flex; align-items:center; justify-content:center; background:radial-gradient(circle at 30% 25%, rgba(var(--accent-rgb),.35), rgba(0,0,0,.5)); border:1px solid var(--stroke); }
+  .citem .c-thumb svg { width:20px; height:20px; color:rgba(255,255,255,.85); filter:drop-shadow(0 2px 6px rgba(0,0,0,.4)); }
+  .citem .c-body { flex:1; min-width:0; }
+  .citem .c-name { font-size:11px; font-weight:700; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .citem .c-price { font-size:9.5px; font-weight:600; color:var(--muted2); margin-top:1px; }
+  .citem .c-qty { display:flex; align-items:center; gap:2px; margin-top:5px; }
+  .qty-btn { width:19px; height:19px; border-radius:6px; border:1px solid var(--stroke); background:rgba(255,255,255,.05); color:var(--muted); display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .qty-btn svg { width:10px; height:10px; stroke-width:2.5; }
+  .qty-btn:hover { color:var(--text); background:rgba(var(--accent-rgb),.2); }
+  .citem .c-qty b { font-size:10.5px; font-weight:800; min-width:20px; text-align:center; }
+  .citem .c-total { font-size:11.5px; font-weight:800; text-align:right; }
+  .citem .c-rm { width:18px; height:18px; border-radius:6px; border:none; background:transparent; color:#7c8a9a; display:flex; align-items:center; justify-content:center; cursor:pointer; }
+  .citem .c-rm:hover { color:#ef4444; background:rgba(239,68,68,.1); }
+  .citem .c-rm svg { width:12px; height:12px; stroke-width:1.8; }
+
+  .cart-summary { margin-top:12px; border-top:1px solid var(--stroke); padding-top:12px; display:flex; flex-direction:column; gap:7px; }
+  .sum-row { display:flex; justify-content:space-between; font-size:11px; font-weight:500; color:var(--muted); }
+  .sum-row b { font-weight:700; color:var(--text); }
+  .sum-row.total { font-size:13.5px; font-weight:800; color:var(--text); padding-top:6px; border-top:1px dashed var(--stroke); margin-top:2px; }
+  .sum-row.total b { font-size:16px; letter-spacing:-.02em; }
+  .cta { margin-top:11px; width:100%; padding:12px; border:none; border-radius:13px; font-family:inherit; font-size:12.5px; font-weight:800; color:#0b0d10; background:linear-gradient(135deg, var(--accent), color-mix(in srgb,var(--accent) 55%,#fff)); cursor:pointer; display:flex; align-items:center; justify-content:center; gap:8px; box-shadow:0 10px 26px rgba(var(--accent-rgb),.4), 0 0 0 1px rgba(255,255,255,.12) inset; transition:transform .15s, box-shadow .2s; }
+  .cta svg { width:15px; height:15px; stroke-width:2; }
+  .cta:hover { transform:translateY(-1px); box-shadow:0 14px 34px rgba(var(--accent-rgb),.55); }
+  .cta-sub { margin-top:8px; text-align:center; font-size:9px; font-weight:600; color:var(--muted2); letter-spacing:.03em; }
+
+  /* footer présentation */
+  .pres-foot { margin-top:44px; padding-top:22px; border-top:1px solid rgba(255,255,255,.07); display:flex; justify-content:space-between; gap:16px; flex-wrap:wrap; font-size:11px; color:#7a8296; font-weight:500; }
+  .pres-foot b { color:#aab2c4; }
+
+  @media (max-width:920px){
+    .gallery { grid-template-columns:1fr; }
+    .screen { height:640px; }
+    .app { grid-template-columns:150px 1fr 200px; }
+  }
+  @media (max-width:760px){
+    body { padding:24px 14px 48px; }
+    .app { grid-template-columns:1fr; }
+    .sidebar, .panel { display:none; }
+    .kpis { grid-template-columns:repeat(2,1fr); }
+  }
+</style>
+
+<!-- ═══ ICON SPRITE ═══ -->
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="i-grid" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="9" rx="1.5"/><rect x="14" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="12" width="7" height="9" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/></symbol>
+  <symbol id="i-chart" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15v-4"/><path d="M12 15V7"/><path d="M17 15v-8"/></symbol>
+  <symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+  <symbol id="i-box" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 8 12 3 3 8v8l9 5 9-5V8z"/><path d="M3 8l9 5 9-5"/><path d="M12 13v8"/></symbol>
+  <symbol id="i-inv" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8.5L12 3l9 5.5V21"/><path d="M7 21v-7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v7"/><path d="M3 21h18"/><path d="M12 12v2"/></symbol>
+  <symbol id="i-gear" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></symbol>
+  <symbol id="i-logout" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5"/><path d="M21 12H9"/></symbol>
+  <symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></symbol>
+  <symbol id="i-bell" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></symbol>
+  <symbol id="i-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"/></symbol>
+  <symbol id="i-bag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4Z"/><path d="M3 6h18"/><path d="M16 10a4 4 0 0 1-8 0"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="i-minus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/></symbol>
+  <symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+  <symbol id="i-wallet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4Z"/></symbol>
+  <symbol id="i-star" viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M12 2l2.9 6.26 6.6.7-4.9 4.5 1.3 6.54L12 16.9 6.1 20l1.3-6.54-4.9-4.5 6.6-.7L12 2z"/></symbol>
+  <symbol id="i-trend" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 7l-8.5 8.5-5-5L2 17"/><path d="M16 7h6v6"/></symbol>
+  <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+  <symbol id="i-logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></symbol>
+
+  <!-- ── icônes produits ── -->
+  <symbol id="i-cup" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M17 8h1a4 4 0 1 1 0 8h-1"/><path d="M3 8h14v6a6 6 0 0 1-6 6H9a6 6 0 0 1-6-6V8z"/><path d="M9 1.5v3M13 1.5v3M17 1.5v3"/></symbol>
+  <symbol id="i-bean" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="9" ry="6" transform="rotate(-25 12 12)"/><path d="M6.5 8.5c2 3 4.5 5.5 7.5 8"/></symbol>
+  <symbol id="i-bottle" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2h4v4l3 4v9a3 3 0 0 1-3 3h-4a3 3 0 0 1-3-3v-9l3-4V2z"/><path d="M7 13h10"/></symbol>
+  <symbol id="i-jar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7 8h10l2 13H5L7 8z"/><path d="M5 15h14"/><path d="M9 8V5a3 3 0 0 1 6 0v3"/></symbol>
+  <symbol id="i-leaf" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M11 20A7 7 0 0 1 4 13c0-5 4.5-9 14-9 0 9.5-4 13-7 16z"/><path d="M11 20c-1-4-3-7-5-9"/></symbol>
+  <symbol id="i-bar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="10" width="16" height="10" rx="2"/><path d="M7 10V7a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v3"/><path d="M8 13h.01M12 13h.01M16 13h.01"/></symbol>
+  <symbol id="i-fish" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 12c-3 0-4.5-1-4.5-1s1.5-1 4.5-1l3-2c4-2.5 8 0 10 1.5S24 12 24 12l-4 3.5c-2 1.5-6 4-10 1.5l-3-2z" transform="scale(0.92)"/></symbol>
+  <symbol id="i-droplet" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2s7 7.5 7 12a7 7 0 1 1-14 0c0-4.5 7-12 7-12z"/><path d="M9 14a3 3 0 0 0 3 3"/></symbol>
+  <symbol id="i-cheese" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17 21 7 9 5 3 17z"/><path d="M3 17c2 0 2-3 4-3s2 3 4 3 2-3 4-3 2 3 4 3z"/></symbol>
+  <symbol id="i-mush" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c5 0 9 3.5 9 8 0 1.5-1 2-2 2H5c-1 0-2-.5-2-2 0-4.5 4-8 9-8z"/><path d="M8 15v5M12 15v5M16 15v5"/></symbol>
+  <symbol id="i-steak" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9c6 0 8-6 12-6 3 0 6 3 6 6 0 6-5 12-9 12-2.5 0-5-2-5-4 0-2 2-3 4-3 1.5 0 3 1 3 2.5 0 2-2.5 4-6 4-4.5 0-7-4-7-9.5C3 10.5 3 9 3 9z"/><path d="M4 12c2-2 4-2 6-1.5"/></symbol>
+</svg>
+
+<div class="wrap">
+
+  <!-- ═══ HEADER PRÉSENTATION ═══ -->
+  <header class="pres-head">
+    <div class="pres-brand">
+      <div class="pres-logo"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#04121a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-logo"/></svg></div>
+      <div>
+        <div class="pres-title">Design System · Présentation UI<h1>NeoX — Deux Thèmes Dark Premium</h1></div>
+        <div class="pres-sub">SaaS B2B · Caisse POS — Comparatif side-by-side des thèmes « Café Profond » &amp; « Noir Gourmet »</div>
+      </div>
+    </div>
+    <div class="pres-meta">
+      <span class="chip"><b>1400×760</b> · Desktop</span>
+      <span class="chip">Grid : <b>176 / 1fr / 236</b></span>
+      <span class="chip">Glass <b>blur(20px)</b></span>
+      <span class="chip">Radius <b>16px</b></span>
+      <span class="chip">Règle image <b>80/20</b></span>
+    </div>
+  </header>
+
+  <div class="gallery">
+
+    <!-- ════════════════════════════════════════════
+         ÉCRAN 1 — CAFÉ PROFOND (Warm Executive)
+    ════════════════════════════════════════════ -->
+    <section class="screen-block theme-cafe">
+      <div class="screen-label">
+        <div>
+          <div class="screen-name">Thème « Café Profond » <span class="screen-tag" style="background:rgba(217,119,6,.16);color:#f0a04b;border:1px solid rgba(217,119,6,.35)">Warm Executive</span></div>
+          <div class="screen-desc">Catalogue d'abonnements &amp; gestion de stock premium — ambience lounge nocturne, laiton &amp; bois brûlé.</div>
+        </div>
+        <div class="palette">
+          <span class="swatch" style="background:#1A1A1A" title="#1A1A1A"></span>
+          <span class="swatch" style="background:#0D1117" title="#0D1117"></span>
+          <span class="swatch" style="background:#D97706" title="#D97706"></span>
+          <span class="swatch-n" style="background:#D1D5DB;color:#111"><svg width="11" height="11" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="screen-bg">
+          <div class="bokeh"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="app">
+
+          <!-- Sidebar -->
+          <aside class="sidebar">
+            <div class="logo">
+              <div class="logo-badge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-logo"/></svg></div>
+              <div class="logo-name">Café Nova<span>Suite Pro</span></div>
+            </div>
+            <nav class="nav">
+              <div class="nav-section">Pilotage</div>
+              <div class="nav-item active"><svg><use href="#i-grid"/></svg> Dashboard</div>
+              <div class="nav-item"><svg><use href="#i-chart"/></svg> Analytics</div>
+              <div class="nav-item"><svg><use href="#i-users"/></svg> Utilisateurs</div>
+              <div class="nav-section">Catalogue</div>
+              <div class="nav-item"><svg><use href="#i-box"/></svg> Produits <span class="nav-badge">128</span></div>
+              <div class="nav-item"><svg><use href="#i-inv"/></svg> Inventaire</div>
+              <div class="nav-section">Système</div>
+              <div class="nav-item"><svg><use href="#i-gear"/></svg> Paramètres</div>
+              <div class="nav-item danger"><svg><use href="#i-logout"/></svg> Déconnexion</div>
+            </nav>
+            <div class="sidebar-foot">
+              <div class="plan-card">
+                <div class="p-t">Plan Premium</div>
+                <div class="p-s">68 % du quota mensuel</div>
+                <div class="plan-bar"><i></i></div>
+                <div class="p-x">6 800 / 10 000 transactions</div>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <main class="main">
+            <div class="m-top">
+              <div class="m-head"><h2>Tableau de bord</h2><p>Vue d'ensemble de votre activité · 12 mars 2026</p></div>
+              <div class="searchbar">
+                <svg><use href="#i-search"/></svg>
+                <span>Rechercher un produit…</span>
+                <span class="kbd">Ctrl&nbsp;K</span>
+              </div>
+              <button class="icon-btn"><svg><use href="#i-sun"/></svg></button>
+              <button class="icon-btn"><svg><use href="#i-bell"/></svg><span class="dot"></span></button>
+              <div class="avatar">AK</div>
+            </div>
+
+            <div class="kpis">
+              <div class="kpi"><div class="k-l"><svg><use href="#i-wallet"/></svg> Revenus du jour</div><div class="k-v">4 862,40&nbsp;€</div><div class="k-d up">▲ 12,4 %</div></div>
+              <div class="kpi"><div class="k-l"><svg><use href="#i-bag"/></svg> Commandes</div><div class="k-v">148</div><div class="k-d up">▲ 8,1 %</div></div>
+              <div class="kpi"><div class="k-l"><svg><use href="#i-box"/></svg> Panier moyen</div><div class="k-v">32,85&nbsp;€</div><div class="k-d down">▼ 1,2 %</div></div>
+              <div class="kpi"><div class="k-l"><svg><use href="#i-trend"/></svg> Ventes abonnements</div><div class="k-v">87</div><div class="k-d up">▲ 5,6 %</div></div>
+            </div>
+
+            <div class="tabs">
+              <div class="tab active">Tout</div>
+              <div class="tab">Cafés</div>
+              <div class="tab">Signature</div>
+              <div class="tab">Viennoiseries</div>
+              <div class="tab">Boissons chaudes</div>
+              <div class="tab">Coffrets</div>
+            </div>
+
+            <div class="products">
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <span class="pcard-off">-15 %</span>
+                  <span class="pcard-star"><svg><use href="#i-star"/></svg></span>
+                  <div class="art"><svg><use href="#i-bean"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Espresso Ébène</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 24</span><span class="price">4,50&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-cup"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Cappuccino Crème</h4>
+                  <div class="pcard-meta"><span class="stock low"><i></i>Faible · 5</span><span class="price">5,80&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <span class="pcard-star"><svg><use href="#i-star"/></svg></span>
+                  <div class="art"><svg><use href="#i-bar"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Chocolat Noir 72%</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 41</span><span class="price">7,20&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-leaf"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Thé Oolong Fumé</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 18</span><span class="price">9,90&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <span class="pcard-off">Nouveau</span>
+                  <div class="art"><svg><use href="#i-leaf"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Matcha Latte</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 12</span><span class="price">6,50&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-jar"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Miel de Châtaigne</h4>
+                  <div class="pcard-meta"><span class="stock low"><i></i>Faible · 7</span><span class="price">12,40&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-bottle"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Cold Brew Barrel</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 30</span><span class="price">15,00&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <span class="pcard-star"><svg><use href="#i-star"/></svg></span>
+                  <div class="art"><svg><use href="#i-cup"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Flat White Signature</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 52</span><span class="price">5,20&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-bean"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Arabica Colombie</h4>
+                  <div class="pcard-meta"><span class="stock out"><i></i>Rupture</span><span class="price">14,90&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-bar"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Praliné Noisette</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 26</span><span class="price">8,40&nbsp;€</span></div>
+                </div>
+              </article>
+            </div>
+          </main>
+
+          <!-- Panier -->
+          <aside class="panel">
+            <div class="panel-head">
+              <svg><use href="#i-bag"/></svg>
+              <h3>Commande en cours</h3>
+              <span class="cnt">4 articles</span>
+            </div>
+            <div class="cart-items">
+              <div class="citem">
+                <div class="c-thumb"><svg><use href="#i-bean"/></svg></div>
+                <div class="c-body">
+                  <div class="c-name">Espresso Ébène</div>
+                  <div class="c-price">4,50 € l'unité</div>
+                  <div class="c-qty"><button class="qty-btn"><svg><use href="#i-minus"/></svg></button><b>2</b><button class="qty-btn"><svg><use href="#i-plus"/></svg></button></div>
+                </div>
+                <div style="text-align:right">
+                  <div class="c-total">9,00 €</div>
+                  <button class="c-rm"><svg><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+              <div class="citem">
+                <div class="c-thumb"><svg><use href="#i-cup"/></svg></div>
+                <div class="c-body">
+                  <div class="c-name">Cappuccino Crème</div>
+                  <div class="c-price">5,80 € l'unité</div>
+                  <div class="c-qty"><button class="qty-btn"><svg><use href="#i-minus"/></svg></button><b>1</b><button class="qty-btn"><svg><use href="#i-plus"/></svg></button></div>
+                </div>
+                <div style="text-align:right">
+                  <div class="c-total">5,80 €</div>
+                  <button class="c-rm"><svg><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+              <div class="citem">
+                <div class="c-thumb"><svg><use href="#i-bar"/></svg></div>
+                <div class="c-body">
+                  <div class="c-name">Chocolat Noir 72%</div>
+                  <div class="c-price">7,20 € l'unité</div>
+                  <div class="c-qty"><button class="qty-btn"><svg><use href="#i-minus"/></svg></button><b>1</b><button class="qty-btn"><svg><use href="#i-plus"/></svg></button></div>
+                </div>
+                <div style="text-align:right">
+                  <div class="c-total">7,20 €</div>
+                  <button class="c-rm"><svg><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+              <div class="citem">
+                <div class="c-thumb"><svg><use href="#i-leaf"/></svg></div>
+                <div class="c-body">
+                  <div class="c-name">Thé Oolong Fumé</div>
+                  <div class="c-price">9,90 € l'unité</div>
+                  <div class="c-qty"><button class="qty-btn"><svg><use href="#i-minus"/></svg></button><b>3</b><button class="qty-btn"><svg><use href="#i-plus"/></svg></button></div>
+                </div>
+                <div style="text-align:right">
+                  <div class="c-total">29,70 €</div>
+                  <button class="c-rm"><svg><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="cart-summary">
+              <div class="sum-row"><span>Sous-total</span><b>51,70 €</b></div>
+              <div class="sum-row"><span>TVA (7 %)</span><b>3,62 €</b></div>
+              <div class="sum-row total"><span>Total</span><b>55,32 €</b></div>
+              <button class="cta"><svg><use href="#i-check"/></svg> Valider la commande</button>
+              <div class="cta-sub">Monnaie · € · Caissier AK</div>
+            </div>
+          </aside>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ════════════════════════════════════════════
+         ÉCRAN 2 — NOIR GOURMET (Ultra-Minimaliste Slate)
+    ════════════════════════════════════════════ -->
+    <section class="screen-block theme-noir">
+      <div class="screen-label">
+        <div>
+          <div class="screen-name">Thème « Noir Gourmet » <span class="screen-tag" style="background:rgba(16,185,129,.15);color:#34d399;border:1px solid rgba(16,185,129,.35)">Ultra-Minimaliste Slate</span></div>
+          <div class="screen-desc">Épicerie fine &amp; articles haut de gamme — cuisine au crépuscule, béton ciré, reflets métalliques atténués.</div>
+        </div>
+        <div class="palette">
+          <span class="swatch" style="background:#000000" title="#000000"></span>
+          <span class="swatch" style="background:#1E293B" title="#1E293B"></span>
+          <span class="swatch" style="background:#10B981" title="#10B981"></span>
+          <span class="swatch" style="background:#F8FAFC;color:#000"><svg width="11" height="11" viewBox="0 0 24 24"><use href="#i-check"/></svg></span>
+        </div>
+      </div>
+
+      <div class="screen">
+        <div class="screen-bg">
+          <div class="bokeh"><i></i><i></i><i></i><i></i></div>
+        </div>
+        <div class="app">
+
+          <!-- Sidebar -->
+          <aside class="sidebar">
+            <div class="logo">
+              <div class="logo-badge"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><use href="#i-logo"/></svg></div>
+              <div class="logo-name">Noir Gourmet<span>POS Pro</span></div>
+            </div>
+            <nav class="nav">
+              <div class="nav-section">Pilotage</div>
+              <div class="nav-item active"><svg><use href="#i-grid"/></svg> Dashboard</div>
+              <div class="nav-item"><svg><use href="#i-chart"/></svg> Analytics</div>
+              <div class="nav-item"><svg><use href="#i-users"/></svg> Utilisateurs</div>
+              <div class="nav-section">Catalogue</div>
+              <div class="nav-item"><svg><use href="#i-box"/></svg> Produits <span class="nav-badge">96</span></div>
+              <div class="nav-item"><svg><use href="#i-inv"/></svg> Inventaire</div>
+              <div class="nav-section">Système</div>
+              <div class="nav-item"><svg><use href="#i-gear"/></svg> Paramètres</div>
+              <div class="nav-item danger"><svg><use href="#i-logout"/></svg> Déconnexion</div>
+            </nav>
+            <div class="sidebar-foot">
+              <div class="plan-card">
+                <div class="p-t">Plan Epicerie Fine</div>
+                <div class="p-s">42 % du quota mensuel</div>
+                <div class="plan-bar"><i></i></div>
+                <div class="p-x">4 200 / 10 000 transactions</div>
+              </div>
+            </div>
+          </aside>
+
+          <!-- Main -->
+          <main class="main">
+            <div class="m-top">
+              <div class="m-head"><h2>Tableau de bord</h2><p>Vue d'ensemble de votre activité · 12 mars 2026</p></div>
+              <div class="searchbar">
+                <svg><use href="#i-search"/></svg>
+                <span>Rechercher un article…</span>
+                <span class="kbd">Ctrl&nbsp;K</span>
+              </div>
+              <button class="icon-btn"><svg><use href="#i-sun"/></svg></button>
+              <button class="icon-btn"><svg><use href="#i-bell"/></svg><span class="dot"></span></button>
+              <div class="avatar">LM</div>
+            </div>
+
+            <div class="kpis">
+              <div class="kpi"><div class="k-l"><svg><use href="#i-wallet"/></svg> Revenus du jour</div><div class="k-v">9 214,70&nbsp;€</div><div class="k-d up">▲ 18,9 %</div></div>
+              <div class="kpi"><div class="k-l"><svg><use href="#i-bag"/></svg> Commandes</div><div class="k-v">231</div><div class="k-d up">▲ 6,3 %</div></div>
+              <div class="kpi"><div class="k-l"><svg><use href="#i-box"/></svg> Panier moyen</div><div class="k-v">39,89&nbsp;€</div><div class="k-d up">▲ 3,1 %</div></div>
+              <div class="kpi"><div class="k-l"><svg><use href="#i-trend"/></svg> Nouveaux clients</div><div class="k-v">24</div><div class="k-d down">▼ 2,4 %</div></div>
+            </div>
+
+            <div class="tabs">
+              <div class="tab active">Tout</div>
+              <div class="tab">Épicerie fine</div>
+              <div class="tab">Truffes &amp; Caviar</div>
+              <div class="tab">Vins &amp; Spiritueux</div>
+              <div class="tab">Fromages</div>
+              <div class="tab">Coffrets cadeaux</div>
+            </div>
+
+            <div class="products">
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <span class="pcard-off">-20 %</span>
+                  <span class="pcard-star"><svg><use href="#i-star"/></svg></span>
+                  <div class="art"><svg><use href="#i-mush"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Truffe Noire Périgord</h4>
+                  <div class="pcard-meta"><span class="stock low"><i></i>Faible · 3</span><span class="price">68,00&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-droplet"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Huile d'Olive Vierge</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 34</span><span class="price">18,50&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <span class="pcard-star"><svg><use href="#i-star"/></svg></span>
+                  <div class="art"><svg><use href="#i-fish"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Saumon Fumé Norvège</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 16</span><span class="price">24,90&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-bean"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Café Bio Guatemala</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 58</span><span class="price">13,90&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-cheese"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Comté 24 mois AOP</h4>
+                  <div class="pcard-meta"><span class="stock out"><i></i>Rupture</span><span class="price">21,40&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <span class="pcard-off">Nouveau</span>
+                  <div class="art"><svg><use href="#i-jar"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Caviar Osciètre</h4>
+                  <div class="pcard-meta"><span class="stock low"><i></i>Faible · 6</span><span class="price">145,00&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-steak"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Bœuf Wagyu A5</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 9</span><span class="price">89,00&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-bottle"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Champagne Millésimé</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 12</span><span class="price">62,00&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <span class="pcard-star"><svg><use href="#i-star"/></svg></span>
+                  <div class="art"><svg><use href="#i-bar"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Chocolat Grand Cru 85%</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 44</span><span class="price">11,80&nbsp;€</span></div>
+                </div>
+              </article>
+              <article class="pcard">
+                <div class="pcard-img">
+                  <div class="img-tint"></div>
+                  <div class="art"><svg><use href="#i-leaf"/></svg></div>
+                </div>
+                <div class="pcard-info">
+                  <h4>Piment d'Espelette AOP</h4>
+                  <div class="pcard-meta"><span class="stock ok"><i></i>En stock · 27</span><span class="price">9,60&nbsp;€</span></div>
+                </div>
+              </article>
+            </div>
+          </main>
+
+          <!-- Panier -->
+          <aside class="panel">
+            <div class="panel-head">
+              <svg><use href="#i-bag"/></svg>
+              <h3>Panier POS</h3>
+              <span class="cnt">3 articles</span>
+            </div>
+            <div class="cart-items">
+              <div class="citem">
+                <div class="c-thumb"><svg><use href="#i-droplet"/></svg></div>
+                <div class="c-body">
+                  <div class="c-name">Huile d'Olive Vierge</div>
+                  <div class="c-price">18,50 € l'unité</div>
+                  <div class="c-qty"><button class="qty-btn"><svg><use href="#i-minus"/></svg></button><b>2</b><button class="qty-btn"><svg><use href="#i-plus"/></svg></button></div>
+                </div>
+                <div style="text-align:right">
+                  <div class="c-total">37,00 €</div>
+                  <button class="c-rm"><svg><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+              <div class="citem">
+                <div class="c-thumb"><svg><use href="#i-mush"/></svg></div>
+                <div class="c-body">
+                  <div class="c-name">Truffe Noire Périgord</div>
+                  <div class="c-price">68,00 € l'unité</div>
+                  <div class="c-qty"><button class="qty-btn"><svg><use href="#i-minus"/></svg></button><b>1</b><button class="qty-btn"><svg><use href="#i-plus"/></svg></button></div>
+                </div>
+                <div style="text-align:right">
+                  <div class="c-total">68,00 €</div>
+                  <button class="c-rm"><svg><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+              <div class="citem">
+                <div class="c-thumb"><svg><use href="#i-fish"/></svg></div>
+                <div class="c-body">
+                  <div class="c-name">Saumon Fumé Norvège</div>
+                  <div class="c-price">24,90 € l'unité</div>
+                  <div class="c-qty"><button class="qty-btn"><svg><use href="#i-minus"/></svg></button><b>1</b><button class="qty-btn"><svg><use href="#i-plus"/></svg></button></div>
+                </div>
+                <div style="text-align:right">
+                  <div class="c-total">24,90 €</div>
+                  <button class="c-rm"><svg><use href="#i-trash"/></svg></button>
+                </div>
+              </div>
+            </div>
+            <div class="cart-summary">
+              <div class="sum-row"><span>Sous-total</span><b>129,90 €</b></div>
+              <div class="sum-row"><span>TVA (5,5 %)</span><b>7,14 €</b></div>
+              <div class="sum-row total"><span>Total</span><b>137,04 €</b></div>
+              <button class="cta"><svg><use href="#i-check"/></svg> Finaliser la vente</button>
+              <div class="cta-sub">Monnaie · € · Caissier LM</div>
+            </div>
+          </aside>
+
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <footer class="pres-foot">
+    <div><b>NeoX Design System</b> — Présentation de thèmes dark-mode pour SaaS B2B &amp; Caisse POS.</div>
+    <div>Glassmorphism avancé · Règle image 80/20 · Typographie Plus Jakarta Sans · Icônes filaires 1.5px</div>
+  </footer>
+
+</div>
+</body>
+</html>

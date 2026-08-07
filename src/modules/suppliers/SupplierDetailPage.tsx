@@ -1,5 +1,5 @@
-import { useState, useMemo } from 'react'
-import { useParams, useNavigate } from 'react-router-dom'
+import { useState, useMemo, useEffect } from 'react'
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, Button, Badge, Modal } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
@@ -7,19 +7,25 @@ import { formatCurrency, formatDate, formatDateTime, generateId } from '@/lib/ut
 import { toast } from '@/lib/toast'
 import { processSupplierInvoice, processSupplierPayment, processCompensation } from '@/engine/operations'
 import type { SupplierInvoice, SupplierInvoiceItem, CompensationItem, PaymentLine } from '@/engine/types'
-import { ArrowLeft, Plus, FileText, CreditCard, Scale, Truck, Phone, Mail, MapPin, DollarSign } from 'lucide-react'
+import { ArrowLeft, Plus, FileText, Scale, Phone, Mail, MapPin, DollarSign, Printer, Send, MessageCircle, BookOpenText } from 'lucide-react'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { useAppStore } from '@/stores/appStore'
+import { exportSupplierFichePDF, printSupplierFiche } from '@/lib/pdf'
+import { openEmail, openWhatsAppLink, shareViaWeChat } from '@/lib/share'
+import type { CompanySettings } from '@/types'
 
 export default function SupplierDetailPage() {
   const { supplierId } = useParams()
   const businessId = useBusinessId()
   const userId = useAppStore((s) => s.user?.id || '')
   const navigate = useNavigate()
+  const [searchParams] = useSearchParams()
   const supplier = useLiveQuery(() => db.suppliers.get(supplierId!), [supplierId])
   const invoices = useLiveQuery(() => db.supplierInvoices.where('supplierId').equals(supplierId!).reverse().sortBy('createdAt'), [supplierId])
   const compensations = useLiveQuery(() => db.compensations.where('partyId').equals(supplierId!).toArray(), [supplierId])
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
+  const settings = useLiveQuery(() => db.settings.get('default'), [])
+  const purchases = useLiveQuery(() => db.purchases.where('supplierId').equals(supplierId!).toArray(), [supplierId])
   const [invModal, setInvModal] = useState(false)
   const [payModal, setPayModal] = useState<SupplierInvoice | null>(null)
   const [compModal, setCompModal] = useState(false)
@@ -28,19 +34,101 @@ export default function SupplierDetailPage() {
   const [compDirection, setCompDirection] = useState<'debt_to_goods' | 'goods_to_debt'>('debt_to_goods')
   const [compAmount, setCompAmount] = useState(0)
   const [compItems, setCompItems] = useState<{ productId: string; qty: number; price: number }[]>([])
+  useEffect(() => {
+    if (searchParams.get('comp') === '1') setCompModal(true)
+  }, [searchParams])
   const [payAmount, setPayAmount] = useState(0)
   const [payType, setPayType] = useState<'cash' | 'bank' | 'mobile' | 'mixed'>('cash')
   const [payProductItems, setPayProductItems] = useState<{ productId: string; qty: number; price: number }[]>([])
 
-  const totalDue = useMemo(() => {
-    return invoices?.reduce((s, inv) => s + inv.balance, 0) || 0
-  }, [invoices])
+  const fiche = useMemo(() => {
+    const entries: { date: string; label: string; reference: string; debit: number; credit: number }[] = []
+    ;(invoices || []).forEach(inv => {
+      entries.push({ date: inv.createdAt, label: `Facture ${inv.number}`, reference: inv.number, debit: 0, credit: inv.total })
+      ;(inv.payments || []).forEach(p => {
+        entries.push({
+          date: p.date || p.createdAt || inv.createdAt,
+          label: `Paiement facture ${inv.number}`,
+          reference: inv.number,
+          debit: p.amount,
+          credit: 0,
+        })
+      })
+    })
+    ;(purchases || []).forEach(p => {
+      if (p.status === 'cancelled' || p.status === 'returned') return
+      entries.push({ date: p.createdAt, label: `Achat #${p.id}`, reference: p.id, debit: 0, credit: p.total })
+      if ((p.paid || 0) > 0) {
+        entries.push({ date: p.createdAt, label: `Paiement achat #${p.id}`, reference: p.id, debit: p.paid, credit: 0 })
+      }
+    })
+    ;(compensations || []).forEach(c => {
+      if (c.status === 'cancelled' || !c.settledAmount) return
+      const isDebit = c.direction === 'debt_to_goods'
+      entries.push({
+        date: c.createdAt,
+        label: `Compensation ${isDebit ? 'Dette → Marchandises' : 'Marchandises → Dette'}`,
+        reference: c.referenceInvoiceId?.slice(0, 8) || '',
+        debit: isDebit ? c.settledAmount : 0,
+        credit: isDebit ? 0 : c.settledAmount,
+      })
+    })
+    entries.sort((a, b) => a.date.localeCompare(b.date))
+    let running = 0
+    const rows = entries.map(e => {
+      running += e.credit - e.debit
+      return { ...e, balance: running }
+    })
+    const totals = {
+      debit: rows.reduce((s, r) => s + r.debit, 0),
+      credit: rows.reduce((s, r) => s + r.credit, 0),
+      balance: running,
+    }
+    return { rows, totals }
+  }, [invoices, purchases, compensations])
 
   const stats = useMemo(() => {
-    const totalInvoiced = invoices?.reduce((s, i) => s + i.total, 0) || 0
-    const totalPaid = invoices?.reduce((s, i) => s + i.paid, 0) || 0
-    return { totalInvoiced, totalPaid, balance: totalInvoiced - totalPaid }
-  }, [invoices])
+    const totalInvoiced = (invoices?.reduce((s, i) => s + i.total, 0) || 0) + (purchases?.reduce((s, p) => s + (p.status === 'cancelled' || p.status === 'returned' ? 0 : p.total), 0) || 0)
+    const totalPaid = (invoices?.reduce((s, i) => s + i.paid, 0) || 0) + (purchases?.reduce((s, p) => s + (p.status === 'cancelled' || p.status === 'returned' ? 0 : (p.paid || 0)), 0) || 0)
+    return { totalInvoiced, totalPaid, balance: fiche.totals.balance }
+  }, [invoices, purchases, fiche])
+
+  function buildFicheText() {
+    const lines = [
+      `FICHE COMPTABLE — ${supplier?.name || 'Fournisseur'}`,
+      supplier?.phone ? `Téléphone: ${supplier.phone}` : '',
+      `Générée le ${formatDateTime(new Date().toISOString())}`,
+      '',
+      'Date | Libellé | Référence | Débit | Crédit | Solde',
+      ...fiche.rows.map(r => `${formatDate(r.date)} | ${r.label}${r.reference ? ` (${r.reference})` : ''} | ${r.debit ? formatCurrency(r.debit) : '—'} | ${r.credit ? formatCurrency(r.credit) : '—'} | ${formatCurrency(r.balance)}`),
+      '',
+      `Total Débits: ${formatCurrency(fiche.totals.debit)}`,
+      `Total Crédits: ${formatCurrency(fiche.totals.credit)}`,
+      `Solde: ${formatCurrency(fiche.totals.balance)}`,
+    ]
+    return lines.filter(Boolean).join('\n')
+  }
+
+  function handleFichePDF() {
+    exportSupplierFichePDF(supplier?.name || 'Fournisseur', supplier?.phone, fiche.rows, fiche.totals, settings as CompanySettings | undefined, `fiche_comptable_${supplier?.name || 'fournisseur'}`)
+    toast('PDF exporté', 'success')
+  }
+
+  function handleFichePrint() {
+    printSupplierFiche(supplier?.name || 'Fournisseur', supplier?.phone, fiche.rows, fiche.totals, settings as CompanySettings | undefined)
+  }
+
+  function handleFicheEmail() {
+    openEmail(supplier?.email || '', `Fiche comptable — ${supplier?.name || 'Fournisseur'}`, buildFicheText())
+  }
+
+  function handleFicheWhatsApp() {
+    openWhatsAppLink(supplier?.phone || '', buildFicheText())
+  }
+
+  function handleFicheWeChat() {
+    shareViaWeChat(buildFicheText(), `Fiche comptable ${supplier?.name || ''}`)
+  }
 
   async function handleCreateInvoice() {
     if (!invNumber || invItems.length === 0) return toast('Complétez les champs', 'warning')
@@ -260,6 +348,59 @@ export default function SupplierDetailPage() {
           {(!compensations || compensations.length === 0) && (
             <p className="text-sm text-surface-400 text-center py-4">Aucune compensation</p>
           )}
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle><BookOpenText className="w-5 h-5 inline mr-2" />Fiche comptable</CardTitle>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm" onClick={handleFichePDF}><FileText className="w-4 h-4" /> PDF</Button>
+            <Button variant="outline" size="sm" onClick={handleFichePrint}><Printer className="w-4 h-4" /> Imprimer</Button>
+            <Button variant="outline" size="sm" onClick={handleFicheEmail}><Mail className="w-4 h-4" /> Email</Button>
+            <Button variant="outline" size="sm" onClick={handleFicheWhatsApp}><Send className="w-4 h-4" /> WhatsApp</Button>
+            <Button variant="outline" size="sm" onClick={handleFicheWeChat}><MessageCircle className="w-4 h-4" /> WeChat</Button>
+          </div>
+        </CardHeader>
+        <div className="overflow-x-auto responsive-table">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-surface-200 bg-surface-50">
+                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Libellé</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Référence</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Débit</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Crédit</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Solde</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-surface-100">
+              {fiche.rows.map((r, idx) => (
+                <tr key={idx} className="hover:bg-surface-50">
+                  <td data-label="Date" className="px-4 py-3 text-sm text-surface-500">{formatDate(r.date)}</td>
+                  <td data-label="Libellé" className="px-4 py-3 text-sm font-medium">{r.label}</td>
+                  <td data-label="Référence" className="px-4 py-3 text-sm text-surface-400">{r.reference || '—'}</td>
+                  <td data-label="Débit" className="px-4 py-3 text-sm text-right">{r.debit > 0 ? formatCurrency(r.debit) : '—'}</td>
+                  <td data-label="Crédit" className="px-4 py-3 text-sm text-right">{r.credit > 0 ? formatCurrency(r.credit) : '—'}</td>
+                  <td data-label="Solde" className="px-4 py-3 text-sm text-right font-semibold">{formatCurrency(r.balance)}</td>
+                </tr>
+              ))}
+              {fiche.rows.length === 0 && (
+                <tr><td colSpan={6} className="px-4 py-8 text-center text-surface-400">Aucune opération pour ce fournisseur</td></tr>
+              )}
+            </tbody>
+            {fiche.rows.length > 0 && (
+              <tfoot>
+                <tr className="bg-surface-50 font-semibold">
+                  <td colSpan={2} className="px-4 py-3 text-sm">TOTAL</td>
+                  <td className="px-4 py-3"></td>
+                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(fiche.totals.debit)}</td>
+                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(fiche.totals.credit)}</td>
+                  <td className="px-4 py-3 text-right text-sm font-bold">{formatCurrency(fiche.totals.balance)}</td>
+                </tr>
+              </tfoot>
+            )}
+          </table>
         </div>
       </Card>
 

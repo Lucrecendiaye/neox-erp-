@@ -10,7 +10,7 @@ import type {
   SupplierInvoice, SupplierInvoiceItem, SupplierPayment, PaymentLine,
   Compensation, CompensationItem, Transfer, TransferItem, BonSortie, BonSortieItem,
 } from './types'
-import type { Sale, SaleItem, StockMovement, Purchase, AccountingEntry, AuditLog, Product, Credit, CreditPayment, PaymentMethod } from '@/types'
+import type { Sale, SaleItem, StockMovement, Purchase, AccountingEntry, AuditLog, Product, Credit, CreditPayment, CreditModification, CashBookEntry, PaymentMethod } from '@/types'
 
 function currentBizId(): string {
   const state = useAppStore.getState()
@@ -159,6 +159,22 @@ export async function processSale(sale: Sale, opts?: { downPaymentMethod?: Payme
         createdAt: now(),
       }
       await db.creditPayments.add(payment)
+      await db.cashBook.add({
+        id: generateId(),
+        businessId: currentBizId(),
+        date: sale.createdAt,
+        type: 'in',
+        category: 'Acompte crédit',
+        amount: sale.paid,
+        description: `Acompte sur vente ${sale.invoiceNumber}`,
+        partyId: sale.customerId,
+        partyName: sale.customerName,
+        paymentMethod: payment.method,
+        reference: sale.invoiceNumber,
+        linkedId: payment.id,
+        createdAt: now(),
+        userId: currentUserId(),
+      } satisfies CashBookEntry)
     }
 
     const customer = await db.customers.get(sale.customerId)
@@ -194,7 +210,7 @@ export async function deleteSale(saleId: string) {
   }
 
   if (sale.paymentMethod === 'credit' && sale.customerId) {
-    const relatedCredits = await db.credits.where({ invoiceId: saleId }).toArray()
+    const relatedCredits = (await db.credits.toArray()).filter(c => c.invoiceId === saleId)
     for (const credit of relatedCredits) {
       await softDelete('credits', credit.id, credit as any, `Crédit ${credit.customerName}`)
       await db.credits.delete(credit.id)
@@ -223,6 +239,18 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
   const oldSale = await db.sales.get(saleId)
   if (!oldSale) throw new Error('Vente introuvable')
 
+  const newItems = updatedSale.items || oldSale.items
+  const newLocationId = updatedSale.locationId || oldSale.locationId
+  const newMethod = updatedSale.paymentMethod || oldSale.paymentMethod
+  const paid = oldSale.paid || 0
+  const subtotal = newItems.reduce((s, i) => s + i.total, 0)
+  const taxTotal = newItems.reduce((s, i) => s + i.total * (i.taxRate || 0) / 100, 0)
+  const newTotal = updatedSale.total ?? subtotal + taxTotal
+
+  if (newTotal < paid) {
+    throw new Error(`Impossible: le nouveau total (${newTotal}) est inférieur au montant déjà encaissé (${paid})`)
+  }
+
   // Restore old stock
   for (const item of oldSale.items) {
     const mainQty = getMainQty(item)
@@ -231,8 +259,6 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
   }
 
   // Apply new stock deduction if items changed
-  const newItems = updatedSale.items || oldSale.items
-  const newLocationId = updatedSale.locationId || oldSale.locationId
   for (const item of newItems) {
     const mainQty = getMainQty(item)
     const itemLocationId = (item as { locationId?: string }).locationId || newLocationId
@@ -243,7 +269,51 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
     ...updatedSale,
     items: newItems,
     locationId: newLocationId,
+    total: newTotal,
+    subtotal,
+    taxTotal,
+    paymentStatus: paid >= newTotal ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
   })
+
+  const linkedCredits = (await db.credits.toArray()).filter(c => c.invoiceId === saleId)
+  for (const credit of linkedCredits) {
+    const oldBalance = credit.balance
+    let newBalance: number
+    if (newMethod !== 'credit') {
+      newBalance = 0
+    } else {
+      newBalance = Math.max(0, newTotal - paid)
+    }
+    const newPaid = Math.min(newTotal, newBalance === 0 ? newTotal : credit.paid > newTotal ? newTotal : newTotal - newBalance)
+    await db.credits.update(credit.id, {
+      amount: newTotal,
+      paid: newPaid,
+      balance: newBalance,
+      status: newBalance <= 0 ? 'paid' : 'active',
+    })
+    const balanceDelta = newBalance - oldBalance
+    if (balanceDelta !== 0) {
+      const customer = await db.customers.get(credit.customerId)
+      if (customer) {
+        await db.customers.update(credit.customerId, {
+          currentBalance: Math.max(0, (customer.currentBalance || 0) + balanceDelta),
+        })
+      }
+    }
+    await db.creditModifications.add({
+      id: generateId(),
+      businessId: currentBizId(),
+      creditId: credit.id,
+      saleId,
+      field: 'sale_edit',
+      oldValue: `${credit.amount} / payé ${credit.paid} / solde ${oldBalance}`,
+      newValue: `${newTotal} / payé ${newPaid} / solde ${newBalance}`,
+      reason: `Vente ${oldSale.invoiceNumber} modifiée`,
+      userId: currentUserId(),
+      createdAt: now(),
+    })
+  }
+
   await audit('edit', 'sale', saleId, `Vente ${oldSale.invoiceNumber} modifiée (${currentUserName()})`)
 }
 
@@ -717,6 +787,10 @@ export async function editPurchase(purchaseId: string, updatedPurchase: Partial<
   await audit('edit', 'purchase', purchaseId, `Achat ${old.id} modifié (${currentUserName()})`)
 }
 
+function salePaymentStatus(paid: number, total: number): 'unpaid' | 'partial' | 'paid' {
+  return paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid'
+}
+
 export async function recordCreditPayment(
   creditId: string,
   amount: number,
@@ -729,41 +803,88 @@ export async function recordCreditPayment(
   if (amount <= 0) throw new Error('Le montant doit être supérieur à 0')
   if (amount > credit.balance) throw new Error('Le montant dépasse le solde restant')
 
-  const newPaid = credit.paid + amount
-  const newBalance = credit.balance - amount
-  const newStatus = newBalance <= 0 ? 'paid' : credit.status
+  const bizId = currentBizId()
+  const userId = currentUserId()
+  const paymentId = generateId()
 
-  const payment: CreditPayment = {
-    id: generateId(),
-    businessId: currentBizId(),
-    creditId,
-    saleId: credit.invoiceId,
-    customerId: credit.customerId,
-    amount,
-    method,
-    date: now(),
-    note,
-    userId: currentUserId(),
-    createdAt: now(),
-  }
-  await db.creditPayments.add(payment)
-  await db.credits.update(creditId, { paid: newPaid, balance: newBalance, status: newStatus })
+  await db.transaction('rw', [db.credits, db.creditPayments, db.sales, db.customers, db.cashBook, db.creditModifications], async () => {
+    const current = await db.credits.get(creditId)
+    if (!current) throw new Error('Crédit introuvable')
+    if (amount > current.balance) throw new Error('Le montant dépasse le solde restant')
 
-  if (credit.invoiceId) {
-    const sale = await db.sales.get(credit.invoiceId)
-    if (sale) {
-      await db.sales.update(credit.invoiceId, { paid: (sale.paid || 0) + amount })
+    const newPaid = current.paid + amount
+    const newBalance = current.balance - amount
+    const newStatus = newBalance <= 0 ? 'paid' : current.status
+
+    const payment: CreditPayment = {
+      id: paymentId,
+      businessId: bizId,
+      creditId,
+      saleId: current.invoiceId,
+      customerId: current.customerId,
+      amount,
+      method,
+      date: now(),
+      note,
+      userId,
+      createdAt: now(),
     }
-  }
+    await db.creditPayments.add(payment)
+    await db.credits.update(creditId, { paid: newPaid, balance: newBalance, status: newStatus })
 
-  const customer = await db.customers.get(credit.customerId)
-  if (customer) {
-    await db.customers.update(credit.customerId, {
-      currentBalance: Math.max(0, (customer.currentBalance || 0) - amount),
+    let invoiceNumber = ''
+    if (current.invoiceId) {
+      const sale = await db.sales.get(current.invoiceId)
+      if (sale) {
+        invoiceNumber = sale.invoiceNumber || ''
+        const newSalePaid = (sale.paid || 0) + amount
+        await db.sales.update(current.invoiceId, {
+          paid: newSalePaid,
+          paymentStatus: salePaymentStatus(newSalePaid, sale.total),
+        })
+      }
+    }
+
+    const customer = await db.customers.get(current.customerId)
+    if (customer) {
+      await db.customers.update(current.customerId, {
+        currentBalance: Math.max(0, (customer.currentBalance || 0) - amount),
+      })
+    }
+
+    await db.cashBook.add({
+      id: generateId(),
+      businessId: bizId,
+      date: payment.date,
+      type: 'in',
+      category: 'Encaissement crédit',
+      amount,
+      description: `Paiement sur crédit de ${current.customerName}${note ? ` — ${note}` : ''}`,
+      partyId: current.customerId,
+      partyName: current.customerName,
+      paymentMethod: method,
+      reference: invoiceNumber || current.invoiceId || '',
+      linkedId: paymentId,
+      createdAt: now(),
+      userId,
+    } satisfies CashBookEntry)
+
+    await db.creditModifications.add({
+      id: generateId(),
+      businessId: bizId,
+      creditId,
+      saleId: current.invoiceId,
+      field: 'payment',
+      oldValue: current.paid.toFixed(2),
+      newValue: newPaid.toFixed(2),
+      reason: note,
+      userId,
+      createdAt: now(),
     })
-  }
+  })
 
   await audit('payment', 'credit', creditId, `Paiement ${amount} FCFA sur crédit ${creditId.slice(0, 8)} par ${currentUserName()}${note ? ' - ' + note : ''}`)
+  const payment = await db.creditPayments.get(paymentId)
   return payment
 }
 
@@ -771,37 +892,65 @@ export async function modifyCreditPayment(paymentId: string, newAmount: number, 
   requirePermission('sales', 'edit')
   const payment = await db.creditPayments.get(paymentId)
   if (!payment) throw new Error('Paiement introuvable')
+  if (newAmount <= 0) throw new Error('Le montant doit être supérieur à 0')
 
-  const credit = await db.credits.get(payment.creditId)
-  if (!credit) throw new Error('Crédit introuvable')
+  await db.transaction('rw', [db.credits, db.creditPayments, db.sales, db.customers, db.cashBook, db.creditModifications], async () => {
+    const pay = await db.creditPayments.get(paymentId)
+    if (!pay) throw new Error('Paiement introuvable')
 
-  const diff = newAmount - payment.amount
-  if (diff > credit.balance + payment.amount) throw new Error('Le nouveau montant dépasse le solde du crédit')
+    const credit = await db.credits.get(pay.creditId)
+    if (!credit) throw new Error('Crédit introuvable')
+    if (newAmount > credit.balance + pay.amount) throw new Error('Le nouveau montant dépasse le solde du crédit')
 
-  const oldAmount = payment.amount
+    const diff = newAmount - pay.amount
+    const oldAmount = pay.amount
+    const newMethod = method || pay.method
 
-  await db.creditPayments.update(paymentId, { amount: newAmount, method: method || payment.method })
+    await db.creditPayments.update(paymentId, { amount: newAmount, method: newMethod })
 
-  const newPaid = credit.paid + diff
-  const newBalance = credit.balance - diff
-  const newStatus = newBalance <= 0 ? 'paid' : credit.balance > 0 ? 'active' : credit.status
-  await db.credits.update(credit.id, { paid: Math.max(0, newPaid), balance: Math.max(0, newBalance), status: newStatus })
+    const newPaid = Math.max(0, credit.paid + diff)
+    const newBalance = Math.max(0, credit.balance - diff)
+    const newStatus = newBalance <= 0 ? 'paid' : 'active'
+    await db.credits.update(credit.id, { paid: newPaid, balance: newBalance, status: newStatus })
 
-  if (credit.invoiceId) {
-    const sale = await db.sales.get(credit.invoiceId)
-    if (sale) {
-      await db.sales.update(credit.invoiceId, { paid: Math.max(0, (sale.paid || 0) + diff) })
+    if (credit.invoiceId) {
+      const sale = await db.sales.get(credit.invoiceId)
+      if (sale) {
+        const newSalePaid = Math.max(0, (sale.paid || 0) + diff)
+        await db.sales.update(credit.invoiceId, {
+          paid: newSalePaid,
+          paymentStatus: salePaymentStatus(newSalePaid, sale.total),
+        })
+      }
     }
-  }
 
-  const customer = await db.customers.get(credit.customerId)
-  if (customer) {
-    await db.customers.update(credit.customerId, {
-      currentBalance: Math.max(0, (customer.currentBalance || 0) - diff),
+    const customer = await db.customers.get(credit.customerId)
+    if (customer) {
+      await db.customers.update(credit.customerId, {
+        currentBalance: Math.max(0, (customer.currentBalance || 0) - diff),
+      })
+    }
+
+    const entries = await db.cashBook.filter(e => e.linkedId === paymentId).toArray()
+    for (const e of entries) {
+      await db.cashBook.update(e.id, { amount: newAmount, paymentMethod: newMethod })
+    }
+
+    await db.creditModifications.add({
+      id: generateId(),
+      businessId: currentBizId(),
+      creditId: credit.id,
+      saleId: credit.invoiceId,
+      field: 'payment_edit',
+      oldValue: oldAmount.toFixed(2),
+      newValue: newAmount.toFixed(2),
+      reason: 'Modification de paiement',
+      userId: currentUserId(),
+      createdAt: now(),
     })
-  }
+  })
 
-  await audit('edit', 'credit_payment', paymentId, `Paiement modifié: ${oldAmount} → ${newAmount} FCFA (${currentUserName()})`)
+  await audit('edit', 'credit_payment', paymentId, `Paiement modifié: ${payment.amount} → ${newAmount} FCFA (${currentUserName()})`)
 }
 
 export async function deleteCreditPayment(paymentId: string) {
@@ -809,28 +958,56 @@ export async function deleteCreditPayment(paymentId: string) {
   const payment = await db.creditPayments.get(paymentId)
   if (!payment) throw new Error('Paiement introuvable')
 
-  const credit = await db.credits.get(payment.creditId)
-  if (!credit) throw new Error('Crédit introuvable')
+  await db.transaction('rw', [db.credits, db.creditPayments, db.sales, db.customers, db.cashBook, db.creditModifications], async () => {
+    const pay = await db.creditPayments.get(paymentId)
+    if (!pay) throw new Error('Paiement introuvable')
 
-  const newPaid = credit.paid - payment.amount
-  const newBalance = credit.balance + payment.amount
-  const newStatus = newBalance <= 0 ? 'paid' : 'active'
-  await db.credits.update(credit.id, { paid: Math.max(0, newPaid), balance: Math.max(0, newBalance), status: newStatus })
+    const credit = await db.credits.get(pay.creditId)
+    if (!credit) throw new Error('Crédit introuvable')
 
-  if (credit.invoiceId) {
-    const sale = await db.sales.get(credit.invoiceId)
-    if (sale) {
-      await db.sales.update(credit.invoiceId, { paid: Math.max(0, (sale.paid || 0) - payment.amount) })
+    const newPaid = Math.max(0, credit.paid - pay.amount)
+    const newBalance = Math.max(0, credit.balance + pay.amount)
+    const newStatus = newBalance <= 0 ? 'paid' : 'active'
+    await db.credits.update(credit.id, { paid: newPaid, balance: newBalance, status: newStatus })
+
+    if (credit.invoiceId) {
+      const sale = await db.sales.get(credit.invoiceId)
+      if (sale) {
+        const newSalePaid = Math.max(0, (sale.paid || 0) - pay.amount)
+        await db.sales.update(credit.invoiceId, {
+          paid: newSalePaid,
+          paymentStatus: salePaymentStatus(newSalePaid, sale.total),
+        })
+      }
     }
-  }
 
-  const customer = await db.customers.get(credit.customerId)
-  if (customer) {
-    await db.customers.update(credit.customerId, {
-      currentBalance: Math.max(0, (customer.currentBalance || 0) + payment.amount),
+    const customer = await db.customers.get(credit.customerId)
+    if (customer) {
+      await db.customers.update(credit.customerId, {
+        currentBalance: Math.max(0, (customer.currentBalance || 0) + pay.amount),
+      })
+    }
+
+    const entries = await db.cashBook.filter(e => e.linkedId === paymentId).toArray()
+    for (const e of entries) {
+      await db.cashBook.delete(e.id)
+    }
+
+    await db.creditPayments.delete(paymentId)
+
+    await db.creditModifications.add({
+      id: generateId(),
+      businessId: currentBizId(),
+      creditId: credit.id,
+      saleId: credit.invoiceId,
+      field: 'payment_deleted',
+      oldValue: pay.amount.toFixed(2),
+      newValue: '0',
+      reason: 'Paiement supprimé',
+      userId: currentUserId(),
+      createdAt: now(),
     })
-  }
+  })
 
-  await db.creditPayments.delete(paymentId)
   await audit('delete', 'credit_payment', paymentId, `Paiement ${payment.amount} FCFA supprimé (${currentUserName()})`)
 }

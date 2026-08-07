@@ -5,9 +5,7 @@ import { useBusinessId } from '@/hooks/useBusinessId'
 import db from '@/db'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportReportPDF } from '@/lib/pdf'
-import { Download, FileText, FileSpreadsheet, TrendingUp, ShoppingCart, Users, Package, CreditCard, Truck, DollarSign, ArrowRightLeft, Building2, Calendar } from 'lucide-react'
-import type { Sale, Purchase, CashBookEntry } from '@/types'
-import type { SupplierInvoice, Compensation } from '@/engine/types'
+import { FileText, FileSpreadsheet, TrendingUp, ShoppingCart, Package, Truck, DollarSign, ArrowRightLeft } from 'lucide-react'
 
 type ReportId = 'sales' | 'purchases' | 'inventory' | 'supplier_invoices' | 'cashflow' | 'compensations'
 
@@ -24,13 +22,12 @@ export default function ReportsPage() {
   const purchases = useLiveQuery(() => db.purchases.where('businessId').equals(businessId).toArray(), [businessId])
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const customers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId])
-  const credits = useLiveQuery(() => db.credits.where('businessId').equals(businessId).toArray(), [businessId])
   const cashBook = useLiveQuery(() => db.cashBook.where('businessId').equals(businessId).toArray(), [businessId])
   const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
   const supplierInvoices = useLiveQuery(() => db.supplierInvoices.where('businessId').equals(businessId).toArray(), [businessId])
   const compensations = useLiveQuery(() => db.compensations?.where('businessId').equals(businessId).toArray() || [], [businessId])
   const stocks = useLiveQuery(() => db.productStocks.toArray(), [])
-  const suppliers = useLiveQuery(() => db.suppliers.toArray(), [])
+  const suppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId])
 
   const filteredSales = useMemo(() => {
     if (!sales) return []
@@ -52,14 +49,24 @@ export default function ReportsPage() {
     })
   }, [purchases, dateFrom, dateTo, locationFilter])
 
-  const filteredSupplierInvoices = useMemo(() => {
-    if (!supplierInvoices) return []
-    return supplierInvoices.filter(inv => {
+  const filteredSupplierData = useMemo(() => {
+    const rows: { id: string; date: string; type: 'Achat' | 'Facture'; ref: string; supplierId?: string; supplierName?: string; total: number; paid: number; balance: number; status: string; locationId?: string }[] = []
+    ;(supplierInvoices || []).forEach(inv => {
       const d = inv.createdAt?.split('T')[0] || ''
-      if (d < dateFrom || d > dateTo) return false
-      return true
+      if (d < dateFrom || d > dateTo) return
+      rows.push({ id: inv.id, date: inv.createdAt, type: 'Facture', ref: inv.number, supplierId: inv.supplierId, total: inv.total, paid: inv.paid, balance: inv.balance, status: inv.status })
     })
-  }, [supplierInvoices, dateFrom, dateTo])
+    ;(purchases || []).forEach(p => {
+      const d = p.createdAt?.split('T')[0] || ''
+      if (d < dateFrom || d > dateTo) return
+      if (locationFilter !== 'all' && p.locationId !== locationFilter) return
+      if (p.status === 'cancelled' || p.status === 'returned') return
+      const paid = p.paid || 0
+      rows.push({ id: p.id, date: p.createdAt, type: 'Achat', ref: p.id, supplierId: p.supplierId, supplierName: p.supplierName, total: p.total, paid, balance: p.total - paid, status: p.status, locationId: p.locationId })
+    })
+    rows.sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    return rows
+  }, [supplierInvoices, purchases, dateFrom, dateTo, locationFilter])
 
   const filteredCashflow = useMemo(() => {
     if (!cashBook) return []
@@ -101,17 +108,25 @@ export default function ReportsPage() {
   }, [stocks, products])
 
   const supplierInvStats = useMemo(() => {
-    const totalInvoiced = filteredSupplierInvoices.reduce((s, x) => s + x.total, 0)
-    const totalPaid = filteredSupplierInvoices.reduce((s, x) => s + x.paid, 0)
-    const totalDue = filteredSupplierInvoices.reduce((s, x) => s + x.balance, 0)
-    return { totalInvoiced, totalPaid, totalDue, count: filteredSupplierInvoices.length }
-  }, [filteredSupplierInvoices])
+    const totalInvoiced = filteredSupplierData.reduce((s, x) => s + x.total, 0)
+    const totalPaid = filteredSupplierData.reduce((s, x) => s + x.paid, 0)
+    const totalDue = filteredSupplierData.reduce((s, x) => s + x.balance, 0)
+    return { totalInvoiced, totalPaid, totalDue, count: filteredSupplierData.length }
+  }, [filteredSupplierData])
+
+  const filteredCompensations = useMemo(() => {
+    if (!compensations) return []
+    return compensations.filter(c => {
+      const d = c.createdAt?.split('T')[0] || ''
+      if (d < dateFrom || d > dateTo) return false
+      return true
+    })
+  }, [compensations, dateFrom, dateTo])
 
   const compensationStats = useMemo(() => {
-    if (!compensations) return { total: 0, count: 0 }
-    const total = compensations.reduce((s, x) => s + x.settledAmount, 0)
-    return { total, count: compensations.length }
-  }, [compensations])
+    const total = filteredCompensations.reduce((s, x) => s + x.settledAmount, 0)
+    return { total, count: filteredCompensations.length }
+  }, [filteredCompensations])
 
   function exportCSV() {
     let headers: string[] = []
@@ -136,15 +151,22 @@ export default function ReportsPage() {
         })
         break
       case 'supplier_invoices':
-        headers = ['N°', 'Fournisseur', 'Date', 'Total', 'Payé', 'Solde', 'Statut']
-        data = filteredSupplierInvoices.map(inv => {
-          const sup = suppliers?.find(s => s.id === inv.supplierId)
-          return [inv.number, sup?.name || inv.supplierId, formatDate(inv.createdAt), inv.total.toString(), inv.paid.toString(), inv.balance.toString(), inv.status]
+        headers = ['Type', 'Référence', 'Fournisseur', 'Date', 'Total', 'Payé', 'Solde', 'Statut']
+        data = filteredSupplierData.map(r => {
+          const sup = suppliers?.find(s => s.id === r.supplierId)
+          return [r.type, r.ref, sup?.name || r.supplierName || r.supplierId || '', formatDate(r.date), r.total.toString(), r.paid.toString(), r.balance.toString(), r.status]
         })
         break
       case 'cashflow':
         headers = ['Date', 'Type', 'Catégorie', 'Montant', 'Description']
         data = filteredCashflow.map(e => [e.date || '', e.type || '', e.category || '', String(e.amount), e.description || ''])
+        break
+      case 'compensations':
+        headers = ['Direction', 'Partie', 'Montant', 'Réglé', 'Statut', 'Date']
+        data = filteredCompensations.map(c => {
+          const partyName = c.partyType === 'supplier' ? suppliers?.find(s => s.id === c.partyId)?.name : customers?.find(cu => cu.id === c.partyId)?.name
+          return [c.direction === 'debt_to_goods' ? 'Dette → Marchandises' : 'Marchandises → Dette', partyName || c.partyId, c.amount.toString(), c.settledAmount.toString(), c.status, c.createdAt]
+        })
         break
     }
 
@@ -179,15 +201,22 @@ export default function ReportsPage() {
         })
         break
       case 'supplier_invoices':
-        headers = ['N°', 'Fournisseur', 'Date', 'Total', 'Payé', 'Solde']
-        data = filteredSupplierInvoices.map(inv => {
-          const sup = suppliers?.find(s => s.id === inv.supplierId)
-          return [inv.number, sup?.name || inv.supplierId, formatDate(inv.createdAt), formatCurrency(inv.total), formatCurrency(inv.paid), formatCurrency(inv.balance)]
+        headers = ['Type', 'Référence', 'Fournisseur', 'Date', 'Total', 'Payé', 'Solde']
+        data = filteredSupplierData.map(r => {
+          const sup = suppliers?.find(s => s.id === r.supplierId)
+          return [r.type, r.ref, sup?.name || r.supplierName || r.supplierId || '', formatDate(r.date), formatCurrency(r.total), formatCurrency(r.paid), formatCurrency(r.balance)]
         })
         break
       case 'cashflow':
         headers = ['Date', 'Type', 'Catégorie', 'Montant', 'Description']
         data = filteredCashflow.map(e => [e.date || '', e.type === 'in' ? 'Entrée' : 'Sortie', e.category || '', formatCurrency(e.amount), e.description || ''])
+        break
+      case 'compensations':
+        headers = ['Direction', 'Partie', 'Montant', 'Réglé', 'Statut', 'Date']
+        data = filteredCompensations.map(c => {
+          const partyName = c.partyType === 'supplier' ? suppliers?.find(s => s.id === c.partyId)?.name : customers?.find(cu => cu.id === c.partyId)?.name
+          return [c.direction === 'debt_to_goods' ? 'Dette → Marchandises' : 'Marchandises → Dette', partyName || c.partyId, formatCurrency(c.amount), formatCurrency(c.settledAmount), c.status, formatDate(c.createdAt)]
+        })
         break
     }
     exportReportPDF(
@@ -316,7 +345,7 @@ export default function ReportsPage() {
                 {reportType === 'sales' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Facture</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Client</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Total</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Méthode</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Emplacement</th></>}
                 {reportType === 'purchases' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">ID</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Fournisseur</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Total</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Emplacement</th></>}
                 {reportType === 'inventory' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Produit</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Emplacement</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Qté</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Valeur</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Alerte</th></>}
-                {reportType === 'supplier_invoices' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">N°</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Fournisseur</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Total</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Payé</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Solde</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Statut</th></>}
+                {reportType === 'supplier_invoices' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Type</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Référence</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Fournisseur</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Total</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Payé</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Solde</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Statut</th></>}
                 {reportType === 'cashflow' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Type</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Catégorie</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Montant</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Description</th></>}
                 {reportType === 'compensations' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Direction</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Partie</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Montant</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Réglé</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Statut</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th></>}
               </tr>
@@ -354,17 +383,21 @@ export default function ReportsPage() {
                   </tr>
                 )
               })}
-              {reportType === 'supplier_invoices' && filteredSupplierInvoices.map(inv => {
-                const sup = suppliers?.find(s => s.id === inv.supplierId)
+              {reportType === 'supplier_invoices' && filteredSupplierData.map(r => {
+                const sup = suppliers?.find(s => s.id === r.supplierId)
+                const name = sup?.name || r.supplierName || r.supplierId
+                const paid = r.status === 'paid' ? r.total : r.paid
+                const balance = Math.max(0, r.total - paid)
                 return (
-                  <tr key={inv.id} className="hover:bg-surface-50">
-                    <td className="px-4 py-3 text-sm font-medium">{inv.number}</td>
-                    <td className="px-4 py-3 text-sm text-surface-600">{sup?.name || inv.supplierId}</td>
-                    <td className="px-4 py-3 text-sm text-surface-500">{formatDate(inv.createdAt)}</td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold">{formatCurrency(inv.total)}</td>
-                    <td className="px-4 py-3 text-right text-sm">{formatCurrency(inv.paid)}</td>
-                    <td className="px-4 py-3 text-right text-sm font-semibold text-danger">{formatCurrency(inv.balance)}</td>
-                    <td className="px-4 py-3 text-center"><Badge variant={inv.status === 'paid' ? 'success' : inv.status === 'partial' ? 'warning' : 'info'}>{inv.status}</Badge></td>
+                  <tr key={`${r.type}-${r.id}`} className="hover:bg-surface-50">
+                    <td className="px-4 py-3"><Badge variant={r.type === 'Achat' ? 'info' : 'warning'}>{r.type}</Badge></td>
+                    <td className="px-4 py-3 text-sm font-medium">{r.type === 'Achat' ? r.ref.slice(0, 8) : r.ref}</td>
+                    <td className="px-4 py-3 text-sm text-surface-600">{name}</td>
+                    <td className="px-4 py-3 text-sm text-surface-500">{formatDate(r.date)}</td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold">{formatCurrency(r.total)}</td>
+                    <td className="px-4 py-3 text-right text-sm">{formatCurrency(paid)}</td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold text-danger">{formatCurrency(balance)}</td>
+                    <td className="px-4 py-3 text-center"><Badge variant={r.status === 'completed' || r.status === 'paid' ? 'success' : r.status === 'pending' || r.status === 'partial' ? 'warning' : r.status === 'cancelled' ? 'danger' : 'info'}>{r.status}</Badge></td>
                   </tr>
                 )
               })}
@@ -377,22 +410,27 @@ export default function ReportsPage() {
                   <td className="px-4 py-3 text-sm text-surface-500">{e.description}</td>
                 </tr>
               ))}
-              {reportType === 'compensations' && compensations?.map(c => (
-                <tr key={c.id} className="hover:bg-surface-50">
-                  <td className="px-4 py-3 text-sm">{c.direction === 'debt_to_goods' ? 'Dette → Marchandises' : 'Marchandises → Dette'}</td>
-                  <td className="px-4 py-3 text-sm text-surface-600">{c.partyId}</td>
-                  <td className="px-4 py-3 text-right text-sm font-semibold">{formatCurrency(c.amount)}</td>
-                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(c.settledAmount)}</td>
-                  <td className="px-4 py-3 text-center"><Badge variant={c.status === 'completed' ? 'success' : 'warning'}>{c.status}</Badge></td>
-                  <td className="px-4 py-3 text-sm text-surface-500">{formatDate(c.createdAt)}</td>
-                </tr>
-              ))}
+              {reportType === 'compensations' && filteredCompensations.map(c => {
+                const partyName = c.partyType === 'supplier'
+                  ? suppliers?.find(s => s.id === c.partyId)?.name
+                  : customers?.find(cu => cu.id === c.partyId)?.name
+                return (
+                  <tr key={c.id} className="hover:bg-surface-50">
+                    <td className="px-4 py-3 text-sm">{c.direction === 'debt_to_goods' ? 'Dette → Marchandises' : 'Marchandises → Dette'}</td>
+                    <td className="px-4 py-3 text-sm text-surface-600">{partyName || c.partyId}</td>
+                    <td className="px-4 py-3 text-right text-sm font-semibold">{formatCurrency(c.amount)}</td>
+                    <td className="px-4 py-3 text-right text-sm">{formatCurrency(c.settledAmount)}</td>
+                    <td className="px-4 py-3 text-center"><Badge variant={c.status === 'completed' ? 'success' : 'warning'}>{c.status}</Badge></td>
+                    <td className="px-4 py-3 text-sm text-surface-500">{formatDate(c.createdAt)}</td>
+                  </tr>
+                )
+              })}
               {reportType === 'sales' && filteredSales.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-surface-400">Aucune vente pour cette période</td></tr>}
               {reportType === 'purchases' && filteredPurchases.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-surface-400">Aucun achat pour cette période</td></tr>}
               {reportType === 'inventory' && (stocks || []).length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-surface-400">Aucun stock</td></tr>}
-              {reportType === 'supplier_invoices' && filteredSupplierInvoices.length === 0 && <tr><td colSpan={7} className="px-4 py-8 text-center text-surface-400">Aucune facture fournisseur</td></tr>}
+              {reportType === 'supplier_invoices' && filteredSupplierData.length === 0 && <tr><td colSpan={8} className="px-4 py-8 text-center text-surface-400">Aucun achat ni facture fournisseur pour cette période</td></tr>}
               {reportType === 'cashflow' && filteredCashflow.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-surface-400">Aucune entrée de trésorerie pour cette période</td></tr>}
-              {reportType === 'compensations' && (!compensations || compensations.length === 0) && <tr><td colSpan={6} className="px-4 py-8 text-center text-surface-400">Aucune compensation</td></tr>}
+              {reportType === 'compensations' && filteredCompensations.length === 0 && <tr><td colSpan={6} className="px-4 py-8 text-center text-surface-400">Aucune compensation pour cette période</td></tr>}
             </tbody>
           </table>
         </div>

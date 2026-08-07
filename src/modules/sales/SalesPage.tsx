@@ -7,20 +7,22 @@ import { usePagination } from '@/hooks/usePagination'
 import { useAppStore, useSyncStore } from '@/stores/appStore'
 import db from '@/db'
 import { formatCurrency, formatDate, formatDateTime, cn } from '@/lib/utils'
-import { exportSalePDF, exportReportPDF, shareSalePDF } from '@/lib/pdf'
-import type { Sale, SaleItem, PaymentMethod, CompanySettings } from '@/types'
+import { exportSalePDF, exportReportPDF, shareSalePDF, buildProductPhotos } from '@/lib/pdf'
+import { shareViaWeChat } from '@/lib/share'
+import type { Sale, SaleItem, PaymentMethod, CompanySettings, CreditPayment } from '@/types'
 import type { Location } from '@/engine/types'
 import { toast } from '@/lib/toast'
 import { deleteSale, editSale } from '@/engine/operations'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import MobileSaleCard from '@/components/sales/MobileSaleCard'
 import MobileActionsSheet from '@/components/sales/MobileActionsSheet'
+import { CreditPaymentModal } from '@/components/credit/CreditSaleModals'
 import {
   Search, Filter, Download, FileText, Eye, Edit2, Trash2,
   ShoppingBag, ChevronDown, ChevronUp, Plus,
   User, Phone, MapPin, Send, Mail,
   Clock, ArrowUpDown, Wallet, FileSpreadsheet,
-  Receipt, Save, X, RefreshCw, MoreHorizontal
+  Receipt, Save, X, RefreshCw, MoreHorizontal, MessageCircle
 } from 'lucide-react'
 
 type TabKey = 'active' | 'paid' | 'partial' | 'cancelled'
@@ -133,6 +135,11 @@ export default function SalesPage() {
 
   const productsList: any[] = useLiveQuery(() => db.products.toArray(), []) ?? []
 
+  const creditPayments: CreditPayment[] = useLiveQuery(
+    () => db.creditPayments.where('businessId').equals(businessId).toArray(),
+    [businessId]
+  ) ?? []
+
 
   const rawSettings = useLiveQuery(() => db.settings.get('default'), [])
   const appSettings = rawSettings as CompanySettings | undefined
@@ -162,6 +169,7 @@ export default function SalesPage() {
   const [detailOpen, setDetailOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Sale | null>(null)
   const [pinModalOpen, setPinModalOpen] = useState(false)
+  const [payModalOpen, setPayModalOpen] = useState(false)
 
   const [editModalOpen, setEditModalOpen] = useState(false)
   const [editSaleTarget, setEditSaleTarget] = useState<Sale | null>(null)
@@ -225,7 +233,9 @@ export default function SalesPage() {
 
   const kpiStats = useMemo(() => {
     const sales = allSales.filter(s => s.status === 'completed')
-    const totalRevenue = sales.reduce((sum, s) => sum + s.paid, 0)
+    const cashSalesPaid = sales.filter(s => s.paymentMethod !== 'credit').reduce((sum, s) => sum + s.paid, 0)
+    const creditCollected = creditPayments.reduce((sum, p) => sum + p.amount, 0)
+    const totalRevenue = cashSalesPaid + creditCollected
     const totalCost = sales.reduce((sum, s) => {
       const ratio = s.total > 0 ? s.paid / s.total : 1
       return sum + calculateSaleCost(s.items, productCostMap) * ratio
@@ -238,7 +248,7 @@ export default function SalesPage() {
       grossProfit, margin: totalRevenue > 0 ? (grossProfit / totalRevenue) * 100 : 0,
       creditCount: creditSales.length, creditOutstanding,
     }
-  }, [allSales, productCostMap])
+  }, [allSales, productCostMap, creditPayments])
 
   const { paginatedItems: paginatedSales, ...pag } = usePagination(filteredSales, 25)
 
@@ -300,9 +310,24 @@ export default function SalesPage() {
     } catch (err: any) { toast(err?.message || 'Erreur', 'error'); setDeleteTarget(null) }
   }
 
-  function handleWhatsApp(sale: Sale) {
-    shareSalePDF(sale, appSettings)
+  async function handleWhatsApp(sale: Sale) {
+    shareSalePDF(sale, appSettings, await buildProductPhotos(productsList))
     toast('Facture partagée', 'success')
+  }
+
+  function paymentStatusText(sale: Sale): string {
+    if (sale.status === 'cancelled') return 'Annulée'
+    if (sale.paid >= sale.total) return 'Payée'
+    if (sale.paymentMethod === 'credit') return sale.paid > 0 ? 'Crédit partiel' : 'Crédit'
+    if (sale.paid > 0) return 'Partielle'
+    return 'En attente'
+  }
+
+  function handleWeChat(sale: Sale) {
+    const customer = customers.find((c: any) => c.id === sale.customerId)
+    const phone = customer?.phone ? `\nTéléphone: ${customer.phone}` : ''
+    const text = `Facture ${sale.invoiceNumber} — ${sale.customerName || 'Client divers'}${phone}\nTotal: ${formatCurrency(sale.total)}\nPayé: ${formatCurrency(sale.paid)}\nRestant: ${formatCurrency(sale.total - sale.paid)}\nStatut: ${paymentStatusText(sale)}`
+    shareViaWeChat(text, `Facture ${sale.invoiceNumber}`)
   }
 
   function handleEmail(sale: Sale) {
@@ -313,7 +338,7 @@ export default function SalesPage() {
     toast('Email ouvert', 'success')
   }
 
-  function handlePrintPDF(sale: Sale) { exportSalePDF(sale, appSettings); toast('PDF généré', 'success') }
+  async function handlePrintPDF(sale: Sale) { exportSalePDF(sale, appSettings, await buildProductPhotos(productsList)); toast('PDF généré', 'success') }
 
   function getSaleCost(sale: Sale): number { return calculateSaleCost(sale.items, productCostMap) }
 
@@ -532,6 +557,7 @@ export default function SalesPage() {
                           <button onClick={() => openDetail(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-600 transition-colors" title="Détails"><Eye className="w-4 h-4" /></button>
                           <button onClick={() => handlePrintPDF(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="PDF"><FileText className="w-4 h-4" /></button>
                           <button onClick={() => handleWhatsApp(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-green-600 transition-colors" title="WhatsApp"><Send className="w-4 h-4" /></button>
+                          <button onClick={() => handleWeChat(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-emerald-600 transition-colors" title="WeChat"><MessageCircle className="w-4 h-4" /></button>
                           <button onClick={() => { handleEmail(sale) }} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="Email"><Mail className="w-4 h-4" /></button>
                           <button onClick={() => openEditModal(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-600 transition-colors" title="Modifier"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => handleDelete(sale)} className="touch-target-sm rounded-lg hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
@@ -568,6 +594,7 @@ export default function SalesPage() {
           { key: 'detail', label: 'Voir détails', icon: <Eye className="w-5 h-5" />, onClick: () => openDetail(actionSheetSale) },
           { key: 'pdf', label: 'Télécharger PDF', icon: <FileText className="w-5 h-5" />, onClick: () => handlePrintPDF(actionSheetSale) },
           { key: 'whatsapp', label: 'Partager PDF par WhatsApp', icon: <Send className="w-5 h-5" />, onClick: () => handleWhatsApp(actionSheetSale) },
+          { key: 'wechat', label: 'Envoyer par WeChat', icon: <MessageCircle className="w-5 h-5" />, onClick: () => handleWeChat(actionSheetSale) },
           { key: 'email', label: 'Envoyer par Email', icon: <Mail className="w-5 h-5" />, onClick: () => handleEmail(actionSheetSale) },
           { key: 'edit', label: 'Modifier', icon: <Edit2 className="w-5 h-5" />, onClick: () => openEditModal(actionSheetSale) },
           { key: 'delete', label: 'Supprimer', icon: <Trash2 className="w-5 h-5" />, variant: 'danger', onClick: () => handleDelete(actionSheetSale) },
@@ -633,6 +660,26 @@ export default function SalesPage() {
                 <Card className="p-4"><p className="text-xs text-surface-500">Payé</p><p className="text-lg font-bold text-emerald-600">{formatCurrency(selectedSale.paid)}</p></Card>
                 <Card className="p-4"><p className="text-xs text-surface-500">Restant</p><p className={cn('text-lg font-bold', selectedSale.total - selectedSale.paid > 0 ? 'text-red-600' : 'text-surface-900')}>{formatCurrency(selectedSale.total - selectedSale.paid)}</p></Card>
               </div>
+              {selectedSale.total > 0 && (
+                <div className="mt-4">
+                  <div className="flex justify-between text-xs text-surface-500 mb-1">
+                    <span>Avancement</span>
+                    <span className="font-semibold text-surface-700">
+                      {Math.min(100, Math.round((selectedSale.paid / selectedSale.total) * 100))}%
+                    </span>
+                  </div>
+                  <div className="h-2.5 bg-surface-100 rounded-full overflow-hidden">
+                    <div className={cn('h-full rounded-full transition-all', selectedSale.paid >= selectedSale.total ? 'bg-emerald-500' : 'bg-amber-500')}
+                      style={{ width: `${Math.min(100, Math.round((selectedSale.paid / selectedSale.total) * 100))}%` }} />
+                  </div>
+                </div>
+              )}
+              {selectedSale.status === 'completed' && selectedSale.paid < selectedSale.total && (
+                <div className="flex gap-2 mt-4 flex-wrap">
+                  <Button size="sm" onClick={() => setPayModalOpen(true)}><Wallet className="w-4 h-4" /> Encaisser un paiement</Button>
+                  <Button size="sm" variant="outline" onClick={() => openEditModal(selectedSale)}><Edit2 className="w-4 h-4" /> Modifier la vente</Button>
+                </div>
+              )}
             </div>
             {isMobile && (
               <div className="flex flex-col gap-3 pt-2">
@@ -721,6 +768,13 @@ export default function SalesPage() {
         title="Suppression de vente"
         description="Entrez votre code PIN de sécurité pour confirmer la suppression."
         actionLabel="Supprimer"
+      />
+
+      <CreditPaymentModal
+        open={payModalOpen}
+        onClose={() => setPayModalOpen(false)}
+        saleId={selectedSale?.id}
+        onPaid={() => setRefreshKey(k => k + 1)}
       />
     </div>
   )

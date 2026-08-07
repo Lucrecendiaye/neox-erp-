@@ -42,6 +42,7 @@ const DepotHistoryPage = lazy(() => import('@/modules/depots/DepotHistoryPage'))
 const DepotGlobalStockPage = lazy(() => import('@/modules/depots/DepotGlobalStockPage'))
 const BonSortiePage = lazy(() => import('@/modules/depots/BonSortiePage'))
 const UsersPage = lazy(() => import('@/modules/users/UsersPage'))
+const MaquettePage = lazy(() => import('@/modules/maquette/MaquettePage'))
 
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -221,9 +222,10 @@ export default function App() {
           <Route path="/depots/vente" element={<PermissionRoute module="depots"><DepotGlobalPOSPage /></PermissionRoute>} />
           <Route path="/depots/history/:locationId" element={<PermissionRoute module="depots"><DepotHistoryPage /></PermissionRoute>} />
           <Route path="/depots/stock-global" element={<PermissionRoute module="depots"><DepotGlobalStockPage /></PermissionRoute>} />
-          <Route path="/bons-sortie" element={<PermissionRoute module="depots"><BonSortiePage /></PermissionRoute>} />
+          <Route path="/depots/bons-sortie" element={<PermissionRoute module="depots"><BonSortiePage /></PermissionRoute>} />
           <Route path="/users" element={<PermissionRoute module="users"><UsersPage /></PermissionRoute>} />
           <Route path="/trash" element={<TrashPage />} />
+          <Route path="/maquette" element={<MaquettePage />} />
         </Route>
       </Routes>
     </BrowserRouter>
