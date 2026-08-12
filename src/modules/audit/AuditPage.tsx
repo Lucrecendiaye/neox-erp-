@@ -58,7 +58,7 @@ export default function AuditPage() {
         <div className="relative flex-1">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
           <input type="text" placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <Select value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}
           options={entities.map(e => ({ value: e, label: e }))} placeholder="Toutes les entités" />

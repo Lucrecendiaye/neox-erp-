@@ -114,10 +114,10 @@ export default function TrashPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
           <input type="text" placeholder="Rechercher dans la corbeille..." value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={entityFilter} onChange={(e) => setEntityFilter(e.target.value)}
-          className="px-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          className="px-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
           <option value="all">Tous les types</option>
           {Object.entries(ENTITY_LABELS).map(([key, label]) => (
             <option key={key} value={key}>{label} ({entityCounts[key] || 0})</option>
@@ -142,7 +142,7 @@ export default function TrashPage() {
                 <tr key={`${r.entity}-${r.entityId}`} className="hover:bg-surface-50 transition-colors">
                   <td data-label="Élément" className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-9 h-9 rounded-xl bg-red-50 flex items-center justify-center text-danger">
+                      <div className="w-9 h-9 rounded-xl bg-red-500/15 flex items-center justify-center text-danger">
                         <Archive className="w-4 h-4" />
                       </div>
                       <div>
@@ -155,7 +155,7 @@ export default function TrashPage() {
                     <Badge variant="default">{r.entityLabel}</Badge>
                   </td>
                   <td data-label="Supprimé par" className="px-6 py-4 text-sm text-surface-600">
-                    {r.userName || '—'}
+                    {r.userName || 'â€”'}
                   </td>
                   <td data-label="Date suppression" className="px-6 py-4 text-sm text-surface-500 whitespace-nowrap">
                     {formatDateTime(r.deletedAt)}
@@ -166,7 +166,7 @@ export default function TrashPage() {
                         <RotateCcw className="w-3.5 h-3.5" /> Restaurer
                       </Button>
                       <button onClick={() => setConfirmModal({ type: 'delete', entity: r.entity as DeletableEntity, recordId: r.entityId })}
-                        className="p-2 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger transition-colors" title="Supprimer définitivement">
+                        className="p-2 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger transition-colors" title="Supprimer définitivement">
                         <X className="w-4 h-4" />
                       </button>
                     </div>
@@ -176,7 +176,7 @@ export default function TrashPage() {
               {(!filtered || filtered.length === 0) && (
                 <tr>
                   <td colSpan={5} className="text-center py-16 text-surface-400">
-                    <Trash2 className="w-14 h-14 mx-auto mb-4 text-surface-300" />
+                    <Trash2 className="w-14 h-14 mx-auto mb-4 text-surface-500" />
                     <p className="text-sm font-medium">Corbeille vide</p>
                     <p className="text-xs mt-1">Les éléments supprimés apparaîtront ici</p>
                   </td>
@@ -194,21 +194,21 @@ export default function TrashPage() {
         <div className="p-6 space-y-4 text-center">
           {confirmModal?.type === 'restore' ? (
             <>
-              <div className="w-14 h-14 bg-amber-50 rounded-2xl flex items-center justify-center mx-auto">
+              <div className="w-14 h-14 bg-amber-500/15 rounded-2xl flex items-center justify-center mx-auto">
                 <RotateCcw className="w-7 h-7 text-amber-500" />
               </div>
               <p className="text-sm text-surface-600">Restaurer cet élément ? Il sera remis dans sa liste d'origine.</p>
             </>
           ) : confirmModal?.type === 'delete' ? (
             <>
-              <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto">
+              <div className="w-14 h-14 bg-red-500/15 rounded-2xl flex items-center justify-center mx-auto">
                 <AlertTriangle className="w-7 h-7 text-danger" />
               </div>
               <p className="text-sm text-surface-600">Supprimer définitivement ? Cette action est irréversible.</p>
             </>
           ) : (
             <>
-              <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto">
+              <div className="w-14 h-14 bg-red-500/15 rounded-2xl flex items-center justify-center mx-auto">
                 <Trash2 className="w-7 h-7 text-danger" />
               </div>
               <p className="text-sm text-surface-600">

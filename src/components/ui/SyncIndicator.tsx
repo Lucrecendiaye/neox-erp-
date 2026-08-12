@@ -11,7 +11,7 @@ export default function SyncIndicator() {
   return (
     <div className={cn(
       'flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-lg transition-colors',
-      syncing ? 'bg-blue-50 text-blue-600' : lastSync ? 'bg-emerald-50 text-emerald-600' : 'bg-surface-100 text-surface-400'
+      syncing ? 'bg-blue-500/15 text-blue-400' : lastSync ? 'bg-emerald-500/15 text-emerald-400' : 'bg-surface-100 text-surface-400'
     )}>
       {syncing ? (
         <RefreshCw className="w-3 h-3 animate-spin" />

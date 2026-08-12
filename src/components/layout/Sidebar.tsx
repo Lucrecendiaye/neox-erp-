@@ -5,7 +5,7 @@ import { useAppStore } from '@/stores/appStore'
 import { usePermission } from '@/hooks/usePermission'
 import {
   LayoutDashboard, ShoppingCart, Receipt, Building2, Package,
-  Users, Truck, HandCoins, BarChart3, UsersRound, Settings, Trash2, Palette,
+  Users, Truck, HandCoins, BarChart3, UsersRound, Settings, Trash2,
 } from 'lucide-react'
 
 interface NavItem {
@@ -29,11 +29,10 @@ const allNavItems: NavItem[] = [
   { to: '/users', label: 'Utilisateurs', module: 'users', icon: <UsersRound className="w-5 h-5" /> },
   { to: '/settings', label: 'Paramètres', module: 'settings', icon: <Settings className="w-5 h-5" /> },
   { to: '/trash', label: 'Corbeille', module: 'trash', icon: <Trash2 className="w-5 h-5" /> },
-  { to: '/maquette', label: 'Maquette UI', module: 'settings', icon: <Palette className="w-5 h-5" /> },
 ]
 
 export default function Sidebar() {
-  const { sidebarOpen, setSidebarOpen, settings } = useAppStore()
+  const { sidebarOpen, setSidebarOpen, settings, currentBusiness } = useAppStore()
   const { canAny, isAdmin } = usePermission()
 
   const visibleItems = allNavItems.filter(item =>
@@ -77,8 +76,8 @@ export default function Sidebar() {
         {/* Premium Logo */}
         <div className="flex items-center gap-3 px-4 lg:px-4 h-16 shrink-0">
           <div className="logo-premium w-10 h-10 flex items-center justify-center shrink-0">
-            {settings?.logo ? (
-              <img src={settings.logo} alt="" className="w-7 h-7 object-contain" />
+            {settings?.logo || currentBusiness?.logo ? (
+              <img src={settings?.logo || currentBusiness?.logo} alt="" className="w-7 h-7 object-contain" />
             ) : (
               <span className="text-white font-bold text-base drop-shadow-sm">
                 {(settings?.name || 'N')[0]}
@@ -123,7 +122,7 @@ export default function Sidebar() {
         <div className="p-3 border-t border-white/5">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-white/40 hover:text-white/70 hover:bg-white/5 transition-all min-h-[44px]"
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-white/40 hover:text-white/70 hover:bg-surface-100/5 transition-all min-h-[44px]"
           >
             <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />

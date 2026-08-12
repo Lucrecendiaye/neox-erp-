@@ -8,11 +8,11 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
 }
 
 const variants = {
-  primary: 'bg-gradient-to-br from-primary-500 to-primary-700 text-white shadow-md shadow-primary-200/40 hover:shadow-lg hover:shadow-primary-300/30 hover:-translate-y-0.5',
+  primary: 'bg-gradient-to-br from-primary-500 to-primary-700 text-on-accent shadow-md shadow-primary-200/40 hover:shadow-lg hover:shadow-primary-300/30 hover:-translate-y-0.5',
   secondary: 'bg-surface-100 text-surface-700 hover:bg-surface-200',
   danger: 'bg-danger text-white hover:bg-red-600 shadow-sm',
   ghost: 'text-surface-600 hover:bg-surface-100',
-  outline: 'border border-surface-300 text-surface-700 hover:bg-surface-50 hover:border-primary-300 hover:text-primary-600',
+  outline: 'border border-surface-300 text-surface-700 hover:bg-surface-50 hover:border-primary-300 hover:text-primary-400',
 }
 
 const sizes = {

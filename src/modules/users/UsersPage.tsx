@@ -4,6 +4,7 @@ import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { usePagination } from '@/hooks/usePagination'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePermission } from '@/hooks/usePermission'
+import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
 import { generateId, formatDate, formatDateTime } from '@/lib/utils'
 import { toast } from '@/lib/toast'
@@ -42,14 +43,15 @@ export default function UsersPage() {
   const hasStarPermission = currentUser?.permissions?.includes('*') ?? false
 
   useEffect(() => {
-    if (hasStarPermission && !isPrimaryAdmin && users && businessId) {
+    if (hasStarPermission && !isPrimaryAdmin && users && businessId && currentUser) {
       const hasAnyPrimary = users.some(u => u.isPrimaryAdmin)
       if (!hasAnyPrimary) {
-        db.users.update(currentUser!.id, { isPrimaryAdmin: true })
+        db.users.update(currentUser.id, { isPrimaryAdmin: true })
+        useAppStore.getState().setUser({ ...currentUser, isPrimaryAdmin: true })
         toast('Vous avez été promu Administrateur principal', 'success')
       }
     }
-  }, [hasStarPermission, isPrimaryAdmin, users, businessId])
+  }, [hasStarPermission, isPrimaryAdmin, users, businessId, currentUser])
 
   const filtered = users?.filter(u =>
     u.name.toLowerCase().includes(search.toLowerCase()) ||

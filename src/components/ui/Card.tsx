@@ -33,11 +33,11 @@ interface StatCardProps {
 }
 
 const statColors = {
-  primary: 'bg-primary-50 text-primary-600',
-  success: 'bg-emerald-50 text-emerald-600',
-  warning: 'bg-amber-50 text-amber-600',
-  danger: 'bg-red-50 text-red-600',
-  info: 'bg-blue-50 text-blue-600',
+  primary: 'bg-primary-50 text-primary-400',
+  success: 'bg-emerald-500/15 text-emerald-400',
+  warning: 'bg-amber-500/15 text-amber-400',
+  danger: 'bg-red-500/15 text-red-400',
+  info: 'bg-blue-500/15 text-blue-400',
 }
 
 export function StatCard({ title, value, icon, trend, color = 'primary' }: StatCardProps) {

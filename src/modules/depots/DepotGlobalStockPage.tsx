@@ -58,9 +58,9 @@ export default function DepotGlobalStockPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Produits</p><p className="text-lg font-bold">{stats.totalProducts}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600"><Warehouse className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Dépôts</p><p className="text-lg font-bold">{locations?.length || 0}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600"><DollarSign className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur stock</p><p className="text-lg font-bold">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Produits</p><p className="text-lg font-bold">{stats.totalProducts}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400"><Warehouse className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Dépôts</p><p className="text-lg font-bold">{locations?.length || 0}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><DollarSign className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur stock</p><p className="text-lg font-bold">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
       </div>
 
       <div className="relative max-w-md">
@@ -78,7 +78,7 @@ export default function DepotGlobalStockPage() {
             <Card key={p.id} className="overflow-hidden p-0">
               <div className="p-4">
                 <h3 className="text-sm font-semibold text-surface-900 truncate">{p.name}</h3>
-                <p className="text-sm font-bold text-primary-600 mt-1">{formatCurrency(p.sellingPrice)}</p>
+                <p className="text-sm font-bold text-primary-400 mt-1">{formatCurrency(p.sellingPrice)}</p>
                 <p className="text-sm text-surface-500 mt-1">Total: <strong>{totalQty}</strong> pièces</p>
                 <div className="mt-2 space-y-1">
                   {productStocks.filter(s => s.quantity > 0).map(s => (
@@ -97,7 +97,7 @@ export default function DepotGlobalStockPage() {
         })}
         {filteredProducts.length === 0 && (
           <div className="col-span-full flex flex-col items-center justify-center py-16 text-surface-400">
-            <Package className="w-12 h-12 mb-3 text-surface-300" />
+            <Package className="w-12 h-12 mb-3 text-surface-500" />
             <p className="text-sm">Aucun produit trouvé</p>
           </div>
         )}

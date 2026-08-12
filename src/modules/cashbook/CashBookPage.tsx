@@ -245,7 +245,7 @@ export default function CashBookPage() {
               onClick={() => setTypeFilter(tab.value)}
               className={`px-4 py-2 rounded-xl text-sm font-medium transition-colors ${
                 typeFilter === tab.value
-                  ? 'bg-primary-600 text-white shadow-sm'
+                  ? 'bg-primary-500 text-on-accent shadow-sm'
                   : 'bg-surface-100 text-surface-600 hover:bg-surface-200'
               }`}
             >
@@ -259,7 +259,7 @@ export default function CashBookPage() {
             <input
               type="text" placeholder="Rechercher..."
               value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
           <div className="w-40">
@@ -283,7 +283,7 @@ export default function CashBookPage() {
       <div className="space-y-3">
         {paginatedItems.length === 0 && (
           <div className="text-center py-16">
-            <Wallet className="w-12 h-12 text-surface-300 mx-auto mb-3" />
+            <Wallet className="w-12 h-12 text-surface-500 mx-auto mb-3" />
             <p className="text-surface-400">Aucune écriture trouvée</p>
           </div>
         )}
@@ -293,8 +293,8 @@ export default function CashBookPage() {
               <div className="flex items-center gap-4 flex-1 min-w-0">
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
                   entry.type === 'in'
-                    ? 'bg-emerald-50 text-emerald-600'
-                    : 'bg-red-50 text-red-600'
+                    ? 'bg-emerald-500/15 text-emerald-400'
+                    : 'bg-red-500/15 text-red-400'
                 }`}>
                   {entry.type === 'in'
                     ? <ArrowUpRight className="w-5 h-5" />
@@ -314,7 +314,7 @@ export default function CashBookPage() {
               <div className="flex items-center gap-3 shrink-0">
                 <div className="text-right">
                   <p className={`font-semibold text-lg ${
-                    entry.type === 'in' ? 'text-emerald-600' : 'text-red-600'
+                    entry.type === 'in' ? 'text-emerald-400' : 'text-red-400'
                   }`}>
                     {entry.type === 'in' ? '+' : '-'}{formatCurrency(entry.amount)}
                   </p>
@@ -324,7 +324,7 @@ export default function CashBookPage() {
                 </div>
                 <button
                   onClick={() => handleDelete(entry.id)}
-                  className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger transition-colors"
+                  className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger transition-colors"
                   title="Supprimer"
                 >
                   <Trash2 className="w-4 h-4" />

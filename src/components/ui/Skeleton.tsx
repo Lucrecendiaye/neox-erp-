@@ -39,7 +39,7 @@ export function CardSkeleton({ count = 3 }: { count?: number }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
       {Array.from({ length: count }).map((_, i) => (
-        <div key={i} className="bg-white rounded-2xl border border-surface-200 p-6 space-y-4">
+        <div key={i} className="bg-surface-100 rounded-2xl border border-surface-200 p-6 space-y-4">
           <Skeleton className="h-4 w-24" />
           <Skeleton className="h-8 w-32" />
           <Skeleton className="h-3 w-16" />

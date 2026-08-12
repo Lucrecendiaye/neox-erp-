@@ -130,13 +130,13 @@ export default function LeadsPage() {
           <div className="flex rounded-xl border border-surface-200 overflow-hidden">
             <button
               onClick={() => setView('kanban')}
-              className={`p-2 transition-colors ${view === 'kanban' ? 'bg-primary-600 text-white' : 'bg-white text-surface-500 hover:bg-surface-50'}`}
+              className={`p-2 transition-colors ${view === 'kanban' ? 'bg-primary-500 text-on-accent' : 'bg-surface-100 text-surface-500 hover:bg-surface-50'}`}
             >
               <Kanban className="w-4 h-4" />
             </button>
             <button
               onClick={() => setView('table')}
-              className={`p-2 transition-colors ${view === 'table' ? 'bg-primary-600 text-white' : 'bg-white text-surface-500 hover:bg-surface-50'}`}
+              className={`p-2 transition-colors ${view === 'table' ? 'bg-primary-500 text-on-accent' : 'bg-surface-100 text-surface-500 hover:bg-surface-50'}`}
             >
               <LayoutList className="w-4 h-4" />
             </button>
@@ -150,7 +150,7 @@ export default function LeadsPage() {
         <input
           type="text" placeholder="Rechercher par nom, téléphone ou entreprise..."
           value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       </div>
 
@@ -188,7 +188,7 @@ export default function LeadsPage() {
                         </div>
                         <button
                           onClick={(e) => { e.stopPropagation(); handleDelete(lead.id) }}
-                          className="p-1 rounded-md hover:bg-red-50 text-surface-400 hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"
+                          className="p-1 rounded-md hover:bg-red-500/15 text-surface-400 hover:text-danger opacity-0 group-hover:opacity-100 transition-opacity"
                         >
                           <Trash2 className="w-3 h-3" />
                         </button>
@@ -197,7 +197,7 @@ export default function LeadsPage() {
                   </Card>
                 ))}
                 {col.leads.length === 0 && (
-                  <div className="text-center py-8 text-surface-300 text-sm border-2 border-dashed border-surface-200 rounded-2xl">
+                  <div className="text-center py-8 text-surface-500 text-sm border-2 border-dashed border-surface-200 rounded-2xl">
                     Aucun lead
                   </div>
                 )}
@@ -206,7 +206,7 @@ export default function LeadsPage() {
           ))}
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
+        <div className="bg-surface-100 rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto responsive-table">
             <table className="w-full text-sm">
               <thead>
@@ -244,7 +244,7 @@ export default function LeadsPage() {
                         <button onClick={() => openEdit(lead)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
                           <Edit2 className="w-4 h-4" />
                         </button>
-                        <button onClick={() => handleDelete(lead.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger">
+                        <button onClick={() => handleDelete(lead.id)} className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger">
                           <Trash2 className="w-4 h-4" />
                         </button>
                       </div>

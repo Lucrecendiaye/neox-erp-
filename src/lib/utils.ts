@@ -77,20 +77,13 @@ export interface ContactInfo {
 }
 
 export async function pickContact(): Promise<ContactInfo | null> {
-  try {
-    if ('contacts' in navigator && 'select' in (navigator as any).contacts) {
-      const props = ['name', 'tel'] as const
-      const opts = { multiple: false } as const
-      const contacts = await (navigator as any).contacts.select(props, opts)
-      if (contacts && contacts.length > 0) {
-        const c = contacts[0]
-        return { name: c.name?.[0] || '', tel: c.tel?.[0]?.replace(/[^0-9+]/g, '') || '' }
-      }
-    } else {
-      alert('La sélection de contacts est disponible uniquement sur Chrome Android ou Bureau.')
-    }
-  } catch (e) {
-    console.warn('Contact picker error:', e)
+  const { canUseContactPicker, pickNativeContact, promptContactManual } = await import('@/lib/contactModal')
+  const native = await pickNativeContact()
+  if (native) return native
+  if (!canUseContactPicker()) {
+    const manual = await promptContactManual()
+    if (manual && (manual.name || manual.tel)) return manual
+    return null
   }
   return null
 }
@@ -121,8 +114,10 @@ export interface UnitInfo {
 
 export function getProductUnits(product: { unit: string; packSize?: number }): UnitInfo[] {
   const units: UnitInfo[] = [{ name: 'Pièce', quantity: 1 }]
+  units.push({ name: 'Demi-douzaine', quantity: 6 })
   units.push({ name: 'Douzaine', quantity: 12 })
   if (product.packSize && product.packSize > 0) {
+    units.push({ name: 'Demi-paquet', quantity: product.packSize / 2 })
     units.push({ name: 'Paquet', quantity: product.packSize })
   }
   return units
@@ -144,7 +139,9 @@ export function getPurchaseUnits(product: { unit: string; packSize?: number }): 
 
 export function getUnitPrice(product: { sellingPrice: number; priceDozen?: number; pricePack?: number }, unitName: string): number {
   if (unitName === 'Douzaine' && product.priceDozen) return product.priceDozen
+  if (unitName === 'Demi-douzaine' && product.priceDozen) return product.priceDozen / 2
   if (unitName === 'Paquet' && product.pricePack) return product.pricePack
+  if (unitName === 'Demi-paquet' && product.pricePack) return product.pricePack / 2
   return product.sellingPrice
 }
 
@@ -163,8 +160,12 @@ export function formatUnitQty(qty: number, unitName: string): string {
   const u = unitName || 'Pièce'
   if (qty >= 0 && qty < 2 && u === 'Douzaine') return `${display} douzaine`
   if (qty >= 2 && u === 'Douzaine') return `${display} douzaines`
+  if (qty >= 0 && qty < 2 && u === 'Demi-douzaine') return `${display} demi-douzaine`
+  if (qty >= 2 && u === 'Demi-douzaine') return `${display} demi-douzaines`
   if (qty >= 0 && qty < 2 && u === 'Paquet') return `${display} paquet`
   if (qty >= 2 && u === 'Paquet') return `${display} paquets`
+  if (qty >= 0 && qty < 2 && u === 'Demi-paquet') return `${display} demi-paquet`
+  if (qty >= 2 && u === 'Demi-paquet') return `${display} demi-paquets`
   if (qty >= 0 && qty < 2) return `${display} pièce`
   if (qty >= 2) return `${display} pièces`
   return `${display} ${u.toLowerCase()}`

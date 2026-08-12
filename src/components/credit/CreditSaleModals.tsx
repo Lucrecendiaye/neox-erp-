@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal, Button } from '@/components/ui'
+import { Modal, Button, ProductSearch } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import db from '@/db'
@@ -84,8 +84,8 @@ export function CreditPaymentModal({ open, onClose, saleId, onPaid }: {
             <div>
               <p className="text-sm text-surface-500">Client: <span className="font-semibold text-surface-900">{credit.customerName}</span></p>
               <p className="text-xs text-surface-400 mt-0.5">
-                Solde restant: <span className="font-semibold text-amber-600">{formatCurrency(credit.balance)}</span>
-                {' · '}Payé: <span className="font-semibold text-emerald-600">{formatCurrency(credit.paid)}</span>
+                Solde restant: <span className="font-semibold text-amber-400">{formatCurrency(credit.balance)}</span>
+                {' · '}Payé: <span className="font-semibold text-emerald-400">{formatCurrency(credit.paid)}</span>
                 {' · '}Total: <span className="font-semibold text-surface-900">{formatCurrency(credit.amount)}</span>
               </p>
             </div>
@@ -103,19 +103,19 @@ export function CreditPaymentModal({ open, onClose, saleId, onPaid }: {
         <div>
           <label className="block text-sm font-medium text-surface-700 mb-1">Montant</label>
           <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)}
-            className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <div>
           <label className="block text-sm font-medium text-surface-700 mb-1">Mode de paiement</label>
           <select value={method} onChange={(e) => setMethod(e.target.value as PaymentMethod)}
-            className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+            className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
             {PAYMENT_METHODS.map(m => <option key={m.value} value={m.value}>{m.label}</option>)}
           </select>
         </div>
         <div>
           <label className="block text-sm font-medium text-surface-700 mb-1">Note (optionnelle)</label>
           <input type="text" value={note} onChange={(e) => setNote(e.target.value)}
-            className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
 
         {history.length > 0 && (
@@ -125,7 +125,7 @@ export function CreditPaymentModal({ open, onClose, saleId, onPaid }: {
               {history.map(p => (
                 <div key={p.id} className="flex items-center justify-between text-sm bg-surface-50 rounded-lg px-3 py-2">
                   <span className="text-surface-600">{formatDateTime(p.date)} · {METHOD_LABEL[p.method] || p.method}</span>
-                  <span className="font-semibold text-emerald-600">{formatCurrency(p.amount)}</span>
+                  <span className="font-semibold text-emerald-400">{formatCurrency(p.amount)}</span>
                 </div>
               ))}
             </div>
@@ -193,9 +193,14 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
   }
 
   function selectProduct(index: number, productId: string) {
+    const next = [...items]
+    if (!productId) {
+      next[index] = { ...items[index], productId: '', productName: '', unitPrice: 0, total: 0 }
+      setItems(next)
+      return
+    }
     const product = products.find((p: any) => p.id === productId)
     if (!product) return
-    const next = [...items]
     next[index] = {
       productId: product.id, productName: product.name,
       quantity: 1, unitPrice: product.sellingPrice, discount: 0,
@@ -234,9 +239,9 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
       <div className="p-6 space-y-6">
         {sale && (
           <div className="flex flex-wrap items-center gap-4 p-4 bg-surface-50 rounded-2xl border border-surface-200">
-            <div className="flex items-center gap-2 text-sm"><FileText className="w-4 h-4 text-primary-600" /><span className="font-semibold text-surface-900">{sale.invoiceNumber}</span></div>
-            <div className="flex items-center gap-2 text-sm text-surface-600"><span>Payé</span><span className="font-bold text-emerald-600">{formatCurrency(sale.paid)}</span></div>
-            <div className="flex items-center gap-2 text-sm text-surface-600"><span>Restant</span><span className="font-bold text-amber-600">{formatCurrency(restant)}</span></div>
+            <div className="flex items-center gap-2 text-sm"><FileText className="w-4 h-4 text-primary-400" /><span className="font-semibold text-surface-900">{sale.invoiceNumber}</span></div>
+            <div className="flex items-center gap-2 text-sm text-surface-600"><span>Payé</span><span className="font-bold text-emerald-400">{formatCurrency(sale.paid)}</span></div>
+            <div className="flex items-center gap-2 text-sm text-surface-600"><span>Restant</span><span className="font-bold text-amber-400">{formatCurrency(restant)}</span></div>
           </div>
         )}
 
@@ -244,12 +249,12 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1.5">Client</label>
             <input type="text" value={customerName} onChange={(e) => setCustomerName(e.target.value)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1.5">Mode de paiement</label>
             <select value={paymentMethod} onChange={(e) => setPaymentMethod(e.target.value as PaymentMethod)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option value="cash">Espèces</option>
               <option value="mobile">Mobile Money</option>
               <option value="card">Carte</option>
@@ -278,19 +283,19 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
             <tbody>
               {items.map((item, idx) => (
                 <tr key={idx} className="border-b border-surface-100">
-                  <td className="px-3 py-2">
-                    <select value={item.productId} onChange={(e) => selectProduct(idx, e.target.value)}
-                      className="w-full rounded-lg border border-surface-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                      <option value="">— Sélectionner —</option>
-                      {(products as any[]).map((p: any) => <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.sellingPrice)}</option>)}
-                    </select>
+                  <td className="px-3 py-2 min-w-[220px]">
+                    <ProductSearch
+                      products={products as any[]}
+                      value={item.productId}
+                      onSelect={(id) => selectProduct(idx, id)}
+                    />
                   </td>
                   <td className="px-3 py-2"><input type="number" value={item.quantity} min={1} onChange={(e) => updateItem(idx, 'quantity', Math.max(1, +e.target.value))} className="w-20 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-center" /></td>
                   <td className="px-3 py-2"><input type="number" value={item.unitPrice} min={0} onChange={(e) => updateItem(idx, 'unitPrice', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
                   <td className="px-3 py-2"><input type="number" value={item.discount} min={0} onChange={(e) => updateItem(idx, 'discount', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
                   <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
                   <td className="px-3 py-2 text-center">
-                    {items.length > 1 && <button onClick={() => removeItem(idx)} className="p-1 rounded-lg hover:bg-red-50 text-surface-400 hover:text-red-600"><X className="w-4 h-4" /></button>}
+                    {items.length > 1 && <button onClick={() => removeItem(idx)} className="p-1 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400"><X className="w-4 h-4" /></button>}
                   </td>
                 </tr>
               ))}

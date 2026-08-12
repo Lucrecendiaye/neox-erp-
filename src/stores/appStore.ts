@@ -101,6 +101,11 @@ export const useAppStore = create<AppState>((set, get) => ({
       await db.settings.put(settings, 'default')
     }
 
+    if (settings && !settings.logo && currentBiz?.logo) {
+      settings.logo = currentBiz.logo
+      await db.settings.put(settings, 'default')
+    }
+
     set({
       initialized: true,
       settings,

@@ -5,6 +5,7 @@ import { useLiveQuery } from '@/hooks/useLiveQuery'
 
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
+import { usePermission } from '@/hooks/usePermission'
 
 import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
@@ -17,17 +18,18 @@ import { toast } from '@/lib/toast'
 import { printBarcodeLabels } from '@/lib/barcodePrint'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import { softDelete } from '@/lib/softDelete'
-import { syncDeleteObject } from '@/lib/realtime'
+import { syncDeleteObject, syncWriteObject } from '@/lib/realtime'
+import { processTransfer } from '@/engine/operations'
+import type { Transfer } from '@/engine/types'
 import {
   Search, Plus, Package, Edit2, Trash2, ScanLine, Printer,
   ChevronDown, Filter, Layers, Tags, Download, Eye,
   History, PackageOpen, AlertTriangle, TrendingUp,
   DollarSign, BarChart3, Archive, EyeOff, Clock,
-  ArrowUpDown, Settings
+  ArrowUpDown, Settings, ArrowRightLeft
 } from 'lucide-react'
 
 type ProductFilter = 'all' | 'low_stock' | 'out_of_stock' | 'in_stock' | 'hidden' | 'archived' | 'top_selling' | 'least_selling' | 'recent'
-type UserRole = 'admin' | 'manager' | 'staff' | 'viewer'
 
 const FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
   { value: 'all', label: 'Tous les produits' },
@@ -43,7 +45,7 @@ const FILTER_OPTIONS: { value: ProductFilter; label: string }[] = [
 
 export default function ProductsPage() {
   const navigate = useNavigate()
-  const currentUser = (useAppStore(s => s.user?.role) || 'admin') as UserRole
+  const { can } = usePermission()
   const userId = useAppStore(s => s.user?.id || '')
   const businessId = useBusinessId()
 
@@ -77,7 +79,8 @@ export default function ProductsPage() {
     return count
   }, [sales])
 
-  function getStock(p: Product) {
+  function getStock(p: Product | null | undefined) {
+    if (!p) return undefined
     return stocksByProduct.get(p.id)
   }
 
@@ -92,11 +95,13 @@ export default function ProductsPage() {
     name: string; description: string; barcode: string; reference: string; categoryId: string;
     brand: string; unit: 'piece' | 'dozen' | 'pack'; purchasePrice: number; sellingPrice: number;
     wholesalePrice: number; priceDozen: number; pricePack: number; packSize: number;
+    packCost: number; dozenCost: number;
     taxRate: number; stockAlert: number; location: string;
   }>({
     name: '', description: '', barcode: '', reference: '', categoryId: '',
     brand: '', unit: 'piece', purchasePrice: 0, sellingPrice: 0,
     wholesalePrice: 0, priceDozen: 0, pricePack: 0, packSize: 0,
+    packCost: 0, dozenCost: 0,
     taxRate: 0, stockAlert: 0, location: '',
   })
   const [photos, setPhotos] = useState<string[]>([])
@@ -110,7 +115,16 @@ export default function ProductsPage() {
   const [pinModalOpen, setPinModalOpen] = useState(false)
   const [pinAction, setPinAction] = useState<{ type: string; payload: any } | null>(null)
 
+  const allLocations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const [transferModal, setTransferModal] = useState(false)
+  const [transferProduct, setTransferProduct] = useState<Product | null>(null)
+  const [transferTarget, setTransferTarget] = useState('')
+  const [transferQty, setTransferQty] = useState(1)
+
+  const transferDestinations = allLocations.filter(l => l.id !== shopId && l.isActive)
+
   const computedPackSize = packUnit === 'dozen' ? packQty * 12 : packQty
+  const piecesPerPack = form.unit === 'pack' ? (form.packSize || computedPackSize || 0) : 0
 
   async function handlePinConfirm() {
     if (!pinAction) return
@@ -222,7 +236,7 @@ export default function ProductsPage() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', description: '', barcode: '', reference: '', categoryId: '', brand: '', unit: 'piece', purchasePrice: 0, sellingPrice: 0, wholesalePrice: 0, priceDozen: 0, pricePack: 0, packSize: 0, taxRate: 0, stockAlert: 0, location: '' })
+    setForm({ name: '', description: '', barcode: '', reference: '', categoryId: '', brand: '', unit: 'piece', purchasePrice: 0, sellingPrice: 0, wholesalePrice: 0, priceDozen: 0, pricePack: 0, packSize: 0, packCost: 0, dozenCost: 0, taxRate: 0, stockAlert: 0, location: '' })
     setPhotos([])
     setInitialStock(0)
     setPackUnit('piece')
@@ -241,10 +255,12 @@ export default function ProductsPage() {
       sellingPrice: product.sellingPrice, wholesalePrice: product.wholesalePrice || 0,
       priceDozen: product.priceDozen || 0, pricePack: product.pricePack || 0,
       packSize: product.packSize || 0,
+      packCost: product.packSize ? Math.round((product.purchasePrice * product.packSize) * 100) / 100 : 0,
+      dozenCost: Math.round(product.purchasePrice * 12 * 100) / 100,
       taxRate: product.taxRate, stockAlert: product.stockAlert || 0,
       location: product.location || '',
     })
-    setInitialStock(0)
+    setInitialStock(getStock(product)?.quantity || 0)
     if (product.packSize) {
       setPackUnit(product.packSize % 12 === 0 ? 'dozen' : 'piece')
       setPackQty(product.packSize % 12 === 0 ? product.packSize / 12 : product.packSize)
@@ -262,6 +278,32 @@ export default function ProductsPage() {
       if (editing) {
         const data = { ...form, photos, packSize, margin: calculateMargin(form.purchasePrice, form.sellingPrice), updatedAt: now }
         await db.products.update(editing.id, data)
+        try { await syncWriteObject('products', { id: editing.id, ...data }) } catch {}
+        const currentStock = getStock(editing)?.quantity || 0
+        if (initialStock >= 0 && initialStock !== currentStock) {
+          const diff = initialStock - currentStock
+          const movement = {
+            id: generateId(), businessId, locationId: shopId,
+            productId: editing.id, type: diff > 0 ? 'in' : 'out' as any,
+            quantity: Math.abs(diff), unitPrice: 0, reference: 'adjustment',
+            note: 'Ajustement depuis fiche produit', createdAt: now, userId,
+          }
+          await db.stockMovements.add(movement as any)
+          try { await syncWriteObject('stockMovements', movement) } catch {}
+          const existing = await db.productStocks.where({ productId: editing.id, locationId: shopId }).first()
+          if (existing) {
+            await db.productStocks.update(existing.id, { quantity: initialStock, updatedAt: now })
+            try { await syncWriteObject('productStocks', { ...existing, quantity: initialStock, updatedAt: now }) } catch {}
+          } else {
+            const newStock = {
+              id: generateId(), businessId, productId: editing.id,
+              locationId: shopId, quantity: initialStock, stockAlert: form.stockAlert || 0,
+              stockMin: 0, stockMax: 0, updatedAt: now,
+            }
+            await db.productStocks.add(newStock)
+            try { await syncWriteObject('productStocks', newStock) } catch {}
+          }
+        }
         toast('Produit mis à jour', 'success')
       } else {
         const id = generateId()
@@ -272,6 +314,7 @@ export default function ProductsPage() {
           status: 'active' as const, createdAt: now, updatedAt: now,
         }
         await db.products.add(product)
+        try { await syncWriteObject('products', product) } catch {}
         if (initialStock > 0) {
           const movement = {
             id: generateId(), businessId, locationId: shopId,
@@ -324,7 +367,9 @@ export default function ProductsPage() {
 
   async function handleStockAdjust() {
     const now = new Date().toISOString()
-    const st = getStock(products.find(p => p.id === stockAdjust.productId)!)
+    const product = products.find(p => p.id === stockAdjust.productId)
+    if (!product) { toast('Produit introuvable', 'error'); return }
+    const st = getStock(product)
     const diff = stockAdjust.quantity - (st?.quantity || 0)
     if (diff === 0) { toast('Aucun changement', 'warning'); return }
     const movement = {
@@ -348,6 +393,29 @@ export default function ProductsPage() {
     setStockModalOpen(false)
   }
 
+  function openTransfer(product: Product) {
+    setTransferProduct(product)
+    setTransferTarget('')
+    setTransferQty(1)
+    setTransferModal(true)
+  }
+
+  async function handleTransfer() {
+    if (!transferProduct || !transferTarget) { toast('Choisissez une destination', 'warning'); return }
+    if (transferQty <= 0) { toast('Quantité invalide', 'warning'); return }
+    const available = getStock(transferProduct)?.quantity || 0
+    if (transferQty > available) { toast('Quantité insuffisante en stock', 'error'); return }
+    const now = new Date().toISOString()
+    const transfer: Transfer = {
+      id: generateId(), businessId, fromLocationId: shopId, toLocationId: transferTarget,
+      items: [{ productId: transferProduct.id, productName: transferProduct.name, quantity: transferQty }],
+      status: 'pending', createdAt: now, userId,
+    }
+    await processTransfer(transfer)
+    toast('Transfert créé', 'success')
+    setTransferModal(false)
+  }
+
   async function handleSaveCategory() {
     const now = new Date().toISOString()
     if (catEdit) {
@@ -367,12 +435,6 @@ export default function ProductsPage() {
     if (m >= 20) return 'text-emerald-500'
     if (m >= 10) return 'text-amber-500'
     return 'text-red-500'
-  }
-
-  function can(action: string) {
-    if (currentUser === 'admin') return true
-    if (currentUser === 'manager') return action !== 'delete'
-    return false
   }
 
   return (
@@ -413,7 +475,7 @@ export default function ProductsPage() {
             <p className="text-xs text-surface-500">Stock faible</p>
             <AlertTriangle className="w-4 h-4 text-amber-500" />
           </div>
-          <p className={cn('text-lg font-bold', stats.lowStockCount > 0 ? 'text-amber-600' : 'text-surface-900')}>
+          <p className={cn('text-lg font-bold', stats.lowStockCount > 0 ? 'text-amber-400' : 'text-surface-900')}>
             {stats.lowStockCount}
           </p>
         </Card>
@@ -434,14 +496,14 @@ export default function ProductsPage() {
             <input
               type="text" placeholder="Nom, code-barres, SKU, marque..."
               value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
           <div className="relative">
             <select
               value={filter}
               onChange={(e) => setFilter(e.target.value as ProductFilter)}
-              className="appearance-none rounded-xl border border-surface-300 bg-white px-3 py-2.5 pr-8 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="appearance-none rounded-xl border border-surface-300 bg-surface-100 px-3 py-2.5 pr-8 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
             >
               {FILTER_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
@@ -450,7 +512,7 @@ export default function ProductsPage() {
           <select
             value={categoryId}
             onChange={(e) => setCategoryId(e.target.value)}
-            className="rounded-xl border border-surface-300 bg-white px-3 py-2.5 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="rounded-xl border border-surface-300 bg-surface-100 px-3 py-2.5 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
           >
             <option value="all">Toutes catégories</option>
             {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
@@ -489,78 +551,71 @@ export default function ProductsPage() {
           const soldQty = productSales.get(p.id) || 0
 
           return (
-            <div key={p.id} className="bg-white rounded-[18px] border border-surface-200 shadow-sm hover:shadow-md hover:border-primary-200 transition-all group flex flex-col w-full max-w-[310px] mx-auto min-h-[730px] overflow-hidden">
+            <div key={p.id} className="bg-surface-100 rounded-2xl border border-surface-200 shadow-sm hover:shadow-md hover:border-primary-300 transition-all flex flex-col overflow-hidden">
               {/* Image */}
-              <div className="relative h-[330px] shrink-0 bg-surface-50 flex items-center justify-center overflow-hidden">
+              <div className="relative h-40 lg:h-48 shrink-0 bg-surface-50 flex items-center justify-center overflow-hidden">
                 {p.photos?.[0] ? (
-                  <img src={p.photos[0]} alt={p.name} className="w-full h-full object-contain" />
+                  <img loading="lazy" src={p.photos[0]} alt={p.name} className="w-full h-full object-contain" />
                 ) : (
-                  <Package className="w-16 h-16 text-surface-300" />
+                  <Package className="w-12 h-12 text-surface-500" />
                 )}
                 {isOut && (
-                  <span className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-red-500 text-[11px] font-semibold text-white shadow-sm">Rupture</span>
+                  <span className="absolute top-2 left-2 px-2 py-1 rounded-lg bg-red-500 text-[11px] font-semibold text-white shadow-sm">Rupture</span>
                 )}
                 {isLow && !isOut && (
-                  <span className="absolute top-3 left-3 px-2.5 py-1 rounded-md bg-amber-500 text-[11px] font-semibold text-white shadow-sm">Stock faible</span>
+                  <span className="absolute top-2 left-2 px-2 py-1 rounded-lg bg-amber-500 text-[11px] font-semibold text-white shadow-sm">Stock faible</span>
                 )}
                 {p.status === 'inactive' && (
-                  <span className="absolute top-3 right-3 px-2.5 py-1 rounded-md bg-surface-500 text-[11px] font-semibold text-white shadow-sm">Masqué</span>
+                  <span className="absolute top-2 right-2 px-2 py-1 rounded-lg bg-surface-500 text-[11px] font-semibold text-white shadow-sm">Masqué</span>
                 )}
               </div>
 
               {/* Informations */}
-              <div className="p-4 flex-1 flex flex-col gap-3">
+              <div className="p-3.5 flex-1 flex flex-col gap-2">
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-surface-900 truncate leading-tight">{p.name}</p>
-                  {catName && <p className="text-[11px] text-surface-400 truncate mt-0.5">{catName}</p>}
+                  <p className="text-sm font-semibold text-surface-900 leading-snug line-clamp-2">{p.name}</p>
+                  {catName && <p className="text-[11px] text-surface-500 truncate mt-0.5">{catName}</p>}
                 </div>
 
-                <div className="flex-1 grid grid-cols-2 gap-y-2 content-start text-xs mt-1">
-                  <span className="text-surface-500">Prix détail</span>
-                  <span className="text-surface-900 font-bold text-right">{formatCurrency(p.sellingPrice)}</span>
-                  <span className="text-surface-500">Prix gros</span>
-                  <span className="text-surface-900 font-semibold text-right">{(p.wholesalePrice || 0) > 0 ? formatCurrency(p.wholesalePrice!) : '—'}</span>
-                  <span className="text-surface-500">Stock</span>
-                  <span className={cn('font-semibold text-right', isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-success')}>
-                    {qty}
-                    <span className="text-surface-400 font-normal ml-0.5">pcs</span>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="flex-1 text-surface-600">
+                    <span className="text-[10px] uppercase text-surface-500 block font-medium">Prix détail</span>
+                    <span className="font-extrabold text-primary-500 text-base">{formatCurrency(p.sellingPrice)}</span>
                   </span>
-                  <span className="text-surface-500">Seuil</span>
-                  <span className="text-surface-900 font-medium text-right">{alert}</span>
-                  <span className="text-surface-500">Coût total</span>
-                  <span className="text-surface-900 font-medium text-right">{formatCurrency(totalCost)}</span>
-                  <span className="text-surface-500">Marge</span>
-                  <span className={cn('font-semibold text-right', marginColor(marginPct))}>{marginPct.toFixed(1)}%</span>
+                  <span className="flex-1 text-surface-600">
+                    <span className="text-[10px] uppercase text-surface-500 block font-medium">Prix gros</span>
+                    <span className="font-bold text-surface-900">{(p.wholesalePrice || 0) > 0 ? formatCurrency(p.wholesalePrice!) : '—'}</span>
+                  </span>
+                  <span className="text-right">
+                    <span className="text-[10px] uppercase text-surface-500 block font-medium">Stock</span>
+                    <span className={cn('font-extrabold', isOut ? 'text-red-500' : isLow ? 'text-amber-500' : 'text-success')}>{qty} pcs</span>
+                  </span>
                 </div>
               </div>
 
-              {/* Actions */}
-              <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-surface-100 shrink-0">
-                {can('edit') && (
-                  <button onClick={() => openEdit(p)} className="w-9 h-9 inline-flex items-center justify-center rounded-xl hover:bg-surface-100 text-surface-400 hover:text-primary-600 transition-colors" title="Modifier">
-                    <Edit2 className="w-4 h-4" />
+              {/* Actions rapides */}
+              <div className="grid grid-cols-3 gap-2 px-3.5 pb-3.5 shrink-0">
+                {can('products', 'edit') && (
+                  <button onClick={() => openEdit(p)} className="flex items-center justify-center gap-1.5 py-3 rounded-xl bg-surface-50 border border-surface-200 text-surface-700 text-xs font-semibold active:scale-[0.97] transition-all min-h-[44px]">
+                    <Edit2 className="w-4 h-4" /> Modifier
                   </button>
                 )}
-                {can('view') && (
-                  <button onClick={() => navigate(`/products/${p.id}`)} className="w-9 h-9 inline-flex items-center justify-center rounded-xl hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="Fiche détaillée">
-                    <Eye className="w-4 h-4" />
+                {can('products', 'edit') && (
+                  <button onClick={() => openStockAdjust(p)} className="flex items-center justify-center gap-1.5 py-3 rounded-xl bg-amber-500/10 border border-amber-500/30 text-amber-500 text-xs font-semibold active:scale-[0.97] transition-all min-h-[44px]">
+                    <PackageOpen className="w-4 h-4" /> Ajuster
                   </button>
                 )}
-                {can('edit') && (
-                  <button onClick={() => openStockAdjust(p)} className="w-9 h-9 inline-flex items-center justify-center rounded-xl hover:bg-surface-100 text-surface-400 hover:text-amber-600 transition-colors" title="Ajuster le stock">
-                    <PackageOpen className="w-4 h-4" />
-                  </button>
-                )}
-                <button onClick={() => navigate(`/products/${p.id}`)} className="w-9 h-9 inline-flex items-center justify-center rounded-xl hover:bg-surface-100 text-surface-400 hover:text-purple-600 transition-colors" title="Historique">
-                  <History className="w-4 h-4" />
-                </button>
-                {can('delete') && (
-                  <button onClick={() => handleDelete(p.id)} className="w-9 h-9 inline-flex items-center justify-center rounded-xl hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors" title="Supprimer">
-                    <Trash2 className="w-4 h-4" />
+                {can('products', 'transfer') && (
+                  <button onClick={() => openTransfer(p)} className="flex items-center justify-center gap-1.5 py-3 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold active:scale-[0.97] transition-all min-h-[44px]">
+                    <ArrowRightLeft className="w-4 h-4" /> Transférer
                   </button>
                 )}
               </div>
-              <div className="text-center pb-2 text-[10px] text-surface-400 shrink-0">{p.barcode || p.reference || '—'}</div>
+              {can('products', 'view') && (
+                <button onClick={() => navigate(`/products/${p.id}`)} className="py-2 border-t border-surface-100 text-center text-xs font-medium text-primary-400 hover:bg-primary-50 transition-colors shrink-0">
+                  Fiche produit & historique →
+                </button>
+              )}
             </div>
           )
         })}
@@ -589,7 +644,20 @@ export default function ProductsPage() {
               <Select
                 label="Unité"
                 value={form.unit}
-                onChange={(e) => setForm({ ...form, unit: e.target.value as 'piece' | 'dozen' | 'pack' })}
+                onChange={(e) => {
+                  const unit = e.target.value as 'piece' | 'dozen' | 'pack'
+                  setForm(prev => {
+                    const next = { ...prev, unit }
+                    if (unit === 'pack' && prev.purchasePrice > 0) {
+                      const size = prev.packSize || computedPackSize
+                      if (size > 0) next.packCost = Math.round(prev.purchasePrice * size * 100) / 100
+                    }
+                    if (unit === 'dozen' && prev.purchasePrice > 0) {
+                      next.dozenCost = Math.round(prev.purchasePrice * 12 * 100) / 100
+                    }
+                    return next
+                  })
+                }}
                 options={[
                   { value: 'piece', label: 'Pièce' },
                   { value: 'dozen', label: 'Douzaine' },
@@ -604,7 +672,13 @@ export default function ProductsPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="radio" id="comp-piece" name="packComp" checked={packUnit === 'piece'}
-                      onChange={() => setPackUnit('piece')}
+                      onChange={() => {
+                        setPackUnit('piece')
+                        if (form.packCost > 0) {
+                          const size = form.packSize || packQty
+                          if (size > 0) setForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / size) * 100) / 100 }))
+                        }
+                      }}
                       className="w-4 h-4 text-primary-500"
                     />
                     <label htmlFor="comp-piece" className="text-sm text-surface-700">Pièces</label>
@@ -612,7 +686,13 @@ export default function ProductsPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="radio" id="comp-dozen" name="packComp" checked={packUnit === 'dozen'}
-                      onChange={() => setPackUnit('dozen')}
+                      onChange={() => {
+                        setPackUnit('dozen')
+                        if (form.packCost > 0) {
+                          const size = form.packSize || packQty * 12
+                          if (size > 0) setForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / size) * 100) / 100 }))
+                        }
+                      }}
                       className="w-4 h-4 text-primary-500"
                     />
                     <label htmlFor="comp-dozen" className="text-sm text-surface-700">Douzaines</label>
@@ -623,7 +703,13 @@ export default function ProductsPage() {
                   <input
                     type="number" min="1"
                     value={packQty || ''}
-                    onChange={(e) => setPackQty(+e.target.value)}
+                    onChange={(e) => {
+                      setPackQty(+e.target.value)
+                      if (form.packCost > 0) {
+                        const size = form.packSize || (packUnit === 'dozen' ? +e.target.value * 12 : +e.target.value)
+                        if (size > 0) setForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / size) * 100) / 100 }))
+                      }
+                    }}
                     className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right"
                   />
                   <span className="text-sm text-surface-500">{packUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
@@ -650,10 +736,29 @@ export default function ProductsPage() {
           <div>
             <h3 className="modal-section-title">Prix</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input label="Prix d'achat" type="number" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: +e.target.value })} />
+              {form.unit === 'piece' && (
+                <Input label="Prix de revient (pièce)" type="number" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: +e.target.value })} />
+              )}
+              {form.unit === 'pack' && (
+                <Input label={`Prix de revient (paquet de ${piecesPerPack || '—'} pcs)`} type="number" value={form.packCost} onChange={(e) => {
+                  const packCost = +e.target.value
+                  setForm(f => ({ ...f, packCost, purchasePrice: piecesPerPack > 0 && packCost > 0 ? Math.round((packCost / piecesPerPack) * 100) / 100 : 0 }))
+                }} />
+              )}
+              {form.unit === 'dozen' && (
+                <Input label="Prix de revient (douzaine)" type="number" value={form.dozenCost} onChange={(e) => {
+                  const dozenCost = +e.target.value
+                  setForm(f => ({ ...f, dozenCost, purchasePrice: dozenCost > 0 ? Math.round((dozenCost / 12) * 100) / 100 : 0 }))
+                }} />
+              )}
               <Input label="Prix de vente (pièce)" type="number" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: +e.target.value })} />
               <Input label="Prix de gros" type="number" value={form.wholesalePrice} onChange={(e) => setForm({ ...form, wholesalePrice: +e.target.value })} />
             </div>
+            {form.unit !== 'piece' && form.purchasePrice > 0 && (
+              <p className="text-sm text-surface-500 mt-3">
+                Coût unitaire : <span className="font-semibold text-surface-700">{formatCurrency(form.purchasePrice)} / pièce</span>
+              </p>
+            )}
             {form.purchasePrice > 0 && (
               <p className="text-sm text-surface-500 mt-3">
                 Marge : <span className="font-semibold text-success">{calculateMargin(form.purchasePrice, form.sellingPrice).toFixed(1)}%</span>
@@ -671,10 +776,11 @@ export default function ProductsPage() {
               <Input label="TVA (%)" type="number" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: +e.target.value })} />
               <Input label="Alerte stock" type="number" value={form.stockAlert} onChange={(e) => setForm({ ...form, stockAlert: +e.target.value })} />
               <Input label="Emplacement" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
-              {!editing && (
-                <Input label="Stock initial" type="number" value={initialStock} onChange={(e) => setInitialStock(+e.target.value)} />
-              )}
+              <Input label={editing ? 'Quantité en stock' : 'Stock initial'} type="number" value={initialStock} onChange={(e) => setInitialStock(+e.target.value)} />
             </div>
+            {editing && (
+              <p className="text-xs text-surface-500 mt-2">La différence par rapport au stock actuel sera comptabilisée automatiquement.</p>
+            )}
           </div>
         </div>
         <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
@@ -695,7 +801,7 @@ export default function ProductsPage() {
                 <div className="flex gap-2">
                   <button
                     onClick={() => { setCatEdit(c); setCatForm({ name: c.name, description: c.description || '' }) }}
-                    className="text-xs text-primary-600 hover:underline"
+                    className="text-xs text-primary-400 hover:underline"
                   >
                     Modifier
                   </button>
@@ -728,6 +834,41 @@ export default function ProductsPage() {
         <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
           <Button variant="ghost" onClick={() => setStockModalOpen(false)}>Annuler</Button>
           <Button onClick={handleStockAdjust}>Valider</Button>
+        </div>
+      </Modal>
+
+      {/* Transfer Modal */}
+      <Modal open={transferModal} onClose={() => setTransferModal(false)} title={`Transférer - ${transferProduct?.name || ''}`} size="sm">
+        <div className="p-6 space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-surface-700 mb-1">Vers</label>
+            <select
+              value={transferTarget}
+              onChange={(e) => setTransferTarget(e.target.value)}
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            >
+              <option value="">Sélectionner un dépôt...</option>
+              {transferDestinations.map(l => (
+                <option key={l.id} value={l.id}>{l.name}</option>
+              ))}
+            </select>
+            {transferDestinations.length === 0 && (
+              <p className="text-xs text-surface-400 mt-1">Aucun autre dépôt disponible. Créez-en un dans le module Dépôts.</p>
+            )}
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-surface-700 mb-1">Quantité (pièces)</label>
+            <input
+              type="number" min="1" value={transferQty}
+              onChange={(e) => setTransferQty(Math.max(1, Number(e.target.value) || 1))}
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            />
+            <p className="text-xs text-surface-500 mt-1">Disponible : {getStock(transferProduct)?.quantity || 0} pcs</p>
+          </div>
+        </div>
+        <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
+          <Button variant="ghost" onClick={() => setTransferModal(false)}>Annuler</Button>
+          <Button onClick={handleTransfer} disabled={!transferTarget || transferQty <= 0 || (transferQty > (getStock(transferProduct)?.quantity || 0))}>Transférer</Button>
         </div>
       </Modal>
 

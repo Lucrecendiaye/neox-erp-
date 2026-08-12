@@ -104,7 +104,7 @@ export default function SupplierPaymentsPage() {
           <div className="relative w-60">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
             <input type="text" placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              className="w-full pl-10 pr-4 py-2 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
         </CardHeader>
         <div className="space-y-1">
@@ -113,7 +113,7 @@ export default function SupplierPaymentsPage() {
             return (
               <div key={p.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-surface-50 transition-colors">
                 <div className="flex items-center gap-3 min-w-0">
-                  <div className={`p-2 rounded-lg ${remaining > 0 ? 'bg-amber-50 text-amber-600' : 'bg-emerald-50 text-emerald-600'}`}>
+                  <div className={`p-2 rounded-lg ${remaining > 0 ? 'bg-amber-500/15 text-amber-400' : 'bg-emerald-500/15 text-emerald-400'}`}>
                     {remaining > 0 ? <Clock className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                   </div>
                   <div className="min-w-0">

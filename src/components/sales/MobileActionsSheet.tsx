@@ -45,7 +45,7 @@ export default function MobileActionsSheet({
       <div
         ref={sheetRef}
         onClick={(e) => e.stopPropagation()}
-        className="absolute bottom-0 left-0 right-0 bg-white rounded-t-2xl shadow-2xl pb-safe-bottom animate-slide-up"
+        className="absolute bottom-0 left-0 right-0 bg-surface-100 rounded-t-2xl shadow-2xl pb-safe-bottom animate-slide-up"
       >
         {actions.map((a, i) => (
           <button
@@ -53,7 +53,7 @@ export default function MobileActionsSheet({
             onClick={() => { a.onClick(); onClose() }}
             className={cn(
               'w-full flex items-center gap-4 px-5 py-4 text-sm font-medium border-b border-surface-100 last:border-b-0 active:bg-surface-50 transition-colors',
-              a.variant === 'danger' ? 'text-red-600' : 'text-surface-800'
+              a.variant === 'danger' ? 'text-red-400' : 'text-surface-800'
             )}
           >
             <span className="w-5 h-5 shrink-0">{a.icon}</span>

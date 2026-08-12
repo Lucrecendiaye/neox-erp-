@@ -41,7 +41,7 @@ export function Tooltip({ content, children, position = 'top', className }: Tool
       {children}
       {show && (
         <div className={cn('absolute z-50 pointer-events-none animate-fade-in', positions[position])}>
-          <div className="bg-surface-800 text-white text-xs rounded-lg px-2.5 py-1.5 shadow-lg whitespace-nowrap max-w-xs">
+          <div className="bg-surface-950 text-white text-xs rounded-lg px-2.5 py-1.5 shadow-lg whitespace-nowrap max-w-xs">
             {content}
           </div>
           <div className={cn('absolute w-0 h-0', arrows[position])} />

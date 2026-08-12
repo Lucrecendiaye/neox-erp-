@@ -127,7 +127,7 @@ export default function AttendancePage() {
             <input
               type="date" value={date}
               onChange={(e) => setDate(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
           </div>
           <Button variant="outline" onClick={() => setDate(today)}>
@@ -162,7 +162,7 @@ export default function AttendancePage() {
                   <tr key={e.id} className="hover:bg-surface-50 transition-colors">
                     <td data-label="Employé" className="px-6 py-4">
                       <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 overflow-hidden">
+                        <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400 overflow-hidden">
                           {e.photo ? <img src={e.photo} alt="" className="w-full h-full object-cover" /> : <Users className="w-5 h-5" />}
                         </div>
                         <div>
@@ -191,7 +191,7 @@ export default function AttendancePage() {
                             onClick={() => setAttendance(e.id, s)}
                             className={`p-2 rounded-lg transition-colors ${
                               att?.status === s
-                                ? 'bg-primary-100 text-primary-700'
+                                ? 'bg-primary-100 text-primary-300'
                                 : 'text-surface-400 hover:bg-surface-100'
                             }`}
                             title={statusLabels[s]}

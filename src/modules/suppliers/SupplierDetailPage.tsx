@@ -12,6 +12,7 @@ import { useBusinessId } from '@/hooks/useBusinessId'
 import { useAppStore } from '@/stores/appStore'
 import { exportSupplierFichePDF, printSupplierFiche } from '@/lib/pdf'
 import { openEmail, openWhatsAppLink, shareViaWeChat } from '@/lib/share'
+import SupplierFicheComptable from '@/components/suppliers/SupplierFicheComptable'
 import type { CompanySettings } from '@/types'
 
 export default function SupplierDetailPage() {
@@ -26,6 +27,7 @@ export default function SupplierDetailPage() {
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const settings = useLiveQuery(() => db.settings.get('default'), [])
   const purchases = useLiveQuery(() => db.purchases.where('supplierId').equals(supplierId!).toArray(), [supplierId])
+  const supplierSales = useLiveQuery(() => db.sales.where('supplierId').equals(supplierId!).filter(s => s.status !== 'cancelled').toArray(), [supplierId])
   const [invModal, setInvModal] = useState(false)
   const [payModal, setPayModal] = useState<SupplierInvoice | null>(null)
   const [compModal, setCompModal] = useState(false)
@@ -62,6 +64,12 @@ export default function SupplierDetailPage() {
         entries.push({ date: p.createdAt, label: `Paiement achat #${p.id}`, reference: p.id, debit: p.paid, credit: 0 })
       }
     })
+    ;(supplierSales || []).forEach(s => {
+      entries.push({ date: s.createdAt, label: `Vente au fournisseur ${s.invoiceNumber}`, reference: s.invoiceNumber, debit: s.total, credit: 0 })
+      if ((s.paid || 0) > 0) {
+        entries.push({ date: s.createdAt, label: `Paiement vente ${s.invoiceNumber}`, reference: s.invoiceNumber, debit: 0, credit: s.paid })
+      }
+    })
     ;(compensations || []).forEach(c => {
       if (c.status === 'cancelled' || !c.settledAmount) return
       const isDebit = c.direction === 'debt_to_goods'
@@ -85,7 +93,7 @@ export default function SupplierDetailPage() {
       balance: running,
     }
     return { rows, totals }
-  }, [invoices, purchases, compensations])
+  }, [invoices, purchases, compensations, supplierSales])
 
   const stats = useMemo(() => {
     const totalInvoiced = (invoices?.reduce((s, i) => s + i.total, 0) || 0) + (purchases?.reduce((s, p) => s + (p.status === 'cancelled' || p.status === 'returned' ? 0 : p.total), 0) || 0)
@@ -362,46 +370,21 @@ export default function SupplierDetailPage() {
             <Button variant="outline" size="sm" onClick={handleFicheWeChat}><MessageCircle className="w-4 h-4" /> WeChat</Button>
           </div>
         </CardHeader>
-        <div className="overflow-x-auto responsive-table">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-surface-200 bg-surface-50">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Libellé</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Référence</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Débit</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Crédit</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Solde</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-100">
-              {fiche.rows.map((r, idx) => (
-                <tr key={idx} className="hover:bg-surface-50">
-                  <td data-label="Date" className="px-4 py-3 text-sm text-surface-500">{formatDate(r.date)}</td>
-                  <td data-label="Libellé" className="px-4 py-3 text-sm font-medium">{r.label}</td>
-                  <td data-label="Référence" className="px-4 py-3 text-sm text-surface-400">{r.reference || '—'}</td>
-                  <td data-label="Débit" className="px-4 py-3 text-sm text-right">{r.debit > 0 ? formatCurrency(r.debit) : '—'}</td>
-                  <td data-label="Crédit" className="px-4 py-3 text-sm text-right">{r.credit > 0 ? formatCurrency(r.credit) : '—'}</td>
-                  <td data-label="Solde" className="px-4 py-3 text-sm text-right font-semibold">{formatCurrency(r.balance)}</td>
-                </tr>
-              ))}
-              {fiche.rows.length === 0 && (
-                <tr><td colSpan={6} className="px-4 py-8 text-center text-surface-400">Aucune opération pour ce fournisseur</td></tr>
-              )}
-            </tbody>
-            {fiche.rows.length > 0 && (
-              <tfoot>
-                <tr className="bg-surface-50 font-semibold">
-                  <td colSpan={2} className="px-4 py-3 text-sm">TOTAL</td>
-                  <td className="px-4 py-3"></td>
-                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(fiche.totals.debit)}</td>
-                  <td className="px-4 py-3 text-right text-sm">{formatCurrency(fiche.totals.credit)}</td>
-                  <td className="px-4 py-3 text-right text-sm font-bold">{formatCurrency(fiche.totals.balance)}</td>
-                </tr>
-              </tfoot>
-            )}
-          </table>
-        </div>
+        <SupplierFicheComptable
+          rows={fiche.rows}
+          totals={fiche.totals}
+          emptyText="Aucune opération pour ce fournisseur"
+          contactName={supplier?.name || 'Fournisseur'}
+          onRapport={handleFichePDF}
+          onRappel={handleFicheWhatsApp}
+          onSms={handleFicheEmail}
+          onGive={() => {
+            const inv = invoices?.find(i => i.status !== 'paid' && i.status !== 'cancelled')
+            if (inv) { setPayModal(inv); setPayAmount(inv.balance); setPayType('cash'); setPayProductItems([]) }
+            else toast('Aucune facture à payer', 'info')
+          }}
+          onReceive={() => toast('Enregistrez le paiement depuis la vente au fournisseur (POS dépôt)', 'info')}
+        />
       </Card>
 
       <Modal open={invModal} onClose={() => setInvModal(false)} title="Nouvelle facture fournisseur" size="md">

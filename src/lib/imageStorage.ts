@@ -148,6 +148,31 @@ export async function sanitizePayloadForSync(data: Record<string, any>): Promise
  * si le cloud ne contient aucune photo mais que la copie locale en a,
  * on conserve les photos locales pour ne jamais écraser un produit photo-less.
  */
+/**
+ * Synchronise le logo de l'entreprise vers le cloud (table "businesses")
+ * et le met en cache localement (Dexie + store), pour qu'il survive
+ * à la fermeture, à la réinstallation et aux autres appareils.
+ */
+export async function syncBusinessLogo(logo: string): Promise<void> {
+  try {
+    const { useAppStore } = await import('@/stores/appStore')
+    const { isSupabaseConfigured, supabase } = await import('./supabase')
+    const db = (await import('@/db')).default
+    const biz = useAppStore.getState().currentBusiness
+    if (!biz?.id) return
+    if (biz.logo !== logo) {
+      await db.businesses.update(biz.id, { logo })
+    }
+    useAppStore.getState().setCurrentBusiness({ ...biz, logo })
+    if (isSupabaseConfigured() && supabase) {
+      const { error } = await supabase.from('businesses').update({ logo }).eq('id', biz.id)
+      if (error) console.error('[logo] sync error:', error.message)
+    }
+  } catch (err) {
+    console.error('[logo] sync failed:', err)
+  }
+}
+
 export function mergePhotosForSync(localPhotos: string[] | undefined, remotePhotos: string[] | undefined): string[] | undefined {
   if (remotePhotos && remotePhotos.length > 0) return remotePhotos
   if (localPhotos && localPhotos.length > 0) return localPhotos

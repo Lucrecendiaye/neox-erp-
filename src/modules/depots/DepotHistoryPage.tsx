@@ -9,19 +9,19 @@ import { useBusinessId } from '@/hooks/useBusinessId'
 import type { ProductHistoryAction } from '@/engine/types'
 
 const actionLabels: Record<ProductHistoryAction, { label: string; icon: any; color: string }> = {
-  created: { label: 'Création', icon: Plus, color: 'text-blue-600 bg-blue-50' },
+  created: { label: 'Création', icon: Plus, color: 'text-blue-400 bg-blue-500/15' },
   updated: { label: 'Mise à jour', icon: RefreshCw, color: 'text-purple-600 bg-purple-50' },
-  deleted: { label: 'Suppression', icon: AlertTriangle, color: 'text-red-600 bg-red-50' },
-  purchased: { label: 'Achat', icon: Package, color: 'text-green-600 bg-green-50' },
-  sold: { label: 'Vente', icon: ShoppingCart, color: 'text-primary-600 bg-primary-50' },
-  returned: { label: 'Retour', icon: RefreshCw, color: 'text-amber-600 bg-amber-50' },
-  adjusted: { label: 'Ajustement', icon: AlertTriangle, color: 'text-orange-600 bg-orange-50' },
+  deleted: { label: 'Suppression', icon: AlertTriangle, color: 'text-red-400 bg-red-500/15' },
+  purchased: { label: 'Achat', icon: Package, color: 'text-green-400 bg-green-500/15' },
+  sold: { label: 'Vente', icon: ShoppingCart, color: 'text-primary-400 bg-primary-50' },
+  returned: { label: 'Retour', icon: RefreshCw, color: 'text-amber-400 bg-amber-500/15' },
+  adjusted: { label: 'Ajustement', icon: AlertTriangle, color: 'text-orange-400 bg-orange-500/15' },
   transferred_in: { label: 'Entrée transfert', icon: ArrowRightLeft, color: 'text-cyan-600 bg-cyan-50' },
-  transferred_out: { label: 'Sortie transfert', icon: ArrowRightLeft, color: 'text-rose-600 bg-rose-50' },
+  transferred_out: { label: 'Sortie transfert', icon: ArrowRightLeft, color: 'text-rose-400 bg-rose-500/15' },
   price_changed: { label: 'Changement prix', icon: RefreshCw, color: 'text-violet-600 bg-violet-50' },
   inventory: { label: 'Inventaire', icon: Package, color: 'text-teal-600 bg-teal-50' },
-  supplier_entry: { label: 'Entrée fournisseur', icon: Package, color: 'text-emerald-600 bg-emerald-50' },
-  supplier_exit: { label: 'Sortie fournisseur', icon: ArrowRightLeft, color: 'text-red-600 bg-red-50' },
+  supplier_entry: { label: 'Entrée fournisseur', icon: Package, color: 'text-emerald-400 bg-emerald-500/15' },
+  supplier_exit: { label: 'Sortie fournisseur', icon: ArrowRightLeft, color: 'text-red-400 bg-red-500/15' },
 }
 
 function inPeriod(iso: string, period: string) {
@@ -97,12 +97,12 @@ export default function DepotHistoryPage() {
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={actionFilter} onChange={e => setActionFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
           <option value="all">Toutes les actions</option>
           {Object.entries(actionLabels).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
         </select>
         <select value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
           <option value="all">Toutes périodes</option>
           <option value="jour">Aujourd'hui</option>
           <option value="semaine">7 derniers jours</option>

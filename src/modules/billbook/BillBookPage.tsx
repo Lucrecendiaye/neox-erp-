@@ -170,7 +170,7 @@ export default function BillBookPage() {
         <input
           type="text" placeholder="Rechercher par n° ou client..."
           value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       </div>
 
@@ -179,7 +179,7 @@ export default function BillBookPage() {
           <h2 className="text-lg font-semibold text-surface-900">Modèles enregistrés</h2>
           {filteredTemplates.length === 0 && (
             <div className="text-center py-16">
-              <Save className="w-12 h-12 text-surface-300 mx-auto mb-3" />
+              <Save className="w-12 h-12 text-surface-500 mx-auto mb-3" />
               <p className="text-surface-400">Aucun modèle enregistré</p>
             </div>
           )}
@@ -189,7 +189,7 @@ export default function BillBookPage() {
                 <div className="space-y-3">
                   <div className="flex items-start justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600">
+                      <div className="w-10 h-10 bg-amber-500/15 rounded-xl flex items-center justify-center text-amber-400">
                         <Copy className="w-5 h-5" />
                       </div>
                       <div>
@@ -203,14 +203,14 @@ export default function BillBookPage() {
                     <div className="flex gap-1">
                       <button
                         onClick={() => handleNewFromTemplate(template)}
-                        className="p-1.5 rounded-lg hover:bg-primary-50 text-surface-400 hover:text-primary-600"
+                        className="p-1.5 rounded-lg hover:bg-primary-50 text-surface-400 hover:text-primary-400"
                         title="Créer une facture depuis ce modèle"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteTemplate(template.id)}
-                        className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger"
+                        className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger"
                         title="Supprimer le modèle"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -244,7 +244,7 @@ export default function BillBookPage() {
                   <div className="flex gap-1">
                     <button
                       onClick={() => openSaveTemplate(inv)}
-                      className="p-1.5 rounded-lg hover:bg-amber-50 text-surface-400 hover:text-amber-600"
+                      className="p-1.5 rounded-lg hover:bg-amber-500/15 text-surface-400 hover:text-amber-400"
                       title="Enregistrer comme modèle"
                     >
                       <Save className="w-4 h-4" />
@@ -304,7 +304,7 @@ export default function BillBookPage() {
           ))}
           {(!filtered || filtered.length === 0) && (
             <div className="text-center py-16">
-              <FileText className="w-12 h-12 text-surface-300 mx-auto mb-3" />
+              <FileText className="w-12 h-12 text-surface-500 mx-auto mb-3" />
               <p className="text-surface-400">Aucune facture trouvée</p>
             </div>
           )}
@@ -347,8 +347,8 @@ export default function BillBookPage() {
         <div className="p-6 space-y-4">
           {newFromTemplate && (
             <>
-              <div className="bg-amber-50 rounded-xl p-4 text-sm flex items-center gap-3">
-                <Copy className="w-5 h-5 text-amber-600" />
+              <div className="bg-amber-500/15 rounded-xl p-4 text-sm flex items-center gap-3">
+                <Copy className="w-5 h-5 text-amber-400" />
                 <span>Nouvelle facture basée sur <strong>{newFromTemplate.name}</strong></span>
               </div>
               <div className="bg-surface-50 rounded-xl p-4 space-y-1 text-sm">

@@ -1,5 +1,5 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Card, Button, Input, Badge, Pagination, Modal } from '@/components/ui'
+import { Card, Button, Input, Badge, Pagination, Modal, ProductSearch } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useBusinessId } from '@/hooks/useBusinessId'
@@ -22,7 +22,7 @@ import {
   ShoppingBag, ChevronDown, ChevronUp, Plus,
   User, Phone, MapPin, Send, Mail,
   Clock, ArrowUpDown, Wallet, FileSpreadsheet,
-  Receipt, Save, X, RefreshCw, MoreHorizontal, MessageCircle
+  Receipt, Save, X, RefreshCw, MoreHorizontal, MessageCircle, Truck
 } from 'lucide-react'
 
 type TabKey = 'active' | 'paid' | 'partial' | 'cancelled'
@@ -50,6 +50,8 @@ const PERIOD_OPTIONS: { value: PeriodKey; label: string }[] = [
 const PAYMENT_METHODS: { value: string; label: string }[] = [
   { value: '', label: 'Tous' },
   { value: 'cash', label: 'Espèces' },
+  { value: 'wave', label: 'Wave' },
+  { value: 'orange', label: 'Orange Money' },
   { value: 'mobile', label: 'Mobile Money' },
   { value: 'card', label: 'Carte' },
   { value: 'bank', label: 'Virement' },
@@ -111,6 +113,7 @@ function calculateSaleCost(items: SaleItem[], products: Map<string, number>): nu
 function formatPaymentMethod(method: PaymentMethod): string {
   const map: Record<string, string> = {
     cash: 'Espèces', card: 'Carte', mobile: 'Mobile Money',
+    wave: 'Wave', orange: 'Orange Money',
     credit: 'Crédit', bank: 'Virement', split: 'Mixte',
   }
   return map[method] || method
@@ -191,6 +194,7 @@ export default function SalesPage() {
       result = result.filter(s =>
         s.invoiceNumber?.toLowerCase().includes(q) ||
         s.customerName?.toLowerCase().includes(q) ||
+        s.supplierName?.toLowerCase().includes(q) ||
         customers.find((c: any) => c.id === s.customerId)?.phone?.toLowerCase().includes(q) ||
         s.items.some(i => i.productName.toLowerCase().includes(q))
       )
@@ -367,9 +371,14 @@ export default function SalesPage() {
   }
 
   function selectProduct(index: number, productId: string) {
+    const newItems = [...editItems]
+    if (!productId) {
+      newItems[index] = { ...editItems[index], productId: '', productName: '', unitPrice: 0, total: 0 }
+      setEditItems(newItems)
+      return
+    }
     const product = productsList.find((p: any) => p.id === productId)
     if (!product) return
-    const newItems = [...editItems]
     newItems[index] = {
       productId: product.id, productName: product.name,
       quantity: 1, unitPrice: product.sellingPrice, discount: 0,
@@ -423,17 +432,17 @@ export default function SalesPage() {
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 w-full">
         <Card className="p-3"><p className="text-xs text-surface-500">Chiffre d'affaires</p><p className="text-base font-bold text-surface-900">{formatCurrency(kpiStats.totalRevenue)}</p></Card>
         <Card className="p-3"><p className="text-xs text-surface-500">Ventes</p><p className="text-base font-bold text-surface-900">{kpiStats.totalSales}</p></Card>
-        <Card className="p-3"><p className="text-xs text-surface-500">Bénéfice brut</p><p className="text-base font-bold text-emerald-600">{formatCurrency(kpiStats.grossProfit)}</p></Card>
+        <Card className="p-3"><p className="text-xs text-surface-500">Bénéfice brut</p><p className="text-base font-bold text-emerald-400">{formatCurrency(kpiStats.grossProfit)}</p></Card>
         <Card className="p-3"><p className="text-xs text-surface-500">Marge</p><p className="text-base font-bold text-surface-900">{kpiStats.margin.toFixed(1)}%</p></Card>
-        <Card className="p-3"><p className="text-xs text-surface-500">Crédits en cours</p><p className="text-base font-bold text-amber-600">{formatCurrency(kpiStats.creditOutstanding)}</p></Card>
+        <Card className="p-3"><p className="text-xs text-surface-500">Crédits en cours</p><p className="text-base font-bold text-amber-400">{formatCurrency(kpiStats.creditOutstanding)}</p></Card>
       </div>
 
       <div className="flex gap-2 overflow-x-auto pb-1 w-full">
         {TABS.map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
-            className={cn('px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all shrink-0', tab === t.key ? 'bg-primary-600 text-white shadow-sm' : 'bg-white text-surface-600 border border-surface-200 hover:bg-surface-50')}>
+            className={cn('px-4 py-2 rounded-xl text-sm font-medium whitespace-nowrap transition-all shrink-0', tab === t.key ? 'bg-primary-500 text-on-accent shadow-sm' : 'bg-surface-100 text-surface-600 border border-surface-200 hover:bg-surface-50')}>
             {t.label}
-            <span className={cn('ml-2 px-1.5 py-0.5 rounded-md text-xs', tab === t.key ? 'bg-white/20 text-white' : 'bg-surface-100 text-surface-500')}>{tabCounts[t.key]}</span>
+            <span className={cn('ml-2 px-1.5 py-0.5 rounded-md text-xs', tab === t.key ? 'bg-surface-100/20 text-white' : 'bg-surface-100 text-surface-500')}>{tabCounts[t.key]}</span>
           </button>
         ))}
       </div>
@@ -443,12 +452,12 @@ export default function SalesPage() {
           <div className="relative flex-1 w-full sm:w-auto min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
             <input type="text" placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)}
-              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
           <div className="flex gap-2 shrink-0">
             <div className="relative">
               <select value={period} onChange={(e) => setPeriod(e.target.value as PeriodKey)}
-                className="appearance-none rounded-xl border border-surface-300 bg-white px-3 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                className="appearance-none rounded-xl border border-surface-300 bg-surface-100 px-3 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                 {PERIOD_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
               <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400 pointer-events-none" />
@@ -460,23 +469,23 @@ export default function SalesPage() {
         {showFilters && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 p-4 bg-surface-50 rounded-2xl border border-surface-200">
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Boutique/Dépôt</label>
-              <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="">Tous</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select></div>
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Type</label>
-              <select value={saleTypeFilter} onChange={(e) => setSaleTypeFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <select value={saleTypeFilter} onChange={(e) => setSaleTypeFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="">Tous</option><option value="shop">Boutique</option><option value="depot">Dépôt</option>
               </select></div>
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Paiement</label>
-              <select value={paymentMethodFilter} onChange={(e) => setPaymentMethodFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <select value={paymentMethodFilter} onChange={(e) => setPaymentMethodFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                 {PAYMENT_METHODS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select></div>
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Vendeur</label>
-              <select value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <select value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="">Tous</option>{users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
               </select></div>
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Client</label>
-              <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="">Tous</option>{customers.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select></div>
           </div>
@@ -513,7 +522,7 @@ export default function SalesPage() {
           <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
         </div>
       ) : (
-        <div className="bg-white rounded-2xl border border-surface-200 shadow-sm overflow-hidden w-full">
+        <div className="bg-surface-100 rounded-2xl border border-surface-200 shadow-sm overflow-hidden w-full">
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -541,26 +550,26 @@ export default function SalesPage() {
                   const locName = locations.find(l => l.id === sale.locationId)?.name || '—'
                   return (
                     <tr key={sale.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition-colors cursor-pointer group" onClick={() => openDetail(sale)}>
-                      <td className="px-4 py-3 font-medium text-primary-600">{sale.invoiceNumber || '—'}</td>
+                      <td className="px-4 py-3 font-medium text-primary-400">{sale.invoiceNumber || '—'}</td>
                       <td className="px-4 py-3 text-surface-600 whitespace-nowrap"><div className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-surface-400 shrink-0" /><span>{formatDateTime(sale.createdAt)}</span></div></td>
-                      <td className="px-4 py-3"><div className="flex items-center gap-2"><User className="w-3.5 h-3.5 text-surface-400 shrink-0" /><span className="font-medium text-surface-900 truncate max-w-[120px]">{sale.customerName || 'Client divers'}</span></div></td>
+                      <td className="px-4 py-3"><div className="flex items-center gap-2">{sale.supplierId ? <Truck className="w-3.5 h-3.5 text-amber-500 shrink-0" /> : <User className="w-3.5 h-3.5 text-surface-400 shrink-0" />}<span className="font-medium text-surface-900 truncate max-w-[120px]">{sale.supplierName || sale.customerName || 'Client divers'}</span></div></td>
                       <td className="px-4 py-3 text-surface-500 text-xs">{phone || '—'}</td>
                       <td className="px-4 py-3"><Badge variant={getSaleType(sale, locations) === 'depot' ? 'warning' : 'info'}>{getSaleType(sale, locations) === 'depot' ? 'Dépôt' : 'Boutique'}</Badge></td>
                       <td className="px-4 py-3"><div className="flex items-center gap-1"><Wallet className="w-3 h-3 text-surface-400" /><span className="text-xs">{formatPaymentMethod(sale.paymentMethod)}</span></div></td>
                       <td className="px-4 py-3 text-xs text-surface-600">{seller}</td>
                       <td className="px-4 py-3 text-xs text-surface-600">{locName}</td>
                       <td className="px-4 py-3 text-right font-semibold text-surface-900">{formatCurrency(sale.total)}</td>
-                      <td className={cn('px-4 py-3 text-right font-semibold', profit >= 0 ? 'text-emerald-600' : 'text-red-600')}>{formatCurrency(profit)}</td>
+                      <td className={cn('px-4 py-3 text-right font-semibold', profit >= 0 ? 'text-emerald-400' : 'text-red-400')}>{formatCurrency(profit)}</td>
                       <td className="px-4 py-3">{getPaymentStatusBadge(sale)}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
-                          <button onClick={() => openDetail(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-600 transition-colors" title="Détails"><Eye className="w-4 h-4" /></button>
-                          <button onClick={() => handlePrintPDF(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="PDF"><FileText className="w-4 h-4" /></button>
-                          <button onClick={() => handleWhatsApp(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-green-600 transition-colors" title="WhatsApp"><Send className="w-4 h-4" /></button>
-                          <button onClick={() => handleWeChat(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-emerald-600 transition-colors" title="WeChat"><MessageCircle className="w-4 h-4" /></button>
-                          <button onClick={() => { handleEmail(sale) }} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-600 transition-colors" title="Email"><Mail className="w-4 h-4" /></button>
-                          <button onClick={() => openEditModal(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-600 transition-colors" title="Modifier"><Edit2 className="w-4 h-4" /></button>
-                          <button onClick={() => handleDelete(sale)} className="touch-target-sm rounded-lg hover:bg-red-50 text-surface-400 hover:text-red-600 transition-colors" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
+                          <button onClick={() => openDetail(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors" title="Détails"><Eye className="w-4 h-4" /></button>
+                          <button onClick={() => handlePrintPDF(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="PDF"><FileText className="w-4 h-4" /></button>
+                          <button onClick={() => handleWhatsApp(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-green-400 transition-colors" title="WhatsApp"><Send className="w-4 h-4" /></button>
+                          <button onClick={() => handleWeChat(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-emerald-400 transition-colors" title="WeChat"><MessageCircle className="w-4 h-4" /></button>
+                          <button onClick={() => { handleEmail(sale) }} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="Email"><Mail className="w-4 h-4" /></button>
+                          <button onClick={() => openEditModal(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-400 transition-colors" title="Modifier"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleDelete(sale)} className="touch-target-sm rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400 transition-colors" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
                     </tr>
@@ -657,8 +666,8 @@ export default function SalesPage() {
               <h3 className="text-sm font-semibold text-surface-900 mb-3">Paiement</h3>
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
                 <Card className="p-4"><p className="text-xs text-surface-500">Total</p><p className="text-lg font-bold text-surface-900">{formatCurrency(selectedSale.total)}</p></Card>
-                <Card className="p-4"><p className="text-xs text-surface-500">Payé</p><p className="text-lg font-bold text-emerald-600">{formatCurrency(selectedSale.paid)}</p></Card>
-                <Card className="p-4"><p className="text-xs text-surface-500">Restant</p><p className={cn('text-lg font-bold', selectedSale.total - selectedSale.paid > 0 ? 'text-red-600' : 'text-surface-900')}>{formatCurrency(selectedSale.total - selectedSale.paid)}</p></Card>
+                <Card className="p-4"><p className="text-xs text-surface-500">Payé</p><p className="text-lg font-bold text-emerald-400">{formatCurrency(selectedSale.paid)}</p></Card>
+                <Card className="p-4"><p className="text-xs text-surface-500">Restant</p><p className={cn('text-lg font-bold', selectedSale.total - selectedSale.paid > 0 ? 'text-red-400' : 'text-surface-900')}>{formatCurrency(selectedSale.total - selectedSale.paid)}</p></Card>
               </div>
               {selectedSale.total > 0 && (
                 <div className="mt-4">
@@ -696,13 +705,13 @@ export default function SalesPage() {
             <div>
               <label className="block text-sm font-medium text-surface-700 mb-1.5">Client</label>
               <input type="text" value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)}
-                className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
             <div>
               <label className="block text-sm font-medium text-surface-700 mb-1.5">Mode de paiement</label>
               <select value={editPaymentMethod} onChange={(e) => setEditPaymentMethod(e.target.value as PaymentMethod)}
-                className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                <option value="cash">Espèces</option><option value="mobile">Mobile Money</option>
+                className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+                <option value="cash">Espèces</option><option value="wave">Wave</option><option value="orange">Orange Money</option><option value="mobile">Mobile Money</option>
                 <option value="card">Carte</option><option value="bank">Virement</option><option value="credit">Crédit</option>
               </select>
             </div>
@@ -727,19 +736,19 @@ export default function SalesPage() {
               <tbody>
                 {editItems.map((item, idx) => (
                   <tr key={idx} className="border-b border-surface-100">
-                    <td className="px-3 py-2">
-                      <select value={item.productId} onChange={(e) => selectProduct(idx, e.target.value)}
-                        className="w-full rounded-lg border border-surface-300 bg-white px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                        <option value="">— Sélectionner —</option>
-                        {productsList.map((p: any) => <option key={p.id} value={p.id}>{p.name} — {formatCurrency(p.sellingPrice)}</option>)}
-                      </select>
+                    <td className="px-3 py-2 min-w-[220px]">
+                      <ProductSearch
+                        products={productsList as any[]}
+                        value={item.productId}
+                        onSelect={(id) => selectProduct(idx, id)}
+                      />
                     </td>
                     <td className="px-3 py-2"><input type="number" value={item.quantity} min={1} onChange={(e) => updateEditItem(idx, 'quantity', Math.max(1, +e.target.value))} className="w-20 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-center" /></td>
                     <td className="px-3 py-2"><input type="number" value={item.unitPrice} min={0} onChange={(e) => updateEditItem(idx, 'unitPrice', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
                     <td className="px-3 py-2"><input type="number" value={item.discount} min={0} onChange={(e) => updateEditItem(idx, 'discount', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
                     <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
                     <td className="px-3 py-2 text-center">
-                      {editItems.length > 1 && <button onClick={() => removeEditItem(idx)} className="p-1 rounded-lg hover:bg-red-50 text-surface-400 hover:text-red-600"><X className="w-4 h-4" /></button>}
+                      {editItems.length > 1 && <button onClick={() => removeEditItem(idx)} className="p-1 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400"><X className="w-4 h-4" /></button>}
                     </td>
                   </tr>
                 ))}

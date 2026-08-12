@@ -216,7 +216,7 @@ export default function InvoicesPage() {
         <input
           type="text" placeholder="Rechercher par n° ou client..."
           value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       </div>
 
@@ -242,17 +242,17 @@ export default function InvoicesPage() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => { if (inv.partyId) { const p = [...(customers || []), ...(suppliers || [])].find(x => x.id === inv.partyId); if (p) openWhatsApp(p.phone, `Bonjour, veuillez trouver ci-joint la facture ${inv.number} d'un montant de ${formatCurrency(inv.total)}.`) } }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Envoyer via WhatsApp">
+                  <button onClick={() => { if (inv.partyId) { const p = [...(customers || []), ...(suppliers || [])].find(x => x.id === inv.partyId); if (p) openWhatsApp(p.phone, `Bonjour, veuillez trouver ci-joint la facture ${inv.number} d'un montant de ${formatCurrency(inv.total)}.`) } }} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" title="Envoyer via WhatsApp">
                     <Send className="w-4 h-4" />
                   </button>
-                  <button onClick={() => { const p = [...(customers || []), ...(suppliers || [])].find(x => x.id === inv.partyId); shareViaWeChat(`Bonjour, veuillez trouver ci-joint la facture ${inv.number} d'un montant de ${formatCurrency(inv.total)}${p?.name ? ` (${p.name})` : ''}.`, `Facture ${inv.number}`) }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Envoyer via WeChat">
+                  <button onClick={() => { const p = [...(customers || []), ...(suppliers || [])].find(x => x.id === inv.partyId); shareViaWeChat(`Bonjour, veuillez trouver ci-joint la facture ${inv.number} d'un montant de ${formatCurrency(inv.total)}${p?.name ? ` (${p.name})` : ''}.`, `Facture ${inv.number}`) }} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" title="Envoyer via WeChat">
                     <MessageCircle className="w-4 h-4" />
                   </button>
                   <button onClick={async () => exportInvoicePDF(inv, settings, await buildProductPhotos(products))} className="p-1.5 rounded-lg hover:bg-violet-50 text-surface-400 hover:text-violet-600" title="Télécharger PDF">
                     <Download className="w-4 h-4" />
                   </button>
                   {inv.status !== 'paid' && (
-                    <button onClick={() => handleMarkPaid(inv.id)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Marquer payée">
+                    <button onClick={() => handleMarkPaid(inv.id)} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" title="Marquer payée">
                       <Printer className="w-4 h-4" />
                     </button>
                   )}
@@ -262,7 +262,7 @@ export default function InvoicesPage() {
                   <button onClick={() => openEdit(inv)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
                     <Edit2 className="w-4 h-4" />
                   </button>
-                  <button onClick={() => handleDelete(inv.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger">
+                  <button onClick={() => handleDelete(inv.id)} className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 </div>
@@ -319,7 +319,7 @@ export default function InvoicesPage() {
         ))}
         {(!filtered || filtered.length === 0) && (
           <div className="text-center py-16">
-            <FileText className="w-12 h-12 text-surface-300 mx-auto mb-3" />
+            <FileText className="w-12 h-12 text-surface-500 mx-auto mb-3" />
             <p className="text-surface-400">Aucune facture trouvée</p>
           </div>
         )}
@@ -376,12 +376,17 @@ export default function InvoicesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => updateItem(item.productId, 'quantity', Math.max(1, item.quantity - 1))} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><ChevronDown className="w-3 h-3" /></button>
-                    <span className="text-sm font-medium w-6 text-center">{item.quantity}</span>
+                    <input
+                      type="number" min="1" value={item.quantity}
+                      onChange={(e) => updateItem(item.productId, 'quantity', Math.max(1, Number(e.target.value) || 1))}
+                      inputMode="numeric"
+                      className="w-14 text-sm px-1 py-1 rounded-lg border border-surface-200 text-center"
+                    />
                     <button onClick={() => updateItem(item.productId, 'quantity', item.quantity + 1)} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><ChevronUp className="w-3 h-3" /></button>
                   </div>
                   <input type="number" value={item.unitPrice} onChange={(e) => updateItem(item.productId, 'unitPrice', Number(e.target.value))} className="w-20 text-sm px-2 py-1 rounded-lg border border-surface-200 text-right" />
                   <p className="text-sm font-semibold text-surface-900 w-20 text-right">{formatCurrency(item.unitPrice * item.quantity)}</p>
-                  <button onClick={() => removeItem(item.productId)} className="p-1 rounded-md hover:bg-red-50 text-surface-400 hover:text-danger"><X className="w-4 h-4" /></button>
+                  <button onClick={() => removeItem(item.productId)} className="p-1 rounded-md hover:bg-red-500/15 text-surface-400 hover:text-danger"><X className="w-4 h-4" /></button>
                 </div>
               ))}
             </div>

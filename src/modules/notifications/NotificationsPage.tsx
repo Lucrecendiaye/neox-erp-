@@ -97,7 +97,7 @@ export default function NotificationsPage() {
       )}
       {(!notifications || notifications.length === 0) && (
         <div className="text-center py-16">
-          <Bell className="w-12 h-12 text-surface-300 mx-auto mb-3" />
+          <Bell className="w-12 h-12 text-surface-500 mx-auto mb-3" />
           <p className="text-surface-400 font-medium">Aucune notification</p>
           <p className="text-surface-400 text-sm">Les alertes apparaîtront ici</p>
         </div>
@@ -112,11 +112,11 @@ function NotificationCard({ notification: n, onRead, onDelete, unread }: { notif
   return (
     <Card
       padding="sm"
-      className={`cursor-pointer transition-colors hover:bg-surface-50 ${unread ? 'border-primary-200 bg-primary-50/30' : ''}`}
+      className={`cursor-pointer transition-colors hover:bg-surface-50 ${unread ? 'border-primary-300 bg-primary-50/30' : ''}`}
       onClick={() => onRead(n.id)}
     >
       <div className="flex items-start gap-3 p-2">
-        <div className={`p-2 rounded-xl ${unread ? 'bg-primary-100 text-primary-600' : 'bg-surface-100 text-surface-400'}`}>
+        <div className={`p-2 rounded-xl ${unread ? 'bg-primary-100 text-primary-400' : 'bg-surface-100 text-surface-400'}`}>
           <Icon className="w-5 h-5" />
         </div>
         <div className="flex-1 min-w-0">
@@ -130,7 +130,7 @@ function NotificationCard({ notification: n, onRead, onDelete, unread }: { notif
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(n.id) }}
-          className="p-1.5 rounded-lg hover:bg-red-50 text-surface-300 hover:text-danger opacity-0 group-hover:opacity-100 transition-all"
+          className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-500 hover:text-danger opacity-0 group-hover:opacity-100 transition-all"
         >
           <Trash2 className="w-4 h-4" />
         </button>

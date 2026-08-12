@@ -9,10 +9,10 @@ const icons: Record<ToastType, React.ReactNode> = {
 }
 
 const bgColors: Record<ToastType, string> = {
-  success: 'bg-emerald-50 border-emerald-200',
-  error: 'bg-red-50 border-red-200',
-  info: 'bg-blue-50 border-blue-200',
-  warning: 'bg-amber-50 border-amber-200',
+  success: 'bg-emerald-500/15 border-emerald-500/30',
+  error: 'bg-red-500/15 border-red-500/30',
+  info: 'bg-blue-500/15 border-blue-500/30',
+  warning: 'bg-amber-500/15 border-amber-500/30',
 }
 
 export default function ToastContainer() {

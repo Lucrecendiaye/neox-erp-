@@ -76,7 +76,7 @@ export default function CreditPaymentModal({ open, onClose, customerId, onPaymen
     <Modal open={open} onClose={onClose} title={customerId ? "Paiement crédit client" : "Paiement crédit"} size="md">
       <div className="p-6 space-y-5">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 bg-amber-50 text-amber-700 px-4 py-3 rounded-xl flex-1">
+          <div className="flex items-center gap-2 bg-amber-500/15 text-amber-300 px-4 py-3 rounded-xl flex-1">
             <AlertTriangle className="w-5 h-5" />
             <div>
               <p className="text-sm font-medium">Solde impayé</p>

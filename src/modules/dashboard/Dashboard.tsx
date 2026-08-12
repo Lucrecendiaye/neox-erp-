@@ -8,12 +8,14 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement,
 import { Bar, Pie, Line, Doughnut } from 'react-chartjs-2'
 import { TrendingUp, DollarSign, Users, CreditCard, ShoppingCart, Wallet, Package, Banknote, BarChart3, PieChart, Truck, Building2, AlertTriangle, ArrowUpRight, ArrowDownRight, Receipt, Clock, Activity, Target, Layers, ChevronRight, Filter } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useAppStore } from '@/stores/appStore'
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, ArcElement, Title, Tooltip, Legend, Filler)
 
 export default function Dashboard() {
   const navigate = useNavigate()
   const businessId = useBusinessId()
+  const { settings, currentBusiness } = useAppStore()
   const [period, setPeriod] = useState<'today' | 'week' | 'month' | 'year'>('month')
   const [locationFilter, setLocationFilter] = useState<'all' | 'shop' | 'warehouse'>('all')
 
@@ -188,7 +190,7 @@ export default function Dashboard() {
     labels: stats.salesByCategory.map(c => c.name),
     datasets: [{
       data: stats.salesByCategory.map(c => c.revenue),
-      backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6b7280'],
+      backgroundColor: ['var(--accent)', '#10b981', '#f59e0b', '#ef4444', '#3b82f6', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#6b7280'],
       borderWidth: 0,
     }],
   }
@@ -198,7 +200,7 @@ export default function Dashboard() {
     datasets: [
       { label: 'Revenus', data: dailyData.revenue, borderColor: '#10b981', backgroundColor: 'rgba(16,185,129,0.1)', fill: true, tension: 0.4, pointRadius: 3 },
       { label: 'Dépenses', data: dailyData.expenses, borderColor: '#ef4444', backgroundColor: 'rgba(239,68,68,0.1)', fill: true, tension: 0.4, pointRadius: 3 },
-      { label: 'Bénéfices', data: dailyData.profits, borderColor: '#6366f1', backgroundColor: 'rgba(99,102,241,0.1)', fill: true, tension: 0.4, pointRadius: 3 },
+      { label: 'Bénéfices', data: dailyData.profits, borderColor: 'var(--accent)', backgroundColor: 'rgba(var(--accent-rgb),0.12)', fill: true, tension: 0.4, pointRadius: 3 },
     ],
   }
 
@@ -215,21 +217,35 @@ export default function Dashboard() {
 
   const totalExpensesAmount = stats.cashOutflows + stats.totalCost
 
+  const todaySales = useMemo(() => {
+    const today = new Date()
+    today.setHours(0, 0, 0, 0)
+    const t = sales?.filter(s => s.status === 'completed' && new Date(s.createdAt) >= today) || []
+    const revenue = t.filter(s => s.paymentMethod !== 'credit').reduce((s, x) => s + x.paid, 0)
+    const creditToday = creditPayments?.filter(p => new Date(p.date) >= today).reduce((s, x) => s + x.amount, 0) || 0
+    return { count: t.length, revenue: revenue + creditToday }
+  }, [sales, creditPayments])
+
+  const overdueCount = useMemo(() => credits?.filter(c => c.dueDate && new Date(c.dueDate) < new Date()).length || 0, [credits])
+
   return (
     <div className="w-full h-full flex flex-col gap-6 pb-8">
       {/* 1. En-tête */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-surface-900">Tableau de bord</h1>
+          <h1 className="text-2xl font-bold text-surface-900">
+            <span className="lg:hidden">{currentBusiness?.name || settings?.name || 'Bienvenue'}</span>
+            <span className="hidden lg:inline">Tableau de bord</span>
+          </h1>
           <p className="text-surface-500 text-sm mt-1">
-            {periodLabel} — {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
+            {new Date().toLocaleDateString('fr-FR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <div className="flex bg-surface-100 rounded-xl p-1">
             {(['today', 'week', 'month', 'year'] as const).map(p => (
               <button key={p} onClick={() => setPeriod(p)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${period === p ? 'bg-white text-surface-900 shadow-sm' : 'text-surface-500 hover:text-surface-700'}`}>
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${period === p ? 'bg-surface-100 text-surface-900 shadow-sm' : 'text-surface-500 hover:text-surface-700'}`}>
                 {p === 'today' ? 'Jour' : p === 'week' ? 'Semaine' : p === 'month' ? 'Mois' : 'Année'}
               </button>
             ))}
@@ -237,7 +253,7 @@ export default function Dashboard() {
           <div className="flex bg-surface-100 rounded-xl p-1">
             {(['all', 'shop', 'warehouse'] as const).map(l => (
               <button key={l} onClick={() => setLocationFilter(l)}
-                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${locationFilter === l ? 'bg-white text-surface-900 shadow-sm' : 'text-surface-500 hover:text-surface-700'}`}>
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${locationFilter === l ? 'bg-surface-100 text-surface-900 shadow-sm' : 'text-surface-500 hover:text-surface-700'}`}>
                 {l === 'all' ? 'Tout' : l === 'shop' ? 'Boutique' : 'Dépôt'}
               </button>
             ))}
@@ -247,6 +263,24 @@ export default function Dashboard() {
             <Button variant="ghost" size="sm" onClick={() => navigate('/sales')}><Receipt className="w-4 h-4" /></Button>
             <Button variant="ghost" size="sm" onClick={() => navigate('/reports')}><BarChart3 className="w-4 h-4" /></Button>
           </div>
+        </div>
+      </div>
+
+      {/* 1bis. Hero mobile : ventes du jour + CTA caisse */}
+      <div className="relative overflow-hidden rounded-3xl bg-gradient-to-br from-primary-500 to-primary-700 p-5 text-on-accent shadow-lg shadow-primary-200">
+        <div className="relative z-10 flex items-center justify-between gap-4">
+          <div>
+            <p className="text-sm font-medium text-on-accent/80">Ventes du jour</p>
+            <p className="text-3xl font-extrabold mt-1 tracking-tight">{formatCurrency(todaySales.revenue)}</p>
+            <p className="text-xs text-on-accent/80 mt-1">{todaySales.count} vente{todaySales.count > 1 ? 's' : ''} aujourd'hui</p>
+          </div>
+          <button
+            onClick={() => navigate('/pos')}
+            className="flex flex-col items-center justify-center gap-1 shrink-0 px-4 py-4 rounded-2xl bg-surface-100 text-surface-900 font-bold text-sm shadow-lg active:scale-[0.97] transition-transform min-h-[56px]"
+          >
+            <ShoppingCart className="w-6 h-6" />
+            Vendre
+          </button>
         </div>
       </div>
 
@@ -262,19 +296,19 @@ export default function Dashboard() {
 
       {/* 3. Résumé financier */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-4 rounded-2xl bg-white border border-surface-200">
+        <div className="p-4 rounded-2xl bg-surface-100 border border-surface-200">
           <p className="text-xs text-surface-400 flex items-center gap-1"><DollarSign className="w-3.5 h-3.5" /> Revenus</p>
           <p className="text-lg font-bold text-success">{formatCurrency(stats.totalSales)}</p>
         </div>
-        <div className="p-4 rounded-2xl bg-white border border-surface-200">
+        <div className="p-4 rounded-2xl bg-surface-100 border border-surface-200">
           <p className="text-xs text-surface-400 flex items-center gap-1"><CreditCard className="w-3.5 h-3.5" /> Dépenses</p>
           <p className="text-lg font-bold text-danger">{formatCurrency(totalExpensesAmount)}</p>
         </div>
-        <div className="p-4 rounded-2xl bg-white border border-surface-200">
+        <div className="p-4 rounded-2xl bg-surface-100 border border-surface-200">
           <p className="text-xs text-surface-400 flex items-center gap-1"><TrendingUp className="w-3.5 h-3.5" /> Bénéfice</p>
           <p className="text-lg font-bold text-surface-900">{formatCurrency(stats.profit)}</p>
         </div>
-        <div className="p-4 rounded-2xl bg-white border border-surface-200">
+        <div className="p-4 rounded-2xl bg-surface-100 border border-surface-200">
           <p className="text-xs text-surface-400 flex items-center gap-1"><Wallet className="w-3.5 h-3.5" /> Solde disponible</p>
           <p className={`text-lg font-bold ${stats.cashBalance >= 0 ? 'text-success' : 'text-danger'}`}>{formatCurrency(stats.cashBalance)}</p>
         </div>
@@ -438,7 +472,7 @@ export default function Dashboard() {
               const maxQty = Math.max(...stats.topByQty.map(([, d]) => d.qty))
               return (
                 <div key={name} className="flex items-center gap-3">
-                  <span className="w-6 h-6 rounded-lg bg-primary-100 text-primary-600 text-xs font-bold flex items-center justify-center">{idx + 1}</span>
+                  <span className="w-6 h-6 rounded-lg bg-primary-100 text-primary-400 text-xs font-bold flex items-center justify-center">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-surface-900 truncate">{name}</p>
                     <div className="w-full h-1.5 bg-surface-100 rounded-full mt-1">
@@ -466,7 +500,7 @@ export default function Dashboard() {
               const maxRev = Math.max(...stats.topProducts.slice(0, 5).map(([, d]) => d.revenue))
               return (
                 <div key={name} className="flex items-center gap-3">
-                  <span className="w-5 h-5 rounded-md bg-amber-100 text-amber-600 text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
+                  <span className="w-5 h-5 rounded-md bg-amber-500/20 text-amber-400 text-[10px] font-bold flex items-center justify-center">{idx + 1}</span>
                   <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium text-surface-900 truncate">{name}</p>
                     <div className="w-full h-1.5 bg-surface-100 rounded-full mt-1">
@@ -515,19 +549,19 @@ export default function Dashboard() {
 
       {/* 12. Informations complémentaires */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <div className="p-3 rounded-2xl bg-white border border-surface-200">
+        <div className="p-3 rounded-2xl bg-surface-100 border border-surface-200">
           <p className="text-xs text-surface-400">Produits en stock</p>
           <p className="text-lg font-bold text-surface-900">{products?.length || 0}</p>
         </div>
-        <div className="p-3 rounded-2xl bg-white border border-surface-200 cursor-pointer" onClick={() => navigate('/products')}>
+        <div className="p-3 rounded-2xl bg-surface-100 border border-surface-200 cursor-pointer" onClick={() => navigate('/products')}>
           <p className="text-xs text-surface-400">Stock bas</p>
           <p className={`text-lg font-bold ${stats.lowStockCount > 0 ? 'text-danger' : 'text-surface-900'}`}>{stats.lowStockCount}</p>
         </div>
-        <div className="p-3 rounded-2xl bg-white border border-surface-200 cursor-pointer" onClick={() => navigate('/customers')}>
+        <div className="p-3 rounded-2xl bg-surface-100 border border-surface-200 cursor-pointer" onClick={() => navigate('/customers')}>
           <p className="text-xs text-surface-400">Créances clients</p>
           <p className="text-lg font-bold text-warning">{formatCurrency(stats.totalCredits)}</p>
         </div>
-        <div className="p-3 rounded-2xl bg-white border border-surface-200 cursor-pointer" onClick={() => navigate('/suppliers')}>
+        <div className="p-3 rounded-2xl bg-surface-100 border border-surface-200 cursor-pointer" onClick={() => navigate('/suppliers')}>
           <p className="text-xs text-surface-400">Dû fournisseurs</p>
           <p className="text-lg font-bold text-danger">{formatCurrency(supplierInvoices?.reduce((s, x) => s + x.balance, 0) || 0)}</p>
         </div>
@@ -535,9 +569,9 @@ export default function Dashboard() {
 
       {/* Alerte stock bas */}
       {stats.lowStockCount > 0 && (
-        <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-center gap-3 cursor-pointer" onClick={() => navigate('/products')}>
-          <AlertTriangle className="w-5 h-5 text-amber-600" />
-          <p className="text-sm text-amber-800 font-medium">{stats.lowStockCount} produit{stats.lowStockCount > 1 ? 's' : ''} en stock bas — Cliquez pour voir</p>
+        <div className="p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 flex items-center gap-3 cursor-pointer" onClick={() => navigate('/products')}>
+          <AlertTriangle className="w-5 h-5 text-amber-400" />
+          <p className="text-sm text-amber-200 font-medium">{stats.lowStockCount} produit{stats.lowStockCount > 1 ? 's' : ''} en stock bas — Cliquez pour voir</p>
         </div>
       )}
     </div>

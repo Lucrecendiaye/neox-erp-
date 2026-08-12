@@ -86,7 +86,7 @@ export default function PhotoUpload({ photos, onChange, max = 5 }: PhotoUploadPr
               type="button"
               onClick={() => openPicker(true)}
               disabled={uploading}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-surface-300 text-sm font-medium text-surface-700 hover:border-primary-300 hover:text-primary-600 hover:bg-surface-50 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-surface-300 text-sm font-medium text-surface-700 hover:border-primary-300 hover:text-primary-400 hover:bg-surface-50 transition-colors disabled:opacity-50"
             >
               {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
               Changer

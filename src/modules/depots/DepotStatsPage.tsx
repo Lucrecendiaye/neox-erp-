@@ -44,7 +44,7 @@ export default function DepotStatsPage() {
       <Card>
         <CardHeader><CardTitle>Valorisation du stock</CardTitle></CardHeader>
         <div className="p-4">
-          <p className="text-3xl font-bold text-primary-600">{formatCurrency(stockValue || 0)}</p>
+          <p className="text-3xl font-bold text-primary-400">{formatCurrency(stockValue || 0)}</p>
         </div>
       </Card>
     </div>

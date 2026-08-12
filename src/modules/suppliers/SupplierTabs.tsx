@@ -19,7 +19,7 @@ export default function SupplierTabs() {
           className={({ isActive }) => cn(
             'flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all',
             isActive
-              ? 'bg-white shadow-sm text-primary-600'
+              ? 'bg-surface-100 shadow-sm text-primary-400'
               : 'text-surface-500 hover:text-surface-800'
           )}
         >

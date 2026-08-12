@@ -211,10 +211,10 @@ export default function PayrollPage() {
                     <div className="flex items-center justify-center gap-1">
                       {p.status === 'draft' && (
                         <>
-                          <button onClick={() => updateStatus(p.id, 'paid')} className="p-2 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-success transition-colors" title="Marquer payé">
+                          <button onClick={() => updateStatus(p.id, 'paid')} className="p-2 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-success transition-colors" title="Marquer payé">
                             <CheckCircle className="w-4 h-4" />
                           </button>
-                          <button onClick={() => updateStatus(p.id, 'cancelled')} className="p-2 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger transition-colors" title="Annuler">
+                          <button onClick={() => updateStatus(p.id, 'cancelled')} className="p-2 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger transition-colors" title="Annuler">
                             <XCircle className="w-4 h-4" />
                           </button>
                         </>

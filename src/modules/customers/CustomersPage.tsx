@@ -111,7 +111,7 @@ export default function CustomersPage() {
         <input
           type="text" placeholder="Rechercher un client..."
           value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       </div>
 
@@ -119,7 +119,7 @@ export default function CustomersPage() {
         {paginatedItems?.map((c) => (
           <Card key={c.id} className="relative group">
             <div className="flex items-start gap-3">
-              <div className="w-12 h-12 bg-primary-50 rounded-xl flex items-center justify-center text-primary-600 font-bold text-lg">
+              <div className="w-12 h-12 bg-primary-50 rounded-xl flex items-center justify-center text-primary-400 font-bold text-lg">
                 {c.name.charAt(0).toUpperCase()}
               </div>
               <div className="flex-1 min-w-0">
@@ -148,16 +148,16 @@ export default function CustomersPage() {
               </div>
             </div>
             <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={() => handleWhatsApp(c.phone)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600">
+              <button onClick={() => handleWhatsApp(c.phone)} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400">
                 <MessageSquare className="w-4 h-4" />
               </button>
-              <button onClick={() => shareViaWeChat(`Contact: ${c.name}${c.phone ? ` — ${c.phone}` : ''}`, `Contact ${c.name}`)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Partager par WeChat">
+              <button onClick={() => shareViaWeChat(`Contact: ${c.name}${c.phone ? ` — ${c.phone}` : ''}`, `Contact ${c.name}`)} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" title="Partager par WeChat">
                 <MessageCircle className="w-4 h-4" />
               </button>
               <button onClick={() => openEdit(c)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
                 <Edit2 className="w-4 h-4" />
               </button>
-              <button onClick={() => handleDelete(c.id)} className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger">
+              <button onClick={() => handleDelete(c.id)} className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

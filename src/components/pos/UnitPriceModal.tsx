@@ -32,7 +32,7 @@ export default function UnitPriceModal({ open, productName, unitName, suggestedP
           {suggestedPrice > 0 && (
             <button
               onClick={() => setPrice(String(suggestedPrice))}
-              className="w-full text-left px-4 py-2 rounded-xl border border-dashed border-primary-300 bg-primary-50 text-primary-700 text-sm hover:bg-primary-100 transition-colors"
+              className="w-full text-left px-4 py-2 rounded-xl border border-dashed border-primary-300 bg-primary-50 text-primary-300 text-sm hover:bg-primary-100 transition-colors"
             >
               Suggestion : {formatCurrency(suggestedPrice)}
             </button>

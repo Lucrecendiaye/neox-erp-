@@ -12,6 +12,9 @@ create type comp_status as enum ('pending','completed','cancelled');
 create type transfer_status as enum ('pending','completed','cancelled');
 create type product_history_action as enum ('created','updated','deleted','purchased','sold','returned','adjusted','transferred_in','transferred_out','price_changed','inventory','supplier_entry','supplier_exit');
 
+-- Logo entreprise (colonne manquante sur les bases créées avant ce schéma)
+alter table businesses add column if not exists logo text;
+
 -- Settings (manquant)
 create table if not exists settings (
   id text primary key,
@@ -257,3 +260,30 @@ create policy "tenant_access_compensations" on compensations for all using (
 create policy "tenant_access_transfers" on transfers for all using (
   business_id in (select business_id from profiles where auth_user_id = auth.uid())
 );
+
+-- ============================================================
+-- Storage : bucket "erp-images" pour les photos produits / logos
+-- (re-executable : idempotent)
+-- ============================================================
+insert into storage.buckets (id, name, public)
+values ('erp-images', 'erp-images', true)
+on conflict (id) do update set public = true;
+
+-- Lecture publique (nécessaire car les <img> ne portent pas de jeton auth)
+drop policy if exists "erp_images_public_read" on storage.objects;
+create policy "erp_images_public_read" on storage.objects
+  for select using (bucket_id = 'erp-images');
+
+-- Upload des utilisateurs connectés
+drop policy if exists "erp_images_auth_upload" on storage.objects;
+create policy "erp_images_auth_upload" on storage.objects
+  for insert to authenticated with check (bucket_id = 'erp-images');
+
+-- Mise à jour / suppression par l'utilisateur connecté
+drop policy if exists "erp_images_auth_update" on storage.objects;
+create policy "erp_images_auth_update" on storage.objects
+  for update to authenticated using (bucket_id = 'erp-images');
+
+drop policy if exists "erp_images_auth_delete" on storage.objects;
+create policy "erp_images_auth_delete" on storage.objects
+  for delete to authenticated using (bucket_id = 'erp-images');

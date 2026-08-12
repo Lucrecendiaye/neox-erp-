@@ -94,7 +94,7 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
                   onClick={() => handleSelect(item)}
                   className="flex items-center gap-3 w-full px-3 py-2.5 rounded-xl hover:bg-primary-50 text-left transition-colors group"
                 >
-                  <div className="w-8 h-8 rounded-lg bg-surface-100 flex items-center justify-center text-surface-500 group-hover:bg-primary-100 group-hover:text-primary-600 transition-colors">
+                  <div className="w-8 h-8 rounded-lg bg-surface-100 flex items-center justify-center text-surface-500 group-hover:bg-primary-100 group-hover:text-primary-400 transition-colors">
                     <item.icon className="w-4 h-4" />
                   </div>
                   <div className="min-w-0 flex-1">

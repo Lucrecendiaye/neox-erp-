@@ -11,9 +11,9 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { error: Error | 
     if (this.state.error) {
       return <div style={{ padding: 40, fontFamily: 'sans-serif' }}>
         <h1 style={{ color: '#ef4444' }}>Erreur</h1>
-        <pre style={{ background: '#f1f5f9', padding: 16, borderRadius: 8, overflow: 'auto' }}>{this.state.error.message}</pre>
-        <pre style={{ fontSize: 12, color: '#64748b' }}>{this.state.error.stack}</pre>
-        <button onClick={() => location.reload()} style={{ marginTop: 16, padding: '8px 16px', background: '#6366f1', color: '#fff', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Réessayer</button>
+        <pre style={{ background: 'var(--surface-100)', color: 'var(--surface-700)', padding: 16, borderRadius: 8, overflow: 'auto' }}>{this.state.error.message}</pre>
+        <pre style={{ fontSize: 12, color: 'var(--surface-400)' }}>{this.state.error.stack}</pre>
+        <button onClick={() => location.reload()} style={{ marginTop: 16, padding: '8px 16px', background: 'var(--primary-500)', color: 'var(--on-accent)', border: 'none', borderRadius: 8, cursor: 'pointer' }}>Réessayer</button>
       </div>
     }
     return this.props.children

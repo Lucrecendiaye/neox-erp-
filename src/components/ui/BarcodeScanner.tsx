@@ -95,7 +95,7 @@ export default function BarcodeScanner({ open, onClose, onScan }: BarcodeScanner
         ) : (
           <div className="space-y-3">
             <div className="bg-surface-50 rounded-xl p-4 text-center">
-              <Camera className="w-8 h-8 text-surface-300 mx-auto mb-2" />
+              <Camera className="w-8 h-8 text-surface-500 mx-auto mb-2" />
               <p className="text-sm text-surface-500">Saisissez le code-barres</p>
             </div>
             <input

@@ -5,7 +5,7 @@ import { Banknote, Smartphone, CreditCard, Plus, Trash2 } from 'lucide-react'
 
 interface SplitPayment {
   id: string
-  method: 'cash' | 'mobile' | 'card' | 'bank'
+  method: 'cash' | 'wave' | 'orange' | 'mobile' | 'card' | 'bank'
   amount: number
 }
 
@@ -18,6 +18,8 @@ interface SplitPaymentModalProps {
 
 const methodIcons = {
   cash: Banknote,
+  wave: Smartphone,
+  orange: Smartphone,
   mobile: Smartphone,
   card: CreditCard,
   bank: CreditCard,
@@ -25,6 +27,8 @@ const methodIcons = {
 
 const methodLabels = {
   cash: 'Espèces',
+  wave: 'Wave',
+  orange: 'Orange Money',
   mobile: 'Mobile Money',
   card: 'Carte',
   bank: 'Virement',
@@ -80,9 +84,9 @@ export default function SplitPaymentModal({ open, onClose, total, onConfirm }: S
               <select
                 value={p.method}
                 onChange={(e) => updatePayment(p.id, 'method', e.target.value)}
-                className="rounded-xl border border-surface-300 bg-white px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+                className="rounded-xl border border-surface-300 bg-surface-100 px-2 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
               >
-                {(['cash', 'mobile', 'card', 'bank'] as const).map(m => {
+                {(['cash', 'wave', 'orange', 'mobile', 'card', 'bank'] as const).map(m => {
                   const Icon = methodIcons[m]
                   return <option key={m} value={m}>{methodLabels[m]}</option>
                 })}
@@ -98,7 +102,7 @@ export default function SplitPaymentModal({ open, onClose, total, onConfirm }: S
               />
               <button
                 onClick={() => removePayment(p.id)}
-                className="p-2.5 rounded-xl text-surface-400 hover:text-danger hover:bg-red-50 transition-colors"
+                className="p-2.5 rounded-xl text-surface-400 hover:text-danger hover:bg-red-500/15 transition-colors"
                 disabled={payments.length <= 1}
               >
                 <Trash2 className="w-4 h-4" />
@@ -110,7 +114,7 @@ export default function SplitPaymentModal({ open, onClose, total, onConfirm }: S
         {payments.length < 4 && (
           <button
             onClick={addPayment}
-            className="flex items-center gap-2 text-sm text-primary-600 hover:text-primary-700 font-medium"
+            className="flex items-center gap-2 text-sm text-primary-400 hover:text-primary-300 font-medium"
           >
             <Plus className="w-4 h-4" /> Ajouter un moyen de paiement
           </button>

@@ -13,7 +13,8 @@ import LoginPage from '@/modules/auth/LoginPage'
 import RegisterPage from '@/modules/auth/RegisterPage'
 import { useAppStore, useSyncStore } from '@/stores/appStore'
 import { initDB } from '@/db'
-import { isLoggedIn, getCurrentSession, onAuthChange } from '@/lib/auth'
+import type { Business } from '@/types'
+import { isLoggedIn, getCurrentSession, onAuthChange, startAuthGuard, signOut } from '@/lib/auth'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { registerSW } from '@/lib/pwa'
 import { startNotificationEngine } from '@/engine/notifications'
@@ -42,7 +43,7 @@ const DepotHistoryPage = lazy(() => import('@/modules/depots/DepotHistoryPage'))
 const DepotGlobalStockPage = lazy(() => import('@/modules/depots/DepotGlobalStockPage'))
 const BonSortiePage = lazy(() => import('@/modules/depots/BonSortiePage'))
 const UsersPage = lazy(() => import('@/modules/users/UsersPage'))
-const MaquettePage = lazy(() => import('@/modules/maquette/MaquettePage'))
+const MorePage = lazy(() => import('@/modules/more/MorePage'))
 
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -50,6 +51,53 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
   if (!initialized) return null
   if (!session && !isLoggedIn()) return <Navigate to="/login" replace />
   return <>{children}</>
+}
+
+async function loadUserFromSession(session: Awaited<ReturnType<typeof getCurrentSession>>) {
+  if (!session?.user) return null
+  const { supabase } = await import('@/lib/supabase')
+  const { data: profile } = await supabase.from('profiles').select('*, businesses(*)').eq('auth_user_id', session.user.id).single()
+  const u = {
+    id: session.user.id,
+    businessId: profile?.businessId || profile?.business_id || '',
+    name: profile?.name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Utilisateur',
+    email: session.user.email || '',
+    loginId: profile?.login_id || session.user.email || '',
+    passwordHash: '',
+    role: (profile?.role || 'staff') as 'admin' | 'manager' | 'staff' | 'viewer',
+    permissions: profile?.permissions?.length ? profile.permissions : ['*'],
+    isActive: profile?.is_active ?? true,
+    isPrimaryAdmin: profile?.is_primary_admin ?? false,
+    status: profile?.status || (profile?.is_active === false ? 'blocked' : 'active'),
+    createdAt: profile?.created_at || session.user.created_at || new Date().toISOString(),
+  }
+  useAppStore.getState().setUser(u)
+  if (profile?.businesses) {
+    const b = profile.businesses
+    const biz: Business = {
+      id: b.id,
+      name: b.name,
+      currency: b.currency,
+      currencySymbol: b.currency_symbol,
+      phone: b.phone,
+      email: b.email,
+      address: b.address,
+      taxId: b.tax_id,
+      isActive: b.is_active,
+      createdAt: b.created_at,
+      logo: b.logo || undefined,
+    }
+    useAppStore.getState().setCurrentBusiness(biz)
+    const { default: db } = await import('@/db')
+    const local = await db.businesses.get(biz.id)
+    if (!local) await db.businesses.add(biz)
+    else if (local.logo !== biz.logo) await db.businesses.update(biz.id, { logo: biz.logo, name: biz.name })
+    const settings = useAppStore.getState().settings
+    if (settings && biz.logo && !settings.logo) {
+      useAppStore.getState().setSettings({ ...settings, logo: biz.logo })
+    }
+  }
+  return u
 }
 
 export default function App() {
@@ -65,21 +113,44 @@ export default function App() {
   }
 
   useEffect(() => {
+    let guardCleanup: (() => void) | null = null
     initDB()
       .then(async () => {
         await init()
         if (isSupabaseConfigured()) {
           const session = await getCurrentSession()
-          if (session) setSession(session)
+          if (session) {
+            setSession(session)
+            try {
+              const u = await loadUserFromSession(session)
+              if (u && u.status && u.status !== 'active') {
+                await signOut()
+                setUser(null)
+              }
+            } catch {
+              setUser(null)
+            }
+          }
         } else {
           const uid = localStorage.getItem('neox-user-id')
           if (uid) {
             const u = await (await import('@/db')).default.users.get(uid)
-            if (u) setUser(u)
+            if (u) {
+              const status = u.status || (u.isActive === false ? 'blocked' : 'active')
+              if (status !== 'active') {
+                await signOut()
+                setUser(null)
+              } else {
+                setUser(u)
+              }
+            }
           }
         }
         setAuthReady(true)
         runPurge()
+        if (isSupabaseConfigured()) {
+          syncAll().catch(() => {})
+        }
       })
       .catch((err: unknown) => {
         const msg = err instanceof Error ? err.message : String(err)
@@ -91,39 +162,20 @@ export default function App() {
       subscribeAll()
     }
 
+    guardCleanup = startAuthGuard(() => {
+      setUser(null)
+      useAppStore.getState().setSession(null)
+    })
+
     const unsub = onAuthChange(async (session) => {
       setSession(session)
       if (session?.user) {
         try {
-          const { supabase } = await import('@/lib/supabase')
-          const { data: profile } = await supabase.from('profiles').select('*, businesses(*)').eq('auth_user_id', session.user.id).single()
-          const u = {
-            id: session.user.id,
-            businessId: profile?.businessId || profile?.business_id || '',
-            name: profile?.name || session.user.user_metadata?.name || session.user.email?.split('@')[0] || 'Utilisateur',
-            email: session.user.email || '',
-            loginId: session.user.email || '',
-            passwordHash: '',
-            role: (profile?.role || 'staff') as 'admin' | 'manager' | 'staff' | 'viewer',
-            permissions: profile?.permissions?.length ? profile.permissions : ['*'],
-            isActive: profile?.is_active ?? true,
-            isPrimaryAdmin: profile?.is_primary_admin ?? false,
-            createdAt: profile?.created_at || session.user.created_at || new Date().toISOString(),
-          }
-          setUser(u)
-          if (profile?.businesses) {
-            useAppStore.getState().setCurrentBusiness({
-              id: profile.businesses.id,
-              name: profile.businesses.name,
-              currency: profile.businesses.currency,
-              currencySymbol: profile.businesses.currency_symbol,
-              phone: profile.businesses.phone,
-              email: profile.businesses.email,
-              address: profile.businesses.address,
-              taxId: profile.businesses.tax_id,
-              isActive: profile.businesses.is_active,
-              createdAt: profile.businesses.created_at,
-            })
+          const u = await loadUserFromSession(session)
+          if (u && u.status && u.status !== 'active') {
+            await signOut()
+            setUser(null)
+            return
           }
           runPurge()
         } catch {
@@ -149,6 +201,7 @@ export default function App() {
     scheduleAutoBackup()
 
     return () => {
+      guardCleanup?.()
       unsub.data?.subscription.unsubscribe()
       clearInterval(interval)
     }
@@ -163,7 +216,7 @@ export default function App() {
           </div>
           <h1 className="text-xl font-bold text-surface-900">Erreur d'initialisation</h1>
           <p className="text-sm text-surface-500 mt-2 max-w-md">{error}</p>
-          <button onClick={() => location.reload()} className="mt-4 px-4 py-2 bg-primary-600 text-white rounded-xl text-sm">Réessayer</button>
+          <button onClick={() => location.reload()} className="mt-4 px-4 py-2 bg-primary-500 text-on-accent rounded-xl text-sm">Réessayer</button>
         </div>
       </div>
     )
@@ -173,13 +226,13 @@ export default function App() {
     return (
       <div className="min-h-screen flex items-center justify-center bg-surface-50">
         <div className="text-center animate-fade-in">
-          <div className="w-16 h-16 bg-primary-600 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-200">
+          <div className="w-16 h-16 bg-primary-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-primary-200">
             <span className="text-2xl font-bold text-white">N</span>
           </div>
           <h1 className="text-xl font-bold text-surface-900">NeoX ERP</h1>
           <p className="text-sm text-surface-400 mt-1">Initialisation...</p>
           <div className="mt-4 flex justify-center">
-            <div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" />
+            <div className="w-8 h-8 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin" />
           </div>
         </div>
       </div>
@@ -198,7 +251,7 @@ export default function App() {
         <Route path="/register" element={<RegisterPage />} />
         <Route element={
           <ProtectedRoute>
-            <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-surface-50"><div className="w-8 h-8 border-2 border-primary-200 border-t-primary-600 rounded-full animate-spin" /></div>}>
+            <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-surface-50"><div className="w-8 h-8 border-2 border-primary-300 border-t-primary-600 rounded-full animate-spin" /></div>}>
               <AppLayout />
             </Suspense>
           </ProtectedRoute>
@@ -219,13 +272,13 @@ export default function App() {
           <Route path="/depots" element={<PermissionRoute module="depots"><DepotsPage /></PermissionRoute>} />
           <Route path="/depots/stock/:locationId" element={<PermissionRoute module="depots"><DepotStockPage /></PermissionRoute>} />
           <Route path="/depots/stats/:locationId" element={<PermissionRoute module="depots"><DepotStatsPage /></PermissionRoute>} />
-          <Route path="/depots/vente" element={<PermissionRoute module="depots"><DepotGlobalPOSPage /></PermissionRoute>} />
+          <Route path="/depots/vente" element={<PermissionRoute module="pos" action="create"><DepotGlobalPOSPage /></PermissionRoute>} />
           <Route path="/depots/history/:locationId" element={<PermissionRoute module="depots"><DepotHistoryPage /></PermissionRoute>} />
           <Route path="/depots/stock-global" element={<PermissionRoute module="depots"><DepotGlobalStockPage /></PermissionRoute>} />
           <Route path="/depots/bons-sortie" element={<PermissionRoute module="depots"><BonSortiePage /></PermissionRoute>} />
           <Route path="/users" element={<PermissionRoute module="users"><UsersPage /></PermissionRoute>} />
           <Route path="/trash" element={<TrashPage />} />
-          <Route path="/maquette" element={<MaquettePage />} />
+          <Route path="/more" element={<MorePage />} />
         </Route>
       </Routes>
     </BrowserRouter>

@@ -29,6 +29,9 @@
   --color-danger: var(--danger);
   --color-info: var(--info);
 
+  --color-accent: var(--accent);
+  --color-on-accent: var(--on-accent);
+
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
 
   --radius-sm: calc(var(--radius) * 0.6);
@@ -56,36 +59,89 @@
 }
 
 /* ════════════════════════════════════════
-   NEXUS PREMIUM Theme — unique, luxueux, futuriste
+   THEMES — Café Profond (défaut) & Noir Gourmet
    ════════════════════════════════════════ */
-:root {
-  --primary-50: #eef2ff;
-  --primary-100: #e0e7ff;
-  --primary-200: #c7d2fe;
-  --primary-300: #a5b4fc;
-  --primary-400: #818cf8;
-  --primary-500: #6366f1;
-  --primary-600: #4f46e5;
-  --primary-700: #4338ca;
-  --primary-800: #3730a3;
-  --primary-900: #312e81;
 
-  --surface-50: #f7f8fc;
-  --surface-100: #eff1f6;
-  --surface-200: #e2e4ed;
-  --surface-300: #c8ccd9;
-  --surface-400: #9da2b5;
-  --surface-500: #6d7387;
-  --surface-600: #4f5567;
-  --surface-700: #363b4a;
-  --surface-800: #202433;
-  --surface-900: #111527;
-  --surface-950: #080a14;
+/* ── Thème « Café Profond » (Warm Executive) — défaut ── */
+:root,
+.theme-cafe {
+  --primary-50: rgba(217, 119, 6, 0.14);
+  --primary-100: rgba(217, 119, 6, 0.22);
+  --primary-200: #f6c179;
+  --primary-300: #f0a04b;
+  --primary-400: #e08a26;
+  --primary-500: #d97706;
+  --primary-600: #c06606;
+  --primary-700: #9a5205;
+  --primary-800: #6d3a04;
+  --primary-900: #4a2703;
 
-  --success: #06d6a0;
-  --warning: #fb923c;
-  --danger: #ff4757;
+  --surface-50: #0a0e17;
+  --surface-100: #121214;
+  --surface-200: #1a1e24;
+  --surface-300: #262b33;
+  --surface-400: #9ca3af;
+  --surface-500: #d1d5db;
+  --surface-600: #d7dae2;
+  --surface-700: #e5e7eb;
+  --surface-800: #f3f4f6;
+  --surface-900: #ffffff;
+  --surface-950: #05060a;
+
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
   --info: #38bdf8;
+
+  --accent: #d97706;
+  --accent-rgb: 217, 119, 6;
+  --on-accent: #0b0d10;
+  --glass: rgba(18, 18, 20, 0.62);
+  --stroke: rgba(255, 255, 255, 0.1);
+
+  --accent-rose: #ff3b8d;
+  --accent-orange: #ff8c42;
+  --accent-gold: #f0c040;
+  --accent-cyan: #22d3ee;
+
+  --radius: 0.75rem;
+}
+
+/* ── Thème « Noir Gourmet » (Ultra-Minimaliste Slate) ── */
+.theme-noir {
+  --primary-50: rgba(16, 185, 129, 0.14);
+  --primary-100: rgba(16, 185, 129, 0.22);
+  --primary-200: #a7f3d0;
+  --primary-300: #6ee7b7;
+  --primary-400: #34d399;
+  --primary-500: #10b981;
+  --primary-600: #0e9e6e;
+  --primary-700: #0c8a61;
+  --primary-800: #075441;
+  --primary-900: #05372c;
+
+  --surface-50: #000000;
+  --surface-100: #0e1622;
+  --surface-200: #1e293b;
+  --surface-300: #2b3a50;
+  --surface-400: #94a3b8;
+  --surface-500: #64748b;
+  --surface-600: #94a3b8;
+  --surface-700: #cbd5e1;
+  --surface-800: #e2e8f0;
+  --surface-900: #f8fafc;
+  --surface-950: #000000;
+
+  --success: #34d399;
+  --warning: #fbbf24;
+  --danger: #f87171;
+  --info: #38bdf8;
+
+  --accent: #10b981;
+  --accent-rgb: 16, 185, 129;
+  --on-accent: #0b0d10;
+  --glass: rgba(8, 10, 14, 0.6);
+  --stroke: rgba(255, 255, 255, 0.09);
 
   --accent-rose: #ff3b8d;
   --accent-orange: #ff8c42;
@@ -117,8 +173,8 @@ body {
 body {
   background: var(--surface-50);
   background-image:
-    radial-gradient(ellipse at 20% 0%, rgba(99, 102, 241, 0.03) 0%, transparent 50%),
-    radial-gradient(ellipse at 80% 100%, rgba(56, 189, 248, 0.03) 0%, transparent 50%);
+    radial-gradient(ellipse at 20% 0%, rgba(var(--accent-rgb), 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 100%, rgba(var(--accent-rgb), 0.06) 0%, transparent 50%);
 }
 
 #root {
@@ -162,8 +218,8 @@ body {
   100% { background-position: 200% 0; }
 }
 @keyframes pulseGlow {
-  0%, 100% { box-shadow: 0 0 8px rgba(99, 102, 241, 0.15); }
-  50% { box-shadow: 0 0 24px rgba(99, 102, 241, 0.25); }
+  0%, 100% { box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.15); }
+  50% { box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.25); }
 }
 @keyframes float {
   0%, 100% { transform: translateY(0); }
@@ -198,16 +254,16 @@ body {
 
 /* ── Glass effect ── */
 .glass {
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--glass);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.3);
+  border: 1px solid var(--stroke);
 }
 .glass-dark {
-  background: linear-gradient(135deg, rgba(17, 21, 39, 0.92), rgba(32, 36, 51, 0.88));
+  background: linear-gradient(135deg, var(--surface-800), var(--surface-700));
   backdrop-filter: blur(20px);
   -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(99, 102, 241, 0.12);
+  border: 1px solid var(--stroke);
 }
 
 /* ── Gradient text ── */
@@ -220,7 +276,7 @@ body {
 
 /* ── Shimmer loading ── */
 .shimmer {
-  background: linear-gradient(90deg, var(--surface-200) 25%, var(--surface-100) 50%, var(--surface-200) 75%);
+  background: linear-gradient(90deg, var(--surface-300) 25%, var(--surface-200) 50%, var(--surface-300) 75%);
   background-size: 200% 100%;
   animation: shimmerAnim 1.5s ease-in-out infinite;
   border-radius: var(--radius);
@@ -239,24 +295,24 @@ body {
 
 /* ── Premium Card ── */
 .premium-card {
-  background: white;
+  background: var(--surface-100);
   border: 1px solid var(--surface-200);
   border-radius: 16px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.02), 0 1px 6px rgba(0,0,0,0.03);
+  box-shadow: 0 1px 2px rgba(0,0,0,0.25), 0 1px 6px rgba(0,0,0,0.3);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 .premium-card:hover {
-  box-shadow: 0 4px 16px rgba(99, 102, 241, 0.06), 0 2px 4px rgba(0,0,0,0.02);
-  border-color: var(--primary-200);
+  box-shadow: 0 4px 16px rgba(var(--accent-rgb), 0.1), 0 2px 4px rgba(0,0,0,0.25);
+  border-color: var(--primary-300);
 }
 
 /* ── Premium Button ── */
 .premium-btn {
   background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
   border-radius: 10px;
-  color: white;
+  color: var(--on-accent);
   font-weight: 600;
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.2);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.2);
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
   overflow: hidden;
@@ -269,18 +325,18 @@ body {
   pointer-events: none;
 }
 .premium-btn:hover {
-  box-shadow: 0 4px 20px rgba(79, 70, 229, 0.35);
+  box-shadow: 0 4px 20px rgba(var(--accent-rgb), 0.35);
   transform: translateY(-1px);
 }
 .premium-btn:active {
   transform: translateY(0);
-  box-shadow: 0 2px 8px rgba(79, 70, 229, 0.25);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.25);
 }
 
 /* ── Premium Button Outline ── */
 .premium-btn-outline {
-  background: white;
-  border: 1.5px solid var(--surface-200);
+  background: var(--surface-100);
+  border: 1.5px solid var(--surface-300);
   border-radius: 10px;
   color: var(--surface-700);
   font-weight: 500;
@@ -288,15 +344,15 @@ body {
 }
 .premium-btn-outline:hover {
   border-color: var(--primary-300);
-  color: var(--primary-600);
-  box-shadow: 0 2px 8px rgba(99, 102, 241, 0.08);
+  color: var(--primary-400);
+  box-shadow: 0 2px 8px rgba(var(--accent-rgb), 0.08);
 }
 
 /* ── Premium Input ── */
 .premium-input {
   border-radius: 10px;
-  border: 1.5px solid var(--surface-200);
-  background: white;
+  border: 1.5px solid var(--surface-300);
+  background: var(--surface-100);
   padding: 10px 16px;
   font-size: 0.875rem;
   color: var(--surface-800);
@@ -305,7 +361,7 @@ body {
 }
 .premium-input:focus {
   border-color: var(--primary-400);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1), 0 1px 2px rgba(0,0,0,0.02);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12), 0 1px 2px rgba(0,0,0,0.25);
   outline: none;
 }
 .premium-input::placeholder {
@@ -352,8 +408,8 @@ body {
 /* ── Premium Select ── */
 .premium-select {
   border-radius: 10px;
-  border: 1.5px solid var(--surface-200);
-  background: white;
+  border: 1.5px solid var(--surface-300);
+  background: var(--surface-100);
   padding: 10px 14px;
   font-size: 0.875rem;
   color: var(--surface-800);
@@ -366,7 +422,7 @@ body {
 }
 .premium-select:focus {
   border-color: var(--primary-400);
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1), 0 1px 2px rgba(0,0,0,0.02);
+  box-shadow: 0 0 0 3px rgba(var(--accent-rgb), 0.12), 0 1px 2px rgba(0,0,0,0.25);
   outline: none;
 }
 
@@ -377,9 +433,9 @@ body {
   animation: fadeIn 0.2s ease-out;
 }
 .premium-modal-content {
-  background: white;
+  background: var(--surface-100);
   border-radius: 20px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.12), 0 8px 24px rgba(0, 0, 0, 0.06);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 8px 24px rgba(0, 0, 0, 0.4);
   animation: scaleIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
   border: 1px solid var(--surface-200);
 }
@@ -424,8 +480,8 @@ body {
 .premium-table tbody td {
   padding: 14px 16px;
   font-size: 0.875rem;
-  color: var(--surface-700);
-  border-bottom: 1px solid var(--surface-100);
+  color: var(--surface-600);
+  border-bottom: 1px solid var(--surface-200);
 }
 .premium-table tbody tr {
   transition: background 0.15s ease;
@@ -443,11 +499,11 @@ body {
   align-items: center;
   justify-content: center;
   position: relative;
-  filter: drop-shadow(0 2px 4px rgba(99, 102, 241, 0.2));
+  filter: drop-shadow(0 2px 4px rgba(var(--accent-rgb), 0.2));
   transition: filter 0.2s ease;
 }
 .icon-3d:hover {
-  filter: drop-shadow(0 4px 8px rgba(99, 102, 241, 0.3));
+  filter: drop-shadow(0 4px 8px rgba(var(--accent-rgb), 0.3));
 }
 .icon-3d svg {
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
@@ -455,10 +511,10 @@ body {
 
 /* ── Glow effects ── */
 .glow {
-  box-shadow: 0 0 20px rgba(99, 102, 241, 0.15), 0 0 40px rgba(99, 102, 241, 0.05);
+  box-shadow: 0 0 20px rgba(var(--accent-rgb), 0.15), 0 0 40px rgba(var(--accent-rgb), 0.05);
 }
 .glow-strong {
-  box-shadow: 0 0 24px rgba(99, 102, 241, 0.25), 0 0 60px rgba(99, 102, 241, 0.1);
+  box-shadow: 0 0 24px rgba(var(--accent-rgb), 0.25), 0 0 60px rgba(var(--accent-rgb), 0.1);
 }
 
 /* ── Gradient text ── */
@@ -489,11 +545,11 @@ body {
 
 /* ── Sidebar glass panel ── */
 .sidebar-glass {
-  background: linear-gradient(180deg, rgba(17, 21, 39, 0.96) 0%, rgba(32, 36, 51, 0.94) 100%);
+  background: linear-gradient(180deg, var(--surface-100) 0%, var(--surface-950) 100%);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border-right: 1px solid rgba(99, 102, 241, 0.12);
-  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.08);
+  border-right: 1px solid var(--stroke);
+  box-shadow: 4px 0 32px rgba(0, 0, 0, 0.35);
 }
 .sidebar-glass::before {
   content: '';
@@ -502,7 +558,7 @@ body {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(99, 102, 241, 0.3), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.4), transparent);
 }
 .sidebar-glass::after {
   content: '';
@@ -511,14 +567,14 @@ body {
   left: 0;
   right: 0;
   height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(56, 189, 248, 0.2), transparent);
+  background: linear-gradient(90deg, transparent, rgba(var(--accent-rgb), 0.25), transparent);
 }
 
 /* ── Sidebar nav item active ── */
 .sidebar-item-active {
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.12), rgba(139, 92, 246, 0.08));
-  border: 1px solid rgba(99, 102, 241, 0.18);
-  box-shadow: 0 0 16px rgba(99, 102, 241, 0.08), inset 0 0 20px rgba(99, 102, 241, 0.04);
+  background: linear-gradient(135deg, rgba(var(--accent-rgb), 0.16), rgba(var(--accent-rgb), 0.08));
+  border: 1px solid rgba(var(--accent-rgb), 0.4);
+  box-shadow: 0 0 16px rgba(var(--accent-rgb), 0.14), inset 0 0 20px rgba(var(--accent-rgb), 0.04);
 }
 .sidebar-item-active::before {
   content: '';
@@ -529,7 +585,7 @@ body {
   width: 3px;
   background: linear-gradient(180deg, var(--primary-500), var(--primary-400));
   border-radius: 0 2px 2px 0;
-  box-shadow: 0 0 8px rgba(99, 102, 241, 0.4);
+  box-shadow: 0 0 8px rgba(var(--accent-rgb), 0.4);
 }
 
 /* ── Sidebar nav item default ── */
@@ -539,15 +595,15 @@ body {
   border: 1px solid transparent;
 }
 .sidebar-item:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.08);
 }
 
 /* ── Logo premium ── */
 .logo-premium {
   background: linear-gradient(135deg, var(--primary-500), var(--primary-700));
   border-radius: 14px;
-  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
+  box-shadow: 0 4px 12px rgba(var(--accent-rgb), 0.3), inset 0 1px 0 rgba(255, 255, 255, 0.2);
   position: relative;
   overflow: hidden;
 }
@@ -565,7 +621,7 @@ body {
   left: -50%;
   right: -50%;
   bottom: -50%;
-  background: conic-gradient(from 0deg, transparent, rgba(255, 255, 255, 0.05), transparent, rgba(99, 102, 241, 0.1), transparent);
+  background: conic-gradient(from 0deg, transparent, rgba(255, 255, 255, 0.05), transparent, rgba(var(--accent-rgb), 0.1), transparent);
   animation: logoRotate 6s linear infinite;
   pointer-events: none;
 }
@@ -597,7 +653,7 @@ body {
     border-radius: var(--radius-xl);
     padding: 14px;
     margin-bottom: 12px;
-    background: white;
+    background: var(--surface-100);
     box-shadow: 0 1px 3px rgba(0,0,0,0.04);
   }
   .responsive-table table tbody tr td, table.premium-table tbody td {
@@ -628,14 +684,14 @@ body {
     border-bottom: none;
   }
   .responsive-table table tbody tr:hover, table.premium-table tbody tr:hover {
-    background: white;
+    background: var(--surface-100);
   }
 }
 
 /* ── Mobile card components (for any list) ── */
 @media (max-width: 767px) {
   .mobile-card {
-    background: white;
+    background: var(--surface-100);
     border: 1px solid var(--surface-200);
     border-radius: 14px;
     padding: 14px;
@@ -822,7 +878,7 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
   }
   .pos-cart-drawer .pos-cart-header {
     padding: 14px 16px;
-    background: white;
+    background: var(--surface-100);
     border-bottom: 1px solid var(--surface-200);
     display: flex;
     align-items: center;
@@ -836,13 +892,13 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
     -webkit-overflow-scrolling: touch;
   }
   .pos-cart-drawer .pos-cart-summary {
-    background: white;
+    background: var(--surface-100);
     border-top: 1px solid var(--surface-200);
     padding: 14px 16px;
     padding-bottom: calc(14px + env(safe-area-inset-bottom, 0px));
   }
   .pos-cart-item {
-    background: white;
+    background: var(--surface-100);
     border: 1px solid var(--surface-200);
     border-radius: 14px;
     padding: 12px;
@@ -903,7 +959,7 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
     position: sticky;
     top: 0;
     z-index: 10;
-    background: white;
+    background: var(--surface-100);
   }
 
   .mobile-full-width {
@@ -948,7 +1004,7 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
     left: 0;
     right: 0;
     z-index: 30;
-    background: white;
+    background: var(--surface-100);
     border-top: 1px solid var(--surface-200);
     padding: 12px 16px;
     padding-bottom: calc(12px + env(safe-area-inset-bottom, 0px));
@@ -969,7 +1025,7 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
 /* ── Customer & Sale mobile cards ── */
 @media (max-width: 767px) {
   .data-card {
-    background: white;
+    background: var(--surface-100);
     border: 1px solid var(--surface-200);
     border-radius: 14px;
     padding: 14px;
@@ -1017,7 +1073,7 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
     justify-content: center;
     gap: 4px;
     border: 1px solid var(--surface-200);
-    background: white;
+    background: var(--surface-100);
     color: var(--surface-700);
     text-decoration: none;
   }
@@ -1049,7 +1105,7 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
     font-size: 16px;
     border-radius: 12px;
     border: 1.5px solid var(--surface-200);
-    background: white;
+    background: var(--surface-100);
     color: var(--surface-900);
     -webkit-appearance: none;
   }
@@ -1076,7 +1132,7 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
     display: flex;
     gap: 8px;
     padding: 8px 16px;
-    background: white;
+    background: var(--surface-100);
     border-bottom: 1px solid var(--surface-200);
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
@@ -1090,7 +1146,7 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
     font-size: 0.75rem;
     font-weight: 500;
     border: 1px solid var(--surface-200);
-    background: white;
+    background: var(--surface-100);
     color: var(--surface-600);
   }
   .mobile-filter-bar button.active {
@@ -1122,5 +1178,21 @@ body { overscroll-behavior: none; -webkit-overflow-scrolling: touch; }
 @media (min-width: 768px) and (max-width: 1023px) {
   .md\:grid-cols-2-mobile {
     grid-template-columns: repeat(2, 1fr) !important;
+  }
+}
+
+/* ── Action buttons always visible on touch devices ── */
+/* Elements that rely on hover to reveal actions (opacity-0 + group-hover:opacity-100)
+   stay invisible on touch devices (phones AND tablets of any width) where there is no
+   hover. Force them visible under `@media (hover: none)`. The datetime picker inputs
+   (w-0 h-0 opacity-0) are unaffected because they do not carry the group-hover class. */
+@media (hover: none) {
+  .opacity-0.group-hover\:opacity-100 {
+    opacity: 1 !important;
+  }
+}
+@media (max-width: 767px) {
+  .opacity-0.group-hover\:opacity-100 {
+    opacity: 1 !important;
   }
 }

@@ -109,7 +109,7 @@ export default function SmsRemindersPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-amber-50 text-amber-600">
+            <div className="p-3 rounded-2xl bg-amber-500/15 text-amber-400">
               <AlertTriangle className="w-5 h-5" />
             </div>
             <div>
@@ -120,7 +120,7 @@ export default function SmsRemindersPage() {
         </Card>
         <Card>
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-red-50 text-red-600">
+            <div className="p-3 rounded-2xl bg-red-500/15 text-red-400">
               <Clock className="w-5 h-5" />
             </div>
             <div>
@@ -131,7 +131,7 @@ export default function SmsRemindersPage() {
         </Card>
         <Card>
           <div className="flex items-center gap-3">
-            <div className="p-3 rounded-2xl bg-blue-50 text-blue-600">
+            <div className="p-3 rounded-2xl bg-blue-500/15 text-blue-400">
               <MessageSquare className="w-5 h-5" />
             </div>
             <div>
@@ -148,7 +148,7 @@ export default function SmsRemindersPage() {
           <input
             type="text" placeholder="Rechercher un client..."
             value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
       </div>
@@ -163,7 +163,7 @@ export default function SmsRemindersPage() {
                     type="checkbox"
                     checked={paginatedItems.length > 0 && selected.size === paginatedItems.length}
                     onChange={toggleSelectAll}
-                    className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                    className="rounded border-surface-300 text-primary-400 focus:ring-primary-500"
                   />
                 </th>
                 <th className="text-left text-xs font-semibold text-surface-500 uppercase px-4 py-4">Client</th>
@@ -186,7 +186,7 @@ export default function SmsRemindersPage() {
                         type="checkbox"
                         checked={selected.has(credit.id)}
                         onChange={() => toggleSelect(credit.id)}
-                        className="rounded border-surface-300 text-primary-600 focus:ring-primary-500"
+                        className="rounded border-surface-300 text-primary-400 focus:ring-primary-500"
                       />
                     </td>
                     <td data-label="Client" className="px-4 py-4 text-sm font-medium text-surface-900">{credit.customerName}</td>
@@ -201,7 +201,7 @@ export default function SmsRemindersPage() {
                     <td data-label="Relances" className="px-4 py-4 text-center">
                       <button
                         onClick={() => setHistoryCredit(credit)}
-                        className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-primary-600 transition-colors"
+                        className="inline-flex items-center gap-1 text-xs text-surface-400 hover:text-primary-400 transition-colors"
                       >
                         <History className="w-3 h-3" />
                         {reminderCount}
@@ -211,14 +211,14 @@ export default function SmsRemindersPage() {
                       <div className="flex items-center justify-center gap-1">
                         <button
                           onClick={() => sendReminder(credit.id)}
-                          className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600"
+                          className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400"
                           title="Envoyer rappel WhatsApp"
                         >
                           <MessageSquare className="w-4 h-4" />
                         </button>
                         <button
                           onClick={() => shareViaWeChat(buildMessage(credit), 'Rappel de crédit')}
-                          className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600"
+                          className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400"
                           title="Envoyer rappel WeChat"
                         >
                           <MessageCircle className="w-4 h-4" />
@@ -233,7 +233,7 @@ export default function SmsRemindersPage() {
         </div>
         {filtered.length === 0 && (
           <div className="text-center py-16">
-            <Send className="w-12 h-12 text-surface-300 mx-auto mb-3" />
+            <Send className="w-12 h-12 text-surface-500 mx-auto mb-3" />
             <p className="text-surface-400">Aucun crédit en cours</p>
           </div>
         )}

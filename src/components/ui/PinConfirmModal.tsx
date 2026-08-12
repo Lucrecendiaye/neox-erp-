@@ -46,7 +46,7 @@ export default function PinConfirmModal({
     <Modal open={open} onClose={handleClose} title={title} size="sm">
       <form onSubmit={handleSubmit}>
         <div className="p-6 space-y-4">
-          <div className="bg-amber-50 rounded-xl p-4 text-center">
+          <div className="bg-amber-500/15 rounded-xl p-4 text-center">
             <Shield className="w-10 h-10 text-amber-500 mx-auto mb-2" />
             <p className="text-sm text-surface-600">{description}</p>
           </div>

@@ -3,9 +3,10 @@ import { useNavigate } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, Button, Input, Select, Modal } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
-import { Save, LogOut, Bell, Shield, Globe, Printer, Plus, Trash2, CheckCircle, Database, KeyRound, Lock, Camera, Image, X } from 'lucide-react'
+import { Save, LogOut, Bell, Shield, Globe, Printer, Plus, Trash2, CheckCircle, Database, KeyRound, Lock, Camera, Image, X, Palette } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { useBusinessId } from '@/hooks/useBusinessId'
+import { cn } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { printBarcodeLabels } from '@/lib/barcodePrint'
 import { isSupabaseConfigured } from '@/lib/supabase'
@@ -13,14 +14,16 @@ import { supabase } from '@/lib/supabase'
 import { setPin as setSecurityPin, resetPinToDefault, verifyPin, getStoredPinHash } from '@/lib/security'
 import { hashPassword } from '@/lib/auth'
 import { subscribeToPushNotifications, unsubscribeFromPushNotifications, isPushSubscribed } from '@/lib/pushNotifications'
-import { compressImage, uploadImage } from '@/lib/imageStorage'
+import { compressImage, uploadImage, syncBusinessLogo } from '@/lib/imageStorage'
 import PushSubscription from '@/components/ui/PushSubscription'
+import { useTheme, THEMES } from '@/providers/theme-provider'
 import type { CurrencyRate } from '@/types'
 
 export default function SettingsPage() {
   const settings = useLiveQuery(() => db.settings.get('default'), [])
   const businessId = useBusinessId()
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
+  const { theme, setTheme } = useTheme()
   const logoRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState({
     name: '', slogan: '', currency: 'XOF', currencySymbol: 'FCFA',
@@ -72,6 +75,7 @@ export default function SettingsPage() {
       } as any
       await db.settings.put(updated)
       useAppStore.getState().setSettings(updated)
+      if (logo) await syncBusinessLogo(logo)
       toast('Paramètres enregistrés', 'success')
     } catch { toast('Erreur lors de l\'enregistrement', 'error') }
   }
@@ -82,10 +86,15 @@ export default function SettingsPage() {
       const compressed = await compressImage(file, { maxDim: 512 })
       const url = await uploadImage(compressed, 'logos')
       setLogo(url)
+      await syncBusinessLogo(url)
+      toast('Logo mis à jour', 'success')
     } catch { toast('Erreur lors du chargement du logo', 'error') }
   }
 
-  function removeLogo() { setLogo('') }
+  function removeLogo() {
+    setLogo('')
+    syncBusinessLogo('')
+  }
 
   function addCurrency() {
     if (!newCurrency.code || !newCurrency.symbol || newCurrency.rate <= 0) return
@@ -152,6 +161,25 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-surface-900">Paramètres</h1>
         <p className="text-surface-500 text-sm mt-1">Personnalisez votre ERP</p>
+      </div>
+
+      <div className="lg:hidden flex items-center gap-4 p-4 rounded-2xl border border-surface-200 bg-gradient-to-r from-primary-500/10 via-surface-100 to-surface-100">
+        <div className="w-16 h-16 shrink-0 rounded-2xl overflow-hidden border border-surface-200 bg-white flex items-center justify-center">
+          {logo ? (
+            <img src={logo} alt="Logo" className="w-full h-full object-contain p-1" />
+          ) : (
+            <span className="text-2xl font-extrabold text-primary-500">{form.name.charAt(0).toUpperCase() || 'E'}</span>
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="text-base font-bold text-surface-900 truncate">{form.name || 'Mon entreprise'}</p>
+          {form.slogan && <p className="text-xs text-surface-500 truncate">{form.slogan}</p>}
+          <p className="text-xs text-surface-500 mt-1 flex items-center gap-1">
+            {form.managerName && <><span className="truncate">{form.managerName}</span> · </>}
+            <span>{form.phone || form.email || 'Profil à compléter'}</span>
+          </p>
+        </div>
+        <Globe className="w-5 h-5 text-primary-400 shrink-0" />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -230,7 +258,7 @@ export default function SettingsPage() {
               <label className="block text-sm font-medium text-surface-700 mb-1.5">Notes sur la facture</label>
               <textarea value={form.invoiceNotes} onChange={(e) => setForm({ ...form, invoiceNotes: e.target.value })}
                 rows={3} placeholder="Merci pour votre confiance. Les marchandises vendues ne sont ni reprises ni échangées."
-                className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
           </div>
         </Card>
@@ -243,6 +271,38 @@ export default function SettingsPage() {
           <div className="mt-4 space-y-4">
             <Select label="Langue" value={form.language} onChange={(e) => setForm({ ...form, language: e.target.value })}
               options={[{ value: 'fr', label: 'Français' }, { value: 'en', label: 'English' }, { value: 'ur', label: 'اردو' }]} />
+          </div>
+        </Card>
+
+        <Card>
+          <CardTitle className="flex items-center gap-2">
+            <Palette className="w-5 h-5 text-primary-500" />
+            Apparence
+          </CardTitle>
+          <div className="mt-4 space-y-3">
+            <p className="text-sm text-surface-500">Choisissez le thème de l'application. Le changement s'applique immédiatement.</p>
+            <div className="grid grid-cols-2 gap-3">
+              {THEMES.map((t) => (
+                <button key={t.id} onClick={() => setTheme(t.id)}
+                  className={cn(
+                    'rounded-xl border p-3 text-left transition-all',
+                    theme === t.id
+                      ? 'border-primary-400 bg-primary-50 ring-2 ring-primary-400/30'
+                      : 'border-surface-300 hover:border-primary-300'
+                  )}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <span className="flex -space-x-1.5">
+                      {t.swatches.map((c, i) => (
+                        <span key={i} className="w-4 h-4 rounded-full border border-white/20" style={{ background: c }} />
+                      ))}
+                    </span>
+                    <span className="text-sm font-semibold text-surface-800">{t.label}</span>
+                    {theme === t.id && <CheckCircle className="w-4 h-4 text-primary-400 ml-auto" />}
+                  </div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-surface-400">{t.tag}</span>
+                </button>
+              ))}
+            </div>
           </div>
         </Card>
 
@@ -261,7 +321,7 @@ export default function SettingsPage() {
                   {c.isDefault && <span className="text-[10px] ml-2 text-primary-500 font-medium">Par défaut</span>}
                 </div>
                 {!c.isDefault && (
-                  <button onClick={() => removeCurrency(c.code)} className="p-1 rounded-md hover:bg-red-50 text-surface-400 hover:text-danger">
+                  <button onClick={() => removeCurrency(c.code)} className="p-1 rounded-md hover:bg-red-500/15 text-surface-400 hover:text-danger">
                     <Trash2 className="w-3.5 h-3.5" />
                   </button>
                 )}
@@ -357,7 +417,7 @@ export default function SettingsPage() {
           </div>
         ) : (
           <div className="p-6 space-y-4">
-            <div className="bg-amber-50 rounded-xl p-4 text-center">
+            <div className="bg-amber-500/15 rounded-xl p-4 text-center">
               <Shield className="w-10 h-10 text-amber-500 mx-auto mb-2" />
               <p className="text-sm text-surface-600">Entrez l'ancien code, le nouveau, puis confirmez.</p>
             </div>

@@ -1,6 +1,6 @@
 import { cn, formatCurrency } from '@/lib/utils'
 import { AlertTriangle, Banknote, Calendar } from 'lucide-react'
-import { PAY_METHOD_LABELS, PAYMENT_TYPE_LABELS, type PayMethod, type SalePaymentType, type useSalePayment } from './salePayment'
+import { PAY_METHOD_LABELS, PAY_METHODS, PAYMENT_TYPE_LABELS, type PayMethod, type SalePaymentType, type useSalePayment } from './salePayment'
 
 type PaymentHook = ReturnType<typeof useSalePayment>
 
@@ -17,7 +17,7 @@ export function SalePaymentPanel({ pay, customerName, total }: {
   const customerRequired = pay.isCredit && !customerName.trim()
 
   return (
-    <div className="shrink-0 bg-white border-t border-surface-100">
+    <div className="shrink-0 bg-surface-100 border-t border-surface-100">
       <div className="px-4 pt-2 pb-1 space-y-2">
         {/* Type de vente */}
         <div className="grid grid-cols-3 gap-1 rounded-xl bg-surface-100 p-1">
@@ -28,7 +28,7 @@ export function SalePaymentPanel({ pay, customerName, total }: {
               className={cn(
                 'py-1.5 rounded-lg text-xs font-semibold transition-colors',
                 pay.paymentType === t
-                  ? 'bg-primary-600 text-white shadow'
+                  ? 'bg-primary-500 text-on-accent shadow'
                   : 'text-surface-500 hover:text-surface-700'
               )}
             >
@@ -41,9 +41,9 @@ export function SalePaymentPanel({ pay, customerName, total }: {
         <select
           value={pay.payMethod}
           onChange={(e) => pay.setPayMethod(e.target.value as PayMethod)}
-          className="w-full rounded-lg border border-surface-300 bg-white px-3 py-2 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full rounded-lg border border-surface-300 bg-surface-100 px-3 py-2 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-primary-500"
         >
-          {(['cash', 'mobile', 'card', 'bank'] as PayMethod[]).map(m => (
+          {PAY_METHODS.map(m => (
             <option key={m} value={m}>{PAY_METHOD_LABELS[m]}</option>
           ))}
         </select>
@@ -76,7 +76,7 @@ export function SalePaymentPanel({ pay, customerName, total }: {
 
         {/* Monnaie / Crédit / Manque */}
         {pay.paymentType === 'complet' && pay.payMethod === 'cash' && (pay.change > 0 || pay.isShort) && (
-          <p className={cn('text-xs font-semibold', pay.change > 0 ? 'text-emerald-600' : 'text-red-600')}>
+          <p className={cn('text-xs font-semibold', pay.change > 0 ? 'text-emerald-400' : 'text-red-400')}>
             {pay.change > 0 ? `Monnaie à rendre : ${formatCurrency(pay.change)}` : `Manque : ${formatCurrency(total - pay.amountReceived)}`}
           </p>
         )}
@@ -84,10 +84,10 @@ export function SalePaymentPanel({ pay, customerName, total }: {
           <p className="text-xs text-surface-400">Montant encaissé : {formatCurrency(total)}</p>
         )}
         {pay.paymentType === 'partiel' && pay.creditAmount > 0 && (
-          <p className="text-xs font-semibold text-blue-600">Crédit à recouvrer : {formatCurrency(pay.creditAmount)}</p>
+          <p className="text-xs font-semibold text-blue-400">Crédit à recouvrer : {formatCurrency(pay.creditAmount)}</p>
         )}
         {pay.paymentType === 'credit' && pay.creditAmount > 0 && (
-          <p className="text-xs font-semibold text-blue-600">Montant à créditer : {formatCurrency(pay.creditAmount)}</p>
+          <p className="text-xs font-semibold text-blue-400">Montant à créditer : {formatCurrency(pay.creditAmount)}</p>
         )}
 
         {/* Échéance optionnelle */}
@@ -105,7 +105,7 @@ export function SalePaymentPanel({ pay, customerName, total }: {
 
         {/* Client requis */}
         {customerRequired && (
-          <p className="flex items-center gap-1.5 text-xs font-semibold text-red-600">
+          <p className="flex items-center gap-1.5 text-xs font-semibold text-red-400">
             <AlertTriangle className="w-3.5 h-3.5" /> Client requis pour une vente {pay.paymentType === 'credit' ? 'à crédit' : 'partielle'}
           </p>
         )}

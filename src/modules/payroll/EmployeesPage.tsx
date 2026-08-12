@@ -115,7 +115,7 @@ export default function EmployeesPage() {
           <input
             type="text" placeholder="Rechercher un employé..."
             value={search} onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
           />
         </div>
         <Button onClick={openCreate}>
@@ -141,7 +141,7 @@ export default function EmployeesPage() {
                 <tr key={e.id} className="hover:bg-surface-50 transition-colors">
                   <td data-label="Employé" className="px-6 py-4">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 overflow-hidden">
+                      <div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400 overflow-hidden">
                         {e.photo ? <img src={e.photo} alt="" className="w-full h-full object-cover" /> : <Users className="w-5 h-5" />}
                       </div>
                       <div>
@@ -170,7 +170,7 @@ export default function EmployeesPage() {
                       <button onClick={() => openEdit(e)} className="p-2 rounded-lg hover:bg-surface-100 text-surface-400 transition-colors">
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button onClick={() => handleDelete(e.id)} className="p-2 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger transition-colors">
+                      <button onClick={() => handleDelete(e.id)} className="p-2 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger transition-colors">
                         <Trash2 className="w-4 h-4" />
                       </button>
                     </div>

@@ -41,7 +41,7 @@ export function Pagination({ page, totalPages, totalItems, onPageChange }: Pagin
               className={cn(
                 'min-w-[28px] h-7 rounded-lg text-xs font-medium transition-colors',
                 p === page
-                  ? 'bg-primary-600 text-white shadow-sm'
+                  ? 'bg-primary-500 text-on-accent shadow-sm'
                   : 'text-surface-500 hover:bg-surface-200'
               )}
             >

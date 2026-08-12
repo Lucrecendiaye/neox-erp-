@@ -82,7 +82,7 @@ export interface Supplier {
 }
 
 export type SaleStatus = 'pending' | 'completed' | 'cancelled' | 'returned'
-export type PaymentMethod = 'cash' | 'card' | 'mobile' | 'credit' | 'bank' | 'split'
+export type PaymentMethod = 'cash' | 'card' | 'mobile' | 'credit' | 'bank' | 'split' | 'wave' | 'orange'
 
 export interface SaleItem {
   productId: string
@@ -109,6 +109,8 @@ export interface Sale {
   invoiceNumber: string
   customerId?: string
   customerName?: string
+  supplierId?: string
+  supplierName?: string
   items: SaleItem[]
   subtotal: number
   discountTotal: number
@@ -260,8 +262,24 @@ export interface User {
   permissions: string[]
   isActive: boolean
   isPrimaryAdmin: boolean
+  status?: UserStatus
+  employeeId?: string
   createdAt: string
   lastLogin?: string
+}
+
+export type UserStatus = 'active' | 'blocked' | 'suspended' | 'deleted'
+
+export interface AuthSession {
+  id: string
+  userId: string
+  businessId: string
+  token: string
+  createdAt: string
+  lastSeenAt: string
+  expiresAt: string
+  device?: string
+  revoked: boolean
 }
 
 export interface CurrencyRate {

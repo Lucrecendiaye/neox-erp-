@@ -12,6 +12,9 @@ import { toast } from '@/lib/toast'
 import { processStockAdjustment, processTransfer, getLocationStockValue, getLocationStats, confirmTransferReception } from '@/engine/operations'
 import { exportBonSortiePDF } from '@/lib/pdf'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
+import { usePermission } from '@/hooks/usePermission'
+import { softDelete } from '@/lib/softDelete'
+import { syncDeleteObject } from '@/lib/realtime'
 import type { Product } from '@/types'
 import PhotoUpload from '@/components/ui/PhotoUpload'
 import {
@@ -24,6 +27,7 @@ export default function DepotStockPage() {
   const businessId = useBusinessId()
   const navigate = useNavigate()
   const currentUser = useAppStore(s => s.user)
+  const { can } = usePermission()
 
   const location = useLiveQuery(() => db.locations.get(locationId!), [locationId])
   const allProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
@@ -56,6 +60,7 @@ export default function DepotStockPage() {
     name: '', description: '', barcode: '', reference: '', categoryId: '', brand: '',
     unit: 'piece' as 'piece' | 'dozen' | 'pack', purchasePrice: 0, sellingPrice: 0,
     wholesalePrice: 0, priceDozen: 0, pricePack: 0, packSize: 0,
+    packCost: 0, dozenCost: 0,
     taxRate: 0, stockAlert: 0, location: '',
   })
   const [editPackUnit, setEditPackUnit] = useState<'piece' | 'dozen'>('piece')
@@ -129,8 +134,12 @@ export default function DepotStockPage() {
   }
 
   async function confirmDeleteStock(productId: string) {
-    await processStockAdjustment(productId, locationId!, 0, 'Suppression stock dépôt')
-    toast('Stock mis à zéro', 'success')
+    const product = await db.products.get(productId)
+    if (product) await softDelete('products', productId, product as any, product.name)
+    await db.productStocks.where('productId').equals(productId).delete()
+    await db.products.delete(productId)
+    try { await syncDeleteObject('products', productId) } catch {}
+    toast('Produit supprimé du dépôt', 'success')
     setConfirmDelete(null)
   }
 
@@ -177,12 +186,6 @@ export default function DepotStockPage() {
       return true
     })
   }, [allProducts, stockMap, transferSearch])
-  const can = (action: string) => {
-    if (currentUser?.role === 'admin') return true
-    if (currentUser?.role === 'manager' && action !== 'delete') return true
-    return false
-  }
-
   function marginColor(m: number) {
     if (m >= 20) return 'text-success'
     if (m >= 10) return 'text-warning'
@@ -206,6 +209,8 @@ export default function DepotStockPage() {
       sellingPrice: product.sellingPrice, wholesalePrice: product.wholesalePrice || 0,
       priceDozen: product.priceDozen || 0, pricePack: product.pricePack || 0,
       packSize: product.packSize || 0,
+      packCost: product.packSize ? Math.round((product.purchasePrice * product.packSize) * 100) / 100 : 0,
+      dozenCost: Math.round(product.purchasePrice * 12 * 100) / 100,
       taxRate: product.taxRate, stockAlert: product.stockAlert || 0,
       location: product.location || '',
     })
@@ -242,17 +247,17 @@ export default function DepotStockPage() {
           <h1 className="text-2xl font-bold text-surface-900">{location?.name || 'Stock'}</h1>
           <p className="text-surface-500 text-sm">{stats.totalProducts} produits · {stats.categoryCount} catégories</p>
         </div>
-        <Button onClick={() => setTransferModal(true)}><ArrowRightLeft className="w-4 h-4" /> Transférer</Button>
+        {can('depots', 'transfer') && <Button onClick={() => setTransferModal(true)}><ArrowRightLeft className="w-4 h-4" /> Transférer</Button>}
         <Button onClick={() => navigate(`/depots/history/${locationId}`)}><History className="w-4 h-4" /> Mouvement</Button>
       </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600"><DollarSign className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur stock</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Produits</p><p className="text-lg font-bold text-surface-900">{stats.totalProducts}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600"><Layers className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Catégories</p><p className="text-lg font-bold text-surface-900">{stats.categoryCount}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600"><AlertTriangle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Stock faible</p><p className={cn('text-lg font-bold', stats.lowStockCount > 0 ? 'text-amber-600' : 'text-surface-900')}>{stats.lowStockCount}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600"><TrendingUp className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Bénéfice potentiel</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.potentialProfit)}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><DollarSign className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur stock</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Produits</p><p className="text-lg font-bold text-surface-900">{stats.totalProducts}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-400"><Layers className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Catégories</p><p className="text-lg font-bold text-surface-900">{stats.categoryCount}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400"><AlertTriangle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Stock faible</p><p className={cn('text-lg font-bold', stats.lowStockCount > 0 ? 'text-amber-400' : 'text-surface-900')}>{stats.lowStockCount}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><TrendingUp className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Bénéfice potentiel</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.potentialProfit)}</p></div></div></div></Card>
       </div>
 
       {/* Filters */}
@@ -264,7 +269,7 @@ export default function DepotStockPage() {
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={filter} onChange={e => setFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
           <option value="all">Tous les produits</option>
           <option value="low_stock">Stock faible</option>
           <option value="out_of_stock">En rupture</option>
@@ -273,11 +278,13 @@ export default function DepotStockPage() {
           <option value="inactive">Inactifs</option>
         </select>
         <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
           <option value="all">Toutes catégories</option>
           {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
-        <Button onClick={() => { setPinAction({ type: 'adjust_stock' }); setPinModalOpen(true) }}><Plus className="w-4 h-4" /> Ajuster</Button>
+        {can('depots', 'adjust_stock') && (
+          <Button onClick={() => { setPinAction({ type: 'adjust_stock' }); setPinModalOpen(true) }}><Plus className="w-4 h-4" /> Ajuster</Button>
+        )}
       </div>
 
       {/* Product Grid */}
@@ -298,7 +305,7 @@ export default function DepotStockPage() {
                 {p.photos?.[0] ? (
                   <img src={p.photos[0]} alt="" className="w-full h-full object-contain" />
                 ) : (
-                  <Package className="w-10 h-10 text-surface-300" />
+                  <Package className="w-10 h-10 text-surface-500" />
                 )}
                 {isOut && <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-red-500/90 text-[10px] font-semibold text-white">Rupture</span>}
                 {isLow && <span className="absolute top-2 left-2 px-2 py-0.5 rounded-md bg-amber-500/90 text-[10px] font-semibold text-white">Stock faible</span>}
@@ -311,7 +318,7 @@ export default function DepotStockPage() {
                   <span className="text-surface-400">Prix vente</span>
                   <span className="text-right font-medium text-surface-900">{formatCurrency(p.sellingPrice)}</span>
                   <span className="text-surface-400">Stock</span>
-                  <span className={cn('text-right font-medium', isOut ? 'text-red-600' : isLow ? 'text-amber-600' : 'text-surface-900')}>
+                  <span className={cn('text-right font-medium', isOut ? 'text-red-400' : isLow ? 'text-amber-400' : 'text-surface-900')}>
                     {qty} pièces
                   </span>
                   <span className="text-surface-400">Seuil stock</span>
@@ -327,24 +334,24 @@ export default function DepotStockPage() {
 
               {/* Actions */}
               <div className="flex items-center gap-1 px-4 py-3 border-t border-surface-100 bg-surface-50">
-                {can('edit') && (
-                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-white text-surface-400 hover:text-blue-600 transition-colors" title="Modifier">
+                {can('depots', 'edit') && (
+                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="Modifier">
                     <Edit2 className="w-4 h-4" />
                   </button>
                 )}
-                <button onClick={() => navigate(`/products/${p.id}`)} className="p-1.5 rounded-lg hover:bg-white text-surface-400 hover:text-primary-600 transition-colors" title="Fiche détaillée">
+                <button onClick={() => navigate(`/products/${p.id}`)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors" title="Fiche détaillée">
                   <Eye className="w-4 h-4" />
                 </button>
-                {can('edit') && (
-                  <button onClick={() => { setAdjProduct(p.id); setAdjQty(qty); setAdjModal(true) }} className="p-1.5 rounded-lg hover:bg-white text-surface-400 hover:text-amber-600 transition-colors" title="Ajuster le stock">
+                {can('depots', 'adjust_stock') && (
+                  <button onClick={() => { setAdjProduct(p.id); setAdjQty(qty); setAdjModal(true) }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-400 transition-colors" title="Ajuster le stock">
                     <Package className="w-4 h-4" />
                   </button>
                 )}
-                <button onClick={() => navigate(`/depots/history/${locationId}`)} className="p-1.5 rounded-lg hover:bg-white text-surface-400 hover:text-purple-600 transition-colors" title="Historique">
+                <button onClick={() => navigate(`/depots/history/${locationId}`)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-purple-600 transition-colors" title="Historique">
                   <History className="w-4 h-4" />
                 </button>
-                {can('delete') && (
-                  <button onClick={() => { setPinAction({ type: 'delete_stock', payload: p.id }); setPinModalOpen(true) }} className="p-1.5 rounded-lg hover:bg-white text-surface-400 hover:text-red-600 transition-colors" title="Supprimer">
+                {can('depots', 'delete') && (
+                  <button onClick={() => { setPinAction({ type: 'delete_stock', payload: p.id }); setPinModalOpen(true) }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-red-400 transition-colors" title="Supprimer">
                     <Trash2 className="w-4 h-4" />
                   </button>
                 )}
@@ -354,7 +361,7 @@ export default function DepotStockPage() {
         })}
         {filteredProducts.length === 0 && (
           <div className="col-span-full flex flex-col items-center justify-center py-16 text-surface-400">
-            <Package className="w-12 h-12 mb-3 text-surface-300" />
+            <Package className="w-12 h-12 mb-3 text-surface-500" />
             <p className="text-sm">Aucun produit trouvé</p>
             <p className="text-xs text-surface-400">Essayez de modifier vos filtres</p>
           </div>
@@ -364,7 +371,7 @@ export default function DepotStockPage() {
       {/* Modals */}
       <Modal open={confirmDelete !== null} onClose={() => setConfirmDelete(null)} title="Confirmer la suppression">
         <div className="p-6 space-y-4">
-          <p className="text-sm text-surface-600">Mettre le stock à zéro pour <strong>{productMap.get(confirmDelete || '')?.name}</strong> ?</p>
+          <p className="text-sm text-surface-600">Supprimer définitivement <strong>{productMap.get(confirmDelete || '')?.name}</strong> et tout son stock ?</p>
           <div className="flex gap-2">
             <Button onClick={() => setConfirmDelete(null)} variant="outline" className="flex-1">Annuler</Button>
             <Button onClick={() => handleDeleteStock(confirmDelete!)} className="flex-1 bg-red-600 hover:bg-red-500">Supprimer</Button>
@@ -423,7 +430,7 @@ export default function DepotStockPage() {
                         return [...prev, { productId: p.id, qty: 0, unitName: unit.name, unitQuantity: unit.quantity }]
                       })
                     }}
-                    className="text-xs px-2 py-1.5 rounded-lg border border-surface-300 bg-white">
+                    className="text-xs px-2 py-1.5 rounded-lg border border-surface-300 bg-surface-100">
                     {units.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
                   </select>
                   <input type="number" min="0" placeholder="Qté" value={item?.qty ?? ''}
@@ -455,24 +462,49 @@ export default function DepotStockPage() {
               <Select label="Catégorie" value={editForm.categoryId} onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
               <Input label="Marque" value={editForm.brand} onChange={(e) => setEditForm({ ...editForm, brand: e.target.value })} />
               <Input label="Référence" value={editForm.reference} onChange={(e) => setEditForm({ ...editForm, reference: e.target.value })} />
-              <Select label="Unité" value={editForm.unit} onChange={(e) => setEditForm({ ...editForm, unit: e.target.value as 'piece' | 'dozen' | 'pack' })} options={[{ value: 'piece', label: 'Pièce' }, { value: 'dozen', label: 'Douzaine' }, { value: 'pack', label: 'Paquet' }]} />
+              <Select label="Unité" value={editForm.unit} onChange={(e) => {
+                const unit = e.target.value as 'piece' | 'dozen' | 'pack'
+                setEditForm(prev => {
+                  const next = { ...prev, unit }
+                  if (unit === 'pack' && prev.purchasePrice > 0) {
+                    const size = prev.packSize || (editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty)
+                    if (size > 0) next.packCost = Math.round(prev.purchasePrice * size * 100) / 100
+                  }
+                  if (unit === 'dozen' && prev.purchasePrice > 0) {
+                    next.dozenCost = Math.round(prev.purchasePrice * 12 * 100) / 100
+                  }
+                  return next
+                })
+              }} options={[{ value: 'piece', label: 'Pièce' }, { value: 'dozen', label: 'Douzaine' }, { value: 'pack', label: 'Paquet' }]} />
             </div>
             {editForm.unit === 'pack' && (
               <div className="bg-surface-50 rounded-xl p-4 space-y-3 mt-4">
                 <p className="text-sm font-medium text-surface-700">Composition du paquet</p>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <input type="radio" id="edit-comp-piece" name="editPackComp" checked={editPackUnit === 'piece'} onChange={() => setEditPackUnit('piece')} className="w-4 h-4 text-primary-500" />
+                    <input type="radio" id="edit-comp-piece" name="editPackComp" checked={editPackUnit === 'piece'} onChange={() => {
+                      setEditPackUnit('piece')
+                      if (editForm.packCost > 0 && editPackQty > 0) setEditForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / editPackQty) * 100) / 100 }))
+                    }} className="w-4 h-4 text-primary-500" />
                     <label htmlFor="edit-comp-piece" className="text-sm text-surface-700">Pièces</label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input type="radio" id="edit-comp-dozen" name="editPackComp" checked={editPackUnit === 'dozen'} onChange={() => setEditPackUnit('dozen')} className="w-4 h-4 text-primary-500" />
+                    <input type="radio" id="edit-comp-dozen" name="editPackComp" checked={editPackUnit === 'dozen'} onChange={() => {
+                      setEditPackUnit('dozen')
+                      if (editForm.packCost > 0 && editPackQty > 0) setEditForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / (editPackQty * 12)) * 100) / 100 }))
+                    }} className="w-4 h-4 text-primary-500" />
                     <label htmlFor="edit-comp-dozen" className="text-sm text-surface-700">Douzaines</label>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-surface-500">1 paquet =</span>
-                  <input type="number" min="1" value={editPackQty || ''} onChange={(e) => setEditPackQty(+e.target.value)} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
+                  <input type="number" min="1" value={editPackQty || ''} onChange={(e) => {
+                    setEditPackQty(+e.target.value)
+                    if (editForm.packCost > 0) {
+                      const size = editPackUnit === 'dozen' ? +e.target.value * 12 : +e.target.value
+                      if (size > 0) setEditForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / size) * 100) / 100 }))
+                    }
+                  }} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
                   <span className="text-sm text-surface-500">{editPackUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
                   {editPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty} pièces</span>}
                 </div>
@@ -493,10 +525,28 @@ export default function DepotStockPage() {
           <div>
             <h3 className="modal-section-title">Prix</h3>
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <Input label="Prix d'achat" type="number" value={editForm.purchasePrice} onChange={(e) => setEditForm({ ...editForm, purchasePrice: +e.target.value })} />
+              {editForm.unit === 'piece' && (
+                <Input label="Prix de revient (pièce)" type="number" value={editForm.purchasePrice} onChange={(e) => setEditForm({ ...editForm, purchasePrice: +e.target.value })} />
+              )}
+              {editForm.unit === 'pack' && (
+                <Input label={`Prix de revient (paquet de ${(editForm.packSize || (editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty) || 0)} pcs)`} type="number" value={editForm.packCost} onChange={(e) => {
+                  const packCost = +e.target.value
+                  const size = editForm.packSize || (editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty)
+                  setEditForm(f => ({ ...f, packCost, purchasePrice: size > 0 && packCost > 0 ? Math.round((packCost / size) * 100) / 100 : 0 }))
+                }} />
+              )}
+              {editForm.unit === 'dozen' && (
+                <Input label="Prix de revient (douzaine)" type="number" value={editForm.dozenCost} onChange={(e) => {
+                  const dozenCost = +e.target.value
+                  setEditForm(f => ({ ...f, dozenCost, purchasePrice: dozenCost > 0 ? Math.round((dozenCost / 12) * 100) / 100 : 0 }))
+                }} />
+              )}
               <Input label="Prix de vente (pièce)" type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: +e.target.value })} />
               <Input label="Prix de gros" type="number" value={editForm.wholesalePrice} onChange={(e) => setEditForm({ ...editForm, wholesalePrice: +e.target.value })} />
             </div>
+            {editForm.unit !== 'piece' && editForm.purchasePrice > 0 && (
+              <p className="text-sm text-surface-500 mt-3">Coût unitaire : <span className="font-semibold text-surface-700">{formatCurrency(editForm.purchasePrice)} / pièce</span></p>
+            )}
             {editForm.purchasePrice > 0 && (
               <p className="text-sm text-surface-500 mt-3">Marge : <span className="font-semibold text-success">{calculateMargin(editForm.purchasePrice, editForm.sellingPrice).toFixed(1)}%</span></p>
             )}
@@ -558,7 +608,7 @@ export default function DepotStockPage() {
                 </tbody>
               </table>
               </div>
-              <p className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+              <p className="text-xs text-amber-400 bg-amber-500/15 border border-amber-500/30 rounded-lg px-3 py-2">
                 La transaction est considérée effectuée après confirmation de la réception. Elle peut être annulée uniquement depuis l'onglet Bon de sortie.
               </p>
               <div>
@@ -574,7 +624,7 @@ export default function DepotStockPage() {
                   setBonModal(false)
                 } catch (e: any) { toast(e.message || 'Erreur', 'error') }
               }}>
-                <CheckCircle2 className="w-4 h-4" /> Confirmer la réception — transaction effectuée
+                <CheckCircle2 className="w-4 h-4" /> Confirmer la réception â€” transaction effectuée
               </Button>
               <div className="flex gap-2 pt-2">
                 <Button onClick={() => {

@@ -123,7 +123,7 @@ export default function BusinessesPage() {
           placeholder="Rechercher une entreprise..."
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       </div>
 
@@ -134,7 +134,7 @@ export default function BusinessesPage() {
             className={`relative group ${biz.isActive ? 'ring-2 ring-primary-500' : ''}`}
           >
             <div className="flex items-start gap-3">
-              <div className="w-12 h-12 bg-primary-50 rounded-xl flex items-center justify-center text-primary-600 font-bold text-lg">
+              <div className="w-12 h-12 bg-primary-50 rounded-xl flex items-center justify-center text-primary-400 font-bold text-lg">
                 <Building2 className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
@@ -170,7 +170,7 @@ export default function BusinessesPage() {
               </button>
               <button
                 onClick={() => handleDelete(biz.id)}
-                className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger"
+                className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger"
               >
                 <Trash2 className="w-4 h-4" />
               </button>

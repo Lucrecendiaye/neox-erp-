@@ -92,11 +92,11 @@ export default function StockPage() {
       </div>
 
       {lowStock.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-start gap-3">
-          <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+        <div className="bg-amber-500/15 border border-amber-500/30 rounded-2xl p-4 flex items-start gap-3">
+          <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
           <div>
-            <p className="text-sm font-semibold text-amber-800">Alertes stock</p>
-            <p className="text-sm text-amber-700">{lowStock.length} produit{lowStock.length > 1 ? 's' : ''} sous le seuil d'alerte</p>
+            <p className="text-sm font-semibold text-amber-200">Alertes stock</p>
+            <p className="text-sm text-amber-300">{lowStock.length} produit{lowStock.length > 1 ? 's' : ''} sous le seuil d'alerte</p>
           </div>
         </div>
       )}
@@ -104,7 +104,7 @@ export default function StockPage() {
       <div className="flex gap-2">
         {(['movements', 'valuation', 'inventory'] as const).map(t => (
           <button key={t} onClick={() => setTab(t)}
-            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab === t ? 'bg-primary-600 text-white shadow-sm' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}>
+            className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${tab === t ? 'bg-primary-500 text-on-accent shadow-sm' : 'bg-surface-100 text-surface-600 hover:bg-surface-200'}`}>
             {t === 'movements' ? 'Mouvements' : t === 'valuation' ? 'Valorisation' : 'Inventaire'}
           </button>
         ))}
@@ -116,7 +116,7 @@ export default function StockPage() {
             <div className="relative w-full sm:w-72">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
               <input type="text" placeholder="Rechercher..." value={search} onChange={(e) => setSearch(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+                className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
             <Button onClick={() => setModalOpen(true)}><Plus className="w-4 h-4" /> Mouvement</Button>
           </div>
@@ -128,7 +128,7 @@ export default function StockPage() {
                 return (
                   <div key={m.id} className="flex items-center justify-between p-3 rounded-xl hover:bg-surface-50 transition-colors">
                     <div className="flex items-center gap-3 min-w-0">
-                      <div className={`p-2 rounded-lg ${m.type === 'in' ? 'bg-emerald-50 text-emerald-600' : m.type === 'out' ? 'bg-red-50 text-red-600' : 'bg-amber-50 text-amber-600'}`}>
+                      <div className={`p-2 rounded-lg ${m.type === 'in' ? 'bg-emerald-500/15 text-emerald-400' : m.type === 'out' ? 'bg-red-500/15 text-red-400' : 'bg-amber-500/15 text-amber-400'}`}>
                         {m.type === 'in' ? <TrendingUp className="w-4 h-4" /> : m.type === 'out' ? <TrendingDown className="w-4 h-4" /> : <ClipboardList className="w-4 h-4" />}
                       </div>
                       <div className="min-w-0">
@@ -159,9 +159,9 @@ export default function StockPage() {
       {tab === 'valuation' && (
         <div className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <Card padding="sm"><div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-blue-50 text-blue-600"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur du stock</p><p className="text-lg font-bold">{formatCurrency(valuation.totalValue)}</p></div></div></Card>
-            <Card padding="sm"><div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-emerald-50 text-emerald-600"><BarChart3 className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Marge potentielle</p><p className="text-lg font-bold text-success">{formatCurrency(valuation.profit)}</p></div></div></Card>
-            <Card padding="sm"><div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-amber-50 text-amber-600"><AlertTriangle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Alertes</p><p className="text-lg font-bold">{lowStock.length}</p></div></div></Card>
+            <Card padding="sm"><div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-blue-500/15 text-blue-400"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur du stock</p><p className="text-lg font-bold">{formatCurrency(valuation.totalValue)}</p></div></div></Card>
+            <Card padding="sm"><div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-emerald-500/15 text-emerald-400"><BarChart3 className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Marge potentielle</p><p className="text-lg font-bold text-success">{formatCurrency(valuation.profit)}</p></div></div></Card>
+            <Card padding="sm"><div className="flex items-center gap-3"><div className="p-2 rounded-xl bg-amber-500/15 text-amber-400"><AlertTriangle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Alertes</p><p className="text-lg font-bold">{lowStock.length}</p></div></div></Card>
           </div>
 
           <Card>
@@ -211,7 +211,7 @@ export default function StockPage() {
                   const qty = productStock.get(p.id) || 0
                   const isLow = p.stockAlert && qty <= p.stockAlert
                   return (
-                    <tr key={p.id} className={`hover:bg-surface-50 ${isLow ? 'bg-amber-50/50' : ''}`}>
+                    <tr key={p.id} className={`hover:bg-surface-50 ${isLow ? 'bg-amber-500/15' : ''}`}>
                       <td data-label="Produit" className="py-3 font-medium text-surface-900">{p.name}</td>
                       <td data-label="Stock" className="py-3 text-right font-semibold">{qty}</td>
                       <td data-label="Seuil" className="py-3 text-right text-surface-500">{p.stockAlert || '—'}</td>

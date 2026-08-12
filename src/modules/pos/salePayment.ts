@@ -1,17 +1,21 @@
 import { useEffect, useMemo, useState } from 'react'
 import db from '@/db'
 import { generateId } from '@/lib/utils'
-import type { Customer } from '@/types'
+import type { Customer, Supplier } from '@/types'
 
 export type SalePaymentType = 'complet' | 'partiel' | 'credit'
-export type PayMethod = 'cash' | 'mobile' | 'card' | 'bank'
+export type PayMethod = 'cash' | 'wave' | 'orange' | 'card' | 'mobile' | 'bank'
 
 export const PAY_METHOD_LABELS: Record<PayMethod, string> = {
   cash: 'Espèces',
+  wave: 'Wave',
+  orange: 'Orange Money',
   mobile: 'Mobile Money',
   card: 'Carte',
   bank: 'Virement',
 }
+
+export const PAY_METHODS: PayMethod[] = ['cash', 'wave', 'orange', 'mobile', 'card', 'bank']
 
 export const PAYMENT_TYPE_LABELS: Record<SalePaymentType, string> = {
   complet: 'Complet',
@@ -116,5 +120,40 @@ export async function ensureCustomer(opts: {
     updatedAt: now,
   }
   await db.customers.add(record)
+  return { id: record.id, name }
+}
+
+export async function ensureSupplier(opts: {
+  businessId: string
+  name: string
+  phone: string
+  address: string
+  supplierId: string
+  allSuppliers: Supplier[]
+}): Promise<{ id?: string; name: string }> {
+  const name = opts.name.trim()
+  if (opts.supplierId) {
+    const s = opts.allSuppliers.find(x => x.id === opts.supplierId)
+    return { id: opts.supplierId, name: s?.name || name }
+  }
+  if (!name) return { id: undefined, name }
+  const existing = opts.allSuppliers.find(s =>
+    s.name.toLowerCase() === name.toLowerCase() &&
+    (!opts.phone || (s.phone || '').toLowerCase() === opts.phone.toLowerCase())
+  )
+  if (existing) return { id: existing.id, name: existing.name }
+  const now = new Date().toISOString()
+  const record = {
+    id: generateId(),
+    businessId: opts.businessId,
+    name,
+    phone: opts.phone,
+    email: '',
+    address: opts.address,
+    notes: '',
+    createdAt: now,
+    updatedAt: now,
+  }
+  await db.suppliers.add(record)
   return { id: record.id, name }
 }

@@ -11,7 +11,7 @@ import { shareViaWeChat } from '@/lib/share'
 import { recordCreditPayment, modifyCreditPayment, deleteCreditPayment } from '@/engine/operations'
 import { CreditSaleEditModal } from '@/components/credit/CreditSaleModals'
 import {
-  Search, AlertTriangle, Clock, MessageSquare,
+  Search, AlertTriangle, Clock, MessageSquare, Phone,
   CreditCard, DollarSign, History, Edit2, Trash2, Save, Plus, MessageCircle
 } from 'lucide-react'
 import type { Credit, CreditPayment, PaymentMethod } from '@/types'
@@ -34,6 +34,8 @@ export default function CreditPage() {
   ) || []
 
   const customers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId]) || []
+
+  const sales = useLiveQuery(() => db.sales.where('businessId').equals(businessId).toArray(), [businessId]) || []
 
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<string>('all')
@@ -76,6 +78,14 @@ export default function CreditPage() {
 
   const creditPayments = (creditId: string) =>
     allPayments.filter(p => p.creditId === creditId).reverse()
+
+  const customerPhone = (credit: Credit) => customers.find(c => c.id === credit.customerId)?.phone || ''
+
+  const invoiceNumber = (credit: Credit) => {
+    if (!credit.invoiceId) return ''
+    const sale = sales.find(s => s.id === credit.invoiceId)
+    return sale?.invoiceNumber || credit.invoiceId
+  }
 
   async function handlePay() {
     if (!payCredit) return
@@ -124,7 +134,7 @@ export default function CreditPage() {
   }
 
   const methodLabel: Record<string, string> = {
-    cash: 'Espèces', card: 'Carte', mobile: 'Mobile Money',
+    cash: 'Espèces', card: 'Carte', mobile: 'Mobile Money', wave: 'Wave', orange: 'Orange Money',
     credit: 'Crédit', bank: 'Virement', split: 'Mixte',
   }
 
@@ -147,10 +157,10 @@ export default function CreditPage() {
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
           <input type="text" placeholder="Rechercher un client..." value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-          className="rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+          className="rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
           <option value="all">Tous les statuts</option>
           <option value="active">Actifs</option>
           <option value="paid">Payés</option>
@@ -159,12 +169,76 @@ export default function CreditPage() {
         </select>
       </div>
 
-      <Card className="overflow-hidden p-0">
+      {/* Mobile: cartes crédits */}
+      <div className="lg:hidden space-y-3">
+        {paginatedItems?.map((c) => {
+          const isPaid = c.status === 'paid'
+          const isOverdue = !isPaid && (c.status === 'overdue' || (c.status === 'active' && c.dueDate && new Date(c.dueDate).getFullYear() < 2100 && new Date(c.dueDate) < new Date()))
+          const isDefaulted = c.status === 'defaulted'
+          const accent = isPaid ? 'border-emerald-500 bg-emerald-500/5' : isOverdue || isDefaulted ? 'border-red-500 bg-red-500/5' : 'border-amber-500 bg-amber-500/5'
+          const textColor = isPaid ? 'text-emerald-500' : isOverdue || isDefaulted ? 'text-red-500' : 'text-amber-500'
+          const phone = customerPhone(c)
+          return (
+            <div key={c.id} className={`rounded-2xl border-l-4 ${accent} bg-surface-100 border border-l-4 border-surface-200 shadow-sm p-4`}>
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-bold text-surface-900 text-base truncate">{c.customerName}</p>
+                  <p className="text-xs text-surface-500 flex items-center gap-1 mt-0.5">
+                    <Phone className="w-3 h-3" /> {phone || '—'}
+                  </p>
+                </div>
+                <Badge variant={isPaid ? 'success' : isOverdue || isDefaulted ? 'danger' : 'warning'}>
+                  {isPaid ? 'Payé' : isOverdue ? 'Échu' : isDefaulted ? 'Défaut' : 'Actif'}
+                </Badge>
+              </div>
+
+              <div className="flex items-end justify-between mt-3">
+                <div>
+                  <p className="text-[10px] uppercase text-surface-500 font-semibold">Reste à payer</p>
+                  <p className={`text-2xl font-extrabold ${textColor}`}>{formatCurrency(c.balance)}</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] uppercase text-surface-500 font-semibold">Échéance</p>
+                  <p className="text-sm font-semibold text-surface-900">{new Date(c.dueDate).getFullYear() >= 2100 ? '—' : formatDate(c.dueDate)}</p>
+                  <p className="text-[10px] text-surface-500 mt-0.5">Total {formatCurrency(c.amount)} · Payé {formatCurrency(c.paid)}</p>
+                </div>
+              </div>
+
+              <div className="flex gap-2 mt-3">
+                {!isPaid && canCreate && (
+                  <button
+                    onClick={() => openPayModal(c)}
+                    className="flex-1 py-3 rounded-xl bg-emerald-500 text-white font-bold text-sm flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all min-h-[48px] shadow shadow-emerald-500/30"
+                  >
+                    <Plus className="w-5 h-5" /> Encaisser
+                  </button>
+                )}
+                <button
+                  onClick={() => openHistory(c)}
+                  className="flex-1 py-3 rounded-xl bg-surface-50 border border-surface-200 text-surface-700 font-semibold text-sm flex items-center justify-center gap-1.5 active:scale-[0.97] transition-all min-h-[48px]"
+                >
+                  <History className="w-5 h-5" /> Historique
+                </button>
+              </div>
+            </div>
+          )
+        })}
+        {(!filtered || filtered.length === 0) && (
+          <div className="flex flex-col items-center justify-center py-16 text-surface-400">
+            <CreditCard className="w-14 h-14 mb-4 text-surface-500" />
+            <p className="text-sm font-medium text-surface-900">Aucun crédit</p>
+            <p className="text-xs mt-1 text-surface-500">Les crédits apparaîtront ici après les ventes à crédit</p>
+          </div>
+        )}
+      </div>
+
+      <Card className="overflow-hidden p-0 hidden lg:block">
         <div className="overflow-x-auto responsive-table">
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
                 <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Client</th>
+                <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Facture</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Montant</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Payé</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Solde</th>
@@ -181,10 +255,15 @@ export default function CreditPage() {
                   <tr key={c.id} className="hover:bg-surface-50 transition-colors group">
                     <td data-label="Client" className="px-6 py-4">
                       <p className="text-sm font-medium text-surface-900">{c.customerName}</p>
-                      <p className="text-xs text-surface-400 font-mono">{c.id.slice(0, 10)}...</p>
+                      {customerPhone(c) ? (
+                        <p className="text-xs text-surface-400 flex items-center gap-1"><Phone className="w-3 h-3" />{customerPhone(c)}</p>
+                      ) : (
+                        <p className="text-xs text-surface-400 font-mono">{c.id.slice(0, 10)}...</p>
+                      )}
                     </td>
+                    <td data-label="Facture" className="px-6 py-4 text-left text-sm font-mono text-surface-600">{invoiceNumber(c) ? `#${invoiceNumber(c)}` : '—'}</td>
                     <td data-label="Montant" className="px-6 py-4 text-right text-sm text-surface-600">{formatCurrency(c.amount)}</td>
-                    <td data-label="Payé" className="px-6 py-4 text-right text-sm text-emerald-600 font-medium">{formatCurrency(c.paid)}</td>
+                    <td data-label="Payé" className="px-6 py-4 text-right text-sm text-emerald-400 font-medium">{formatCurrency(c.paid)}</td>
                     <td data-label="Solde" className="px-6 py-4 text-right text-sm font-semibold text-surface-900">{formatCurrency(c.balance)}</td>
                     <td data-label="Avancement" className="px-6 py-4">
                       <div className="flex items-center gap-2">
@@ -195,28 +274,28 @@ export default function CreditPage() {
                         <span className="text-xs text-surface-500 w-9 text-right">{c.amount > 0 ? Math.round((c.paid / c.amount) * 100) : 0}%</span>
                       </div>
                     </td>
-                    <td data-label="Échéance" className="px-6 py-4 text-center text-sm text-surface-500">{new Date(c.dueDate).getFullYear() >= 2100 ? '—' : formatDate(c.dueDate)}</td>
+                    <td data-label="Échéance" className="px-6 py-4 text-center text-sm text-surface-500">{new Date(c.dueDate).getFullYear() >= 2100 ? 'â€”' : formatDate(c.dueDate)}</td>
                     <td data-label="Statut" className="px-6 py-4 text-center">
                       <Badge variant={c.status === 'paid' ? 'success' : isOverdue ? 'danger' : 'warning'}>
                         {c.status === 'paid' ? 'Payé' : isOverdue ? 'Échu' : c.status === 'defaulted' ? 'Défaut' : 'Actif'}
                       </Badge>
                     </td>
                     <td data-label="Actions" className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button onClick={() => openHistory(c)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-600" title="Historique">
+                      <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-wrap">
+                        {c.status !== 'paid' && canCreate && (
+                          <button onClick={() => openPayModal(c)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 text-xs font-semibold" title="Enregistrer un paiement">
+                            <Plus className="w-4 h-4" /> Encaisser
+                          </button>
+                        )}
+                        <button onClick={() => openHistory(c)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-400" title="Historique">
                           <History className="w-4 h-4" />
                         </button>
-                        <button onClick={() => openHistory(c)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Voir paiements">
+                        <button onClick={() => openHistory(c)} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" title="Voir paiements">
                           <DollarSign className="w-4 h-4" />
                         </button>
                         {c.invoiceId && canEdit && (
-                          <button onClick={() => setEditSaleId(c.invoiceId!)} className="p-1.5 rounded-lg hover:bg-amber-50 text-surface-400 hover:text-amber-600" title="Modifier le crédit / la vente">
+                          <button onClick={() => setEditSaleId(c.invoiceId!)} className="p-1.5 rounded-lg hover:bg-amber-500/15 text-surface-400 hover:text-amber-400" title="Modifier le crédit / la vente">
                             <Edit2 className="w-4 h-4" />
-                          </button>
-                        )}
-                        {c.status !== 'paid' && canCreate && (
-                          <button onClick={() => openPayModal(c)} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Enregistrer un paiement">
-                            <Plus className="w-4 h-4" />
                           </button>
                         )}
                         {c.status !== 'paid' && (
@@ -225,7 +304,7 @@ export default function CreditPage() {
                             const msg = `Bonjour ${c.customerName},\nRappel: solde impayé de ${formatCurrency(c.balance)}. Merci de régulariser.`
                             openWhatsApp(phone, msg)
                             toast('WhatsApp ouvert', 'success')
-                          }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Envoyer rappel WhatsApp">
+                          }} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" title="Envoyer rappel WhatsApp">
                             <MessageSquare className="w-4 h-4" />
                           </button>
                         )}
@@ -233,7 +312,7 @@ export default function CreditPage() {
                           <button onClick={() => {
                             const msg = `Bonjour ${c.customerName},\nRappel: solde impayé de ${formatCurrency(c.balance)}. Merci de régulariser.`
                             shareViaWeChat(msg, 'Rappel de crédit')
-                          }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Envoyer rappel WeChat">
+                          }} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" title="Envoyer rappel WeChat">
                             <MessageCircle className="w-4 h-4" />
                           </button>
                         )}
@@ -243,8 +322,8 @@ export default function CreditPage() {
                 )
               })}
               {(!filtered || filtered.length === 0) && (
-                <tr><td colSpan={8} className="text-center py-16 text-surface-400">
-                  <CreditCard className="w-14 h-14 mx-auto mb-4 text-surface-300" />
+                <tr><td colSpan={9} className="text-center py-16 text-surface-400">
+                  <CreditCard className="w-14 h-14 mx-auto mb-4 text-surface-500" />
                   <p className="text-sm font-medium">Aucun crédit</p>
                   <p className="text-xs mt-1">Les crédits apparaîtront ici après les ventes à crédit</p>
                 </td></tr>
@@ -263,18 +342,20 @@ export default function CreditPage() {
         <div className="p-6 space-y-4">
           <div>
             <p className="text-sm text-surface-500">Client: <span className="font-semibold text-surface-900">{payCredit?.customerName}</span></p>
-            <p className="text-sm text-surface-500">Solde restant: <span className="font-semibold text-amber-600">{formatCurrency(payCredit?.balance || 0)}</span></p>
+            <p className="text-sm text-surface-500">Solde restant: <span className="font-semibold text-amber-400">{formatCurrency(payCredit?.balance || 0)}</span></p>
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1">Montant</label>
             <input type="number" value={payAmount} onChange={(e) => setPayAmount(e.target.value)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1">Mode de paiement</label>
             <select value={payMethod} onChange={(e) => setPayMethod(e.target.value as PaymentMethod)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option value="cash">Espèces</option>
+              <option value="wave">Wave</option>
+              <option value="orange">Orange Money</option>
               <option value="mobile">Mobile Money</option>
               <option value="card">Carte</option>
               <option value="bank">Virement</option>
@@ -283,7 +364,7 @@ export default function CreditPage() {
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1">Note (optionnelle)</label>
             <input type="text" value={payNote} onChange={(e) => setPayNote(e.target.value)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setPayModal(false)}>Annuler</Button>
@@ -297,8 +378,8 @@ export default function CreditPage() {
         <div className="p-6 space-y-4">
           <div className="grid grid-cols-3 gap-4 mb-4">
             <Card className="p-4"><p className="text-xs text-surface-500">Total</p><p className="text-lg font-bold">{formatCurrency(selectedCredit?.amount || 0)}</p></Card>
-            <Card className="p-4"><p className="text-xs text-surface-500">Payé</p><p className="text-lg font-bold text-emerald-600">{formatCurrency(selectedCredit?.paid || 0)}</p></Card>
-            <Card className="p-4"><p className="text-xs text-surface-500">Solde</p><p className="text-lg font-bold text-amber-600">{formatCurrency(selectedCredit?.balance || 0)}</p></Card>
+            <Card className="p-4"><p className="text-xs text-surface-500">Payé</p><p className="text-lg font-bold text-emerald-400">{formatCurrency(selectedCredit?.paid || 0)}</p></Card>
+            <Card className="p-4"><p className="text-xs text-surface-500">Solde</p><p className="text-lg font-bold text-amber-400">{formatCurrency(selectedCredit?.balance || 0)}</p></Card>
           </div>
 
           {selectedCredit && creditPayments(selectedCredit.id).length > 0 ? (
@@ -307,8 +388,8 @@ export default function CreditPage() {
               {creditPayments(selectedCredit.id).map(p => (
                 <div key={p.id} className="flex items-center justify-between p-3 bg-surface-50 rounded-xl border border-surface-200">
                   <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-100 flex items-center justify-center">
-                      <DollarSign className="w-4 h-4 text-emerald-600" />
+                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 flex items-center justify-center">
+                      <DollarSign className="w-4 h-4 text-emerald-400" />
                     </div>
                     <div>
                       <p className="text-sm font-semibold text-surface-900">{formatCurrency(p.amount)}</p>
@@ -325,13 +406,13 @@ export default function CreditPage() {
                         setEditPayAmount(String(p.amount))
                         setEditPayMethod(p.method)
                         setEditPayModal(true)
-                      }} className="p-1.5 rounded-lg hover:bg-surface-200 text-surface-400 hover:text-amber-600" title="Modifier">
+                      }} className="p-1.5 rounded-lg hover:bg-surface-200 text-surface-400 hover:text-amber-400" title="Modifier">
                         <Edit2 className="w-3.5 h-3.5" />
                       </button>
                     )}
                     {canDelete && (
                       <button onClick={() => setDeletePayTarget(p)}
-                        className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-red-600" title="Supprimer">
+                        className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400" title="Supprimer">
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     )}
@@ -359,7 +440,7 @@ export default function CreditPage() {
                   <div key={m.id} className="p-2.5 bg-surface-50 rounded-lg border border-surface-200">
                     <p className="text-xs text-surface-600">
                       <span className="font-medium text-surface-800">{m.field === 'payment' ? 'Paiement enregistré' : m.field === 'payment_edit' ? 'Paiement modifié' : m.field === 'payment_deleted' ? 'Paiement supprimé' : 'Vente modifiée'}</span>
-                      {m.field === 'sale_edit' && <span className="text-surface-400"> — {m.newValue}</span>}
+                      {m.field === 'sale_edit' && <span className="text-surface-400"> â€” {m.newValue}</span>}
                     </p>
                     <p className="text-[11px] text-surface-400">{formatDateTime(m.createdAt)}{m.reason ? ` · ${m.reason}` : ''}</p>
                   </div>
@@ -375,13 +456,15 @@ export default function CreditPage() {
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1">Montant</label>
             <input type="number" value={editPayAmount} onChange={(e) => setEditPayAmount(e.target.value)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
           <div>
             <label className="block text-sm font-medium text-surface-700 mb-1">Mode de paiement</label>
             <select value={editPayMethod} onChange={(e) => setEditPayMethod(e.target.value as PaymentMethod)}
-              className="w-full rounded-xl border border-surface-300 bg-white px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
+              className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
               <option value="cash">Espèces</option>
+              <option value="wave">Wave</option>
+              <option value="orange">Orange Money</option>
               <option value="mobile">Mobile Money</option>
               <option value="card">Carte</option>
               <option value="bank">Virement</option>
@@ -397,7 +480,7 @@ export default function CreditPage() {
       <Modal open={!!deletePayTarget} onClose={() => setDeletePayTarget(null)}
         title="Supprimer le paiement" size="sm">
         <div className="p-6 space-y-4 text-center">
-          <div className="w-14 h-14 bg-red-50 rounded-2xl flex items-center justify-center mx-auto">
+          <div className="w-14 h-14 bg-red-500/15 rounded-2xl flex items-center justify-center mx-auto">
             <AlertTriangle className="w-7 h-7 text-danger" />
           </div>
           <p className="text-sm text-surface-600">

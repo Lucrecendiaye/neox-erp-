@@ -170,7 +170,7 @@ export default function CashRegisterPage() {
       </div>
 
       {currentShift && (
-        <Card className="bg-gradient-to-r from-primary-600 to-primary-700 text-white">
+        <Card className="bg-gradient-to-r from-primary-500 to-primary-700 text-on-accent">
           <div className="flex items-start justify-between">
             <div className="space-y-1">
               <div className="flex items-center gap-2">
@@ -278,7 +278,7 @@ export default function CashRegisterPage() {
             </div>
             <div>
               <p className="text-xs text-surface-400">Attendu</p>
-              <p className="font-semibold text-primary-600">{formatCurrency((currentShift?.initialCash || 0) + todayCashSales - todayExpenses)}</p>
+              <p className="font-semibold text-primary-400">{formatCurrency((currentShift?.initialCash || 0) + todayCashSales - todayExpenses)}</p>
             </div>
           </div>
 
@@ -307,7 +307,7 @@ export default function CashRegisterPage() {
           </div>
 
           {actualCash && (
-            <div className={`text-center p-3 rounded-xl ${Number(actualCash) - ((currentShift?.initialCash || 0) + todayCashSales - todayExpenses) === 0 ? 'bg-emerald-50 text-success' : 'bg-amber-50 text-amber-700'}`}>
+            <div className={`text-center p-3 rounded-xl ${Number(actualCash) - ((currentShift?.initialCash || 0) + todayCashSales - todayExpenses) === 0 ? 'bg-emerald-500/15 text-success' : 'bg-amber-500/15 text-amber-300'}`}>
               <p className="text-sm font-medium">
                 Écart: {formatCurrency(Number(actualCash) - ((currentShift?.initialCash || 0) + todayCashSales - todayExpenses))}
               </p>

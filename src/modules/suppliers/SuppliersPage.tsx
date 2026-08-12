@@ -99,7 +99,7 @@ export default function SuppliersPage() {
         <input
           type="text" placeholder="Rechercher..."
           value={search} onChange={(e) => setSearch(e.target.value)}
-          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-white text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
+          className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
         />
       </div>
 
@@ -107,7 +107,7 @@ export default function SuppliersPage() {
         {paginatedItems?.map((s) => (
           <Card key={s.id} className="relative group cursor-pointer" onClick={() => navigate(`/suppliers/${s.id}`)}>
             <div className="flex items-start gap-3">
-              <div className="w-12 h-12 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600">
+              <div className="w-12 h-12 bg-amber-500/15 rounded-xl flex items-center justify-center text-amber-400">
                 <Truck className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
@@ -120,19 +120,19 @@ export default function SuppliersPage() {
               </div>
             </div>
             <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-              <button onClick={(e) => { e.stopPropagation(); navigate(`/suppliers/${s.id}?comp=1`) }} className="p-1.5 rounded-lg hover:bg-primary-50 text-surface-400 hover:text-primary-600" title="Compensation">
+              <button onClick={(e) => { e.stopPropagation(); navigate(`/suppliers/${s.id}?comp=1`) }} className="p-1.5 rounded-lg hover:bg-primary-50 text-surface-400 hover:text-primary-400" title="Compensation">
                 <Scale className="w-4 h-4" />
               </button>
-              <button onClick={(e) => { e.stopPropagation(); openWhatsApp(s.phone) }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600">
+              <button onClick={(e) => { e.stopPropagation(); openWhatsApp(s.phone) }} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400">
                 <MessageSquare className="w-4 h-4" />
               </button>
-              <button onClick={(e) => { e.stopPropagation(); shareViaWeChat(`Contact: ${s.name}${s.phone ? ` — ${s.phone}` : ''}`, `Contact ${s.name}`) }} className="p-1.5 rounded-lg hover:bg-emerald-50 text-surface-400 hover:text-emerald-600" title="Partager par WeChat">
+              <button onClick={(e) => { e.stopPropagation(); shareViaWeChat(`Contact: ${s.name}${s.phone ? ` — ${s.phone}` : ''}`, `Contact ${s.name}`) }} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" title="Partager par WeChat">
                 <MessageCircle className="w-4 h-4" />
               </button>
               <button onClick={(e) => { e.stopPropagation(); openEdit(s) }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400">
                 <Edit2 className="w-4 h-4" />
               </button>
-              <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id) }} className="p-1.5 rounded-lg hover:bg-red-50 text-surface-400 hover:text-danger">
+              <button onClick={(e) => { e.stopPropagation(); handleDelete(s.id) }} className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger">
                 <Trash2 className="w-4 h-4" />
               </button>
             </div>

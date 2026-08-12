@@ -32,7 +32,7 @@ export function Sheet({ open, onClose, title, children, side = 'right', classNam
     <div className="fixed inset-0 z-50 animate-fade-in">
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm" onClick={onClose} />
       <div className={cn(
-        'fixed top-0 bottom-0 bg-white shadow-2xl w-full max-w-md flex flex-col animate-slide-in-right',
+        'fixed top-0 bottom-0 bg-surface-100 shadow-2xl w-full max-w-md flex flex-col animate-slide-in-right',
         side === 'left' && 'left-0 animate-[slide-in-left_0.3s_ease-out]',
         side === 'right' && 'right-0',
         className

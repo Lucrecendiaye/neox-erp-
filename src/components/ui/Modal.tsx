@@ -34,7 +34,7 @@ export function Modal({ open, onClose, title, children, className }: ModalProps)
       <div className={cn(
         'relative w-[95%] sm:w-[90%] md:w-[640px] max-w-[640px]',
         'max-h-[95vh] md:max-h-[820px]',
-        'bg-white rounded-[20px] shadow-2xl',
+        'bg-surface-100 rounded-[20px] shadow-2xl',
         'flex flex-col overflow-hidden',
         'animate-scale-in',
         className

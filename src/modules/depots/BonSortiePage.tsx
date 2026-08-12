@@ -41,7 +41,7 @@ function BonView({ bon, settings, onClose }: { bon: BonSortie; settings?: Compan
     <div className="p-6 space-y-4">
       <div className="rounded-xl overflow-hidden bg-[#1e40af] text-white p-4 flex items-center justify-between gap-3">
         <div className="flex items-center gap-3 min-w-0">
-          {s.logo ? <img src={s.logo} alt="logo" className="w-10 h-10 rounded-lg object-contain bg-white p-0.5" /> : <div className="w-10 h-10 rounded-lg bg-white/20 flex items-center justify-center shrink-0"><FileText className="w-5 h-5" /></div>}
+          {s.logo ? <img src={s.logo} alt="logo" className="w-10 h-10 rounded-lg object-contain bg-surface-100 p-0.5" /> : <div className="w-10 h-10 rounded-lg bg-surface-100/20 flex items-center justify-center shrink-0"><FileText className="w-5 h-5" /></div>}
           <div className="min-w-0">
             <p className="font-bold text-sm truncate">{s.name || 'Entreprise'}</p>
             {s.slogan && <p className="text-[10px] text-white/80 truncate">{s.slogan}</p>}
@@ -73,7 +73,7 @@ function BonView({ bon, settings, onClose }: { bon: BonSortie; settings?: Compan
         <p><strong>Destinateur :</strong> {bon.destinateurName}{bon.destinateurRole ? ` (${bon.destinateurRole})` : ''} &nbsp; <strong>Destinataire :</strong> {bon.destinataireName || '—'}{bon.destinataireRole ? ` (${bon.destinataireRole})` : ''}</p>
         <p><strong>Référence :</strong> {bon.reference || '—'} &nbsp; <strong>Motif :</strong> {bon.motif || '—'}</p>
         {bon.comments && <p><strong>Observations :</strong> {bon.comments}</p>}
-        {bon.validatedAt && <p className="text-emerald-700"><strong>Validé le :</strong> {formatDateTime(bon.validatedAt)} par {bon.validatedByName || '—'}</p>}
+        {bon.validatedAt && <p className="text-emerald-300"><strong>Validé le :</strong> {formatDateTime(bon.validatedAt)} par {bon.validatedByName || '—'}</p>}
       </div>
 
       <div className="overflow-x-auto responsive-table rounded-xl border border-surface-200">
@@ -109,9 +109,9 @@ function BonView({ bon, settings, onClose }: { bon: BonSortie; settings?: Compan
 
       <div className="text-xs text-surface-600">
         {bon.receivedAt ? (
-          <p className="text-emerald-700"><strong>Reçu le :</strong> {formatDateTime(bon.receivedAt)} par {bon.receivedBy || '—'}</p>
+          <p className="text-emerald-300"><strong>Reçu le :</strong> {formatDateTime(bon.receivedAt)} par {bon.receivedBy || '—'}</p>
         ) : (
-          <p className="text-amber-600"><strong>Réception non confirmée</strong></p>
+          <p className="text-amber-400"><strong>Réception non confirmée</strong></p>
         )}
       </div>
 
@@ -247,11 +247,11 @@ export default function BonSortiePage() {
       </div>
 
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600"><FileText className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Total</p><p className="text-lg font-bold text-surface-900">{stats.total}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-50 flex items-center justify-center text-amber-600"><Clock className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">En attente</p><p className="text-lg font-bold text-surface-900">{stats.enAttente}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-50 flex items-center justify-center text-green-600"><CheckCircle2 className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Reçus</p><p className="text-lg font-bold text-surface-900">{stats.recus}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-red-50 flex items-center justify-center text-red-600"><XCircle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Annulés</p><p className="text-lg font-bold text-surface-900">{stats.annules}</p></div></div></div></Card>
-        <Card className="hidden sm:block"><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-50 flex items-center justify-center text-blue-600"><Truck className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur sortie</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400"><FileText className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Total</p><p className="text-lg font-bold text-surface-900">{stats.total}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400"><Clock className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">En attente</p><p className="text-lg font-bold text-surface-900">{stats.enAttente}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><CheckCircle2 className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Reçus</p><p className="text-lg font-bold text-surface-900">{stats.recus}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center text-red-400"><XCircle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Annulés</p><p className="text-lg font-bold text-surface-900">{stats.annules}</p></div></div></div></Card>
+        <Card className="hidden sm:block"><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-400"><Truck className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur sortie</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
@@ -262,7 +262,7 @@ export default function BonSortiePage() {
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
           <option value="all">Tous les statuts</option>
           <option value="en_attente">En attente</option>
           <option value="valide">Validés</option>
@@ -270,7 +270,7 @@ export default function BonSortiePage() {
           <option value="annule">Annulés</option>
         </select>
         <select value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
           <option value="all">Toutes périodes</option>
           <option value="jour">Aujourd'hui</option>
           <option value="semaine">7 derniers jours</option>
@@ -278,7 +278,7 @@ export default function BonSortiePage() {
           <option value="annee">Cette année</option>
         </select>
         <select value={fromFilter} onChange={e => setFromFilter(e.target.value)}
-          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-white">
+          className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
           <option value="all">Tous les dépôts</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
@@ -350,7 +350,7 @@ export default function BonSortiePage() {
               )}
               <Button variant="outline" onClick={() => { setSignDest(selected.destinateurName); setSignResp(''); setSignModal(selected) }}><PenLine className="w-4 h-4" /> Signer</Button>
               {canManage && selected.status !== 'recu' && (
-                <Button variant="ghost" className="text-red-600" onClick={() => setCancelTarget(selected)}><XCircle className="w-4 h-4" /> Annuler</Button>
+                <Button variant="ghost" className="text-red-400" onClick={() => setCancelTarget(selected)}><XCircle className="w-4 h-4" /> Annuler</Button>
               )}
             </div>
           </div>

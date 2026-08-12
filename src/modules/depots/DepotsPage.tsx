@@ -9,12 +9,14 @@ import { generateId } from '@/lib/utils'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { toast } from '@/lib/toast'
 import { softDelete } from '@/lib/softDelete'
+import { usePermission } from '@/hooks/usePermission'
 import { Warehouse, Plus, Building2, Package, TrendingUp, ArrowRightLeft, History, FileText, Trash2, Edit2 } from 'lucide-react'
 import type { Location } from '@/engine/types'
 
 export default function DepotsPage() {
   const navigate = useNavigate()
   const businessId = useBusinessId()
+  const { can } = usePermission()
   const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
   const warehouses = locations?.filter(l => l.type === 'warehouse') || []
   const allStocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
@@ -104,16 +106,22 @@ export default function DepotsPage() {
           <button onClick={() => navigate('/depots/stock-global')} className="px-4 py-2 rounded-xl border border-surface-300 text-surface-700 text-sm font-medium hover:bg-surface-50 transition-all flex items-center gap-2">
             <Package className="w-4 h-4" /> Stock
           </button>
-          <button onClick={() => navigate('/depots/vente')} className="px-4 py-2 rounded-xl bg-primary-600 text-white text-sm font-medium hover:bg-primary-500 transition-all flex items-center gap-2">
-            <TrendingUp className="w-4 h-4" /> Vente
-          </button>
-          <button onClick={() => navigate('/depots/bons-sortie')} className="px-4 py-2 rounded-xl border border-surface-300 text-surface-700 text-sm font-medium hover:bg-surface-50 transition-all flex items-center gap-2">
-            <FileText className="w-4 h-4" /> Bon de sortie
-          </button>
-          <Button onClick={() => setModalOpen(true)}>
-            <Plus className="w-4 h-4" />
-            Nouveau dépôt
-          </Button>
+          {can('pos', 'create') && (
+            <button onClick={() => navigate('/depots/vente')} className="px-4 py-2 rounded-xl bg-primary-500 text-on-accent text-sm font-medium hover:bg-primary-500 transition-all flex items-center gap-2">
+              <TrendingUp className="w-4 h-4" /> Vente
+            </button>
+          )}
+          {can('depots', 'validate') && (
+            <button onClick={() => navigate('/depots/bons-sortie')} className="px-4 py-2 rounded-xl border border-surface-300 text-surface-700 text-sm font-medium hover:bg-surface-50 transition-all flex items-center gap-2">
+              <FileText className="w-4 h-4" /> Bon de sortie
+            </button>
+          )}
+          {can('depots', 'create') && (
+            <Button onClick={() => setModalOpen(true)}>
+              <Plus className="w-4 h-4" />
+              Nouveau dépôt
+            </Button>
+          )}
         </div>
       </div>
 
@@ -126,10 +134,10 @@ export default function DepotsPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-4 w-full">
         {warehouses.map(w => (
-          <div key={w.id} className="bg-white rounded-2xl border border-surface-200 shadow-sm hover:shadow-md hover:border-primary-200 transition-all group">
+          <div key={w.id} className="bg-surface-100 rounded-2xl border border-surface-200 shadow-sm hover:shadow-md hover:border-primary-300 transition-all group">
             <div className="p-5">
               <div className="flex items-center gap-3 mb-4">
-                <div className="w-10 h-10 bg-amber-50 rounded-xl flex items-center justify-center text-amber-600">
+                <div className="w-10 h-10 bg-amber-500/15 rounded-xl flex items-center justify-center text-amber-400">
                   <Warehouse className="w-5 h-5" />
                 </div>
                 <div className="flex-1 min-w-0">
@@ -146,27 +154,35 @@ export default function DepotsPage() {
                 </p>
               )}
               <div className="flex flex-wrap gap-1.5">
-                <button onClick={() => navigate('/depots/stock/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
+                <button onClick={() => navigate('/depots/stock/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-400 text-xs font-medium transition-colors flex items-center gap-1">
                   <Package className="w-3 h-3" /> Stock
                 </button>
-                <button onClick={() => navigate(`/depots/stock/${w.id}`)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
-                  <ArrowRightLeft className="w-3 h-3" /> Transférer
-                </button>
-                <button onClick={() => navigate('/depots/stats/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
+                {can('depots', 'transfer') && (
+                  <button onClick={() => navigate(`/depots/stock/${w.id}`)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-400 text-xs font-medium transition-colors flex items-center gap-1">
+                    <ArrowRightLeft className="w-3 h-3" /> Transférer
+                  </button>
+                )}
+                <button onClick={() => navigate('/depots/stats/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-400 text-xs font-medium transition-colors flex items-center gap-1">
                   <TrendingUp className="w-3 h-3" /> Stats
                 </button>
-                <button onClick={() => navigate('/depots/history/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
+                <button onClick={() => navigate('/depots/history/' + w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-400 text-xs font-medium transition-colors flex items-center gap-1">
                   <History className="w-3 h-3" /> Mouvement
                 </button>
-                <button onClick={() => navigate(`/depots/bons-sortie?from=${w.id}`)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
-                  <FileText className="w-3 h-3" /> Bon de sortie
-                </button>
-                <button onClick={() => openEdit(w)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-600 text-xs font-medium transition-colors flex items-center gap-1">
-                  <Edit2 className="w-3 h-3" /> Modifier
-                </button>
-                <button onClick={() => confirmDelete(w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-red-50 hover:text-red-600 text-xs font-medium transition-colors flex items-center gap-1">
-                  <Trash2 className="w-3 h-3" /> Supprimer
-                </button>
+                {can('depots', 'validate') && (
+                  <button onClick={() => navigate(`/depots/bons-sortie?from=${w.id}`)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-400 text-xs font-medium transition-colors flex items-center gap-1">
+                    <FileText className="w-3 h-3" /> Bon de sortie
+                  </button>
+                )}
+                {can('depots', 'edit') && (
+                  <button onClick={() => openEdit(w)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-primary-50 hover:text-primary-400 text-xs font-medium transition-colors flex items-center gap-1">
+                    <Edit2 className="w-3 h-3" /> Modifier
+                  </button>
+                )}
+                {can('depots', 'delete') && (
+                  <button onClick={() => confirmDelete(w.id)} className="px-3 py-1.5 rounded-lg bg-surface-50 hover:bg-red-500/15 hover:text-red-400 text-xs font-medium transition-colors flex items-center gap-1">
+                    <Trash2 className="w-3 h-3" /> Supprimer
+                  </button>
+                )}
               </div>
             </div>
           </div>
@@ -180,9 +196,11 @@ export default function DepotsPage() {
           </div>
           <p className="font-medium text-surface-500">Aucun dépôt pour le moment</p>
           <p className="text-sm text-surface-400 mt-1">Créez votre premier dépôt pour commencer</p>
-          <Button onClick={() => setModalOpen(true)} variant="outline" className="mt-4">
-            <Plus className="w-4 h-4" /> Créer un dépôt
-          </Button>
+          {can('depots', 'create') && (
+            <Button onClick={() => setModalOpen(true)} variant="outline" className="mt-4">
+              <Plus className="w-4 h-4" /> Créer un dépôt
+            </Button>
+          )}
         </div>
       )}
 

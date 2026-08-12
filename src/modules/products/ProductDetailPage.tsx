@@ -73,7 +73,7 @@ export default function ProductDetailPage() {
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex items-center gap-3 flex-1">
-          <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center text-primary-600 overflow-hidden">
+          <div className="w-12 h-12 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400 overflow-hidden">
             {product?.photos?.[0] ? <img src={product.photos[0]} alt="" className="w-full h-full object-cover" /> : <Package className="w-6 h-6" />}
           </div>
           <div>

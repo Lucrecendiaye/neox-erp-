@@ -192,6 +192,7 @@ function drawInfoCards(doc: jsPDF, sale: Sale, settings: CompanySettings, startY
 function formatPaymentMethodLabel(method: string): string {
   const map: Record<string, string> = {
     cash: 'Comptant', card: 'Carte', mobile: 'Mobile Money',
+    wave: 'Wave', orange: 'Orange Money',
     credit: 'Crédit', bank: 'Virement', split: 'Mixte',
   }
   return map[method] || method
