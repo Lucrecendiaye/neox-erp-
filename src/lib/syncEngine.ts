@@ -27,6 +27,15 @@ const TABLES: { name: TableName; supabaseName: string }[] = [
   { name: 'supplierPayments', supabaseName: 'supplier_payments' },
   { name: 'compensations', supabaseName: 'compensations' },
   { name: 'transfers', supabaseName: 'transfers' },
+  { name: 'stockMovements', supabaseName: 'stock_movements' },
+  { name: 'invoices', supabaseName: 'invoices' },
+  { name: 'accounts', supabaseName: 'accounts' },
+  { name: 'creditPayments', supabaseName: 'credit_payments' },
+  { name: 'bonSorties', supabaseName: 'bon_sorties' },
+  { name: 'businessCards', supabaseName: 'business_cards' },
+  { name: 'settings', supabaseName: 'settings' },
+  { name: 'businesses', supabaseName: 'businesses' },
+  { name: 'users', supabaseName: 'profiles' },
 ]
 
 const TENANT_TABLES: Set<string> = new Set([
@@ -34,11 +43,17 @@ const TENANT_TABLES: Set<string> = new Set([
   'credits', 'cash_book', 'employees', 'attendance', 'payrolls', 'leads',
   'notifications', 'audit_logs', 'locations', 'product_stocks', 'product_history',
   'supplier_invoices', 'supplier_payments', 'compensations', 'transfers',
+  'stock_movements', 'invoices', 'accounts', 'credit_payments', 'bon_sorties',
+  'business_cards', 'settings', 'profiles',
 ])
 
 const SMALL_TABLES = new Set([
   'categories', 'locations', 'employees', 'attendance', 'payrolls', 'leads',
   'notifications', 'audit_logs', 'settings', 'profiles',
+])
+
+const PULL_ONLY_TABLES = new Set([
+  'profiles', 'businesses', 'settings',
 ])
 
 const AUDIT_LOG_DB_COLUMNS = new Set([
@@ -47,6 +62,11 @@ const AUDIT_LOG_DB_COLUMNS = new Set([
 
 const CREDIT_DB_COLUMNS = new Set([
   'id', 'businessId', 'customerId', 'customerName', 'amount', 'paid', 'balance', 'dueDate', 'status', 'reminderSent', 'createdAt',
+])
+
+const PROFILE_CLOUD_COLUMNS = new Set([
+  'id', 'businessId', 'email', 'name', 'phone', 'role', 'permissions',
+  'createdAt', 'updatedAt', 'authUserId', 'is_active', 'last_login',
 ])
 
 export function sanitizeForCloud(supabaseName: string, payload: Record<string, unknown>): Record<string, unknown> {
@@ -64,6 +84,26 @@ export function sanitizeForCloud(supabaseName: string, payload: Record<string, u
     }
     return out
   }
+  if (supabaseName === 'profiles' || supabaseName === 'users') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(payload)) {
+      if (PROFILE_CLOUD_COLUMNS.has(key)) out[key] = payload[key]
+    }
+    delete out.passwordHash
+    if (out.isActive !== undefined) {
+      out.is_active = out.isActive
+      delete out.isActive
+    }
+    if (out.authUserId !== undefined) {
+      out.auth_user_id = out.authUserId
+      delete out.authUserId
+    }
+    delete out.passwordHash
+    delete out.loginId
+    delete out.status
+    delete out.isPrimaryAdmin
+    return out
+  }
   return payload
 }
 
@@ -76,28 +116,43 @@ function getCurrentBusinessId(): string {
   return state.currentBusiness?.id || state.user?.businessId || ''
 }
 
-const PROCESSED_IDS_KEY = 'neox-synced-ids'
+const SYNCED_FINGERPRINTS_KEY = 'neox-synced-fingerprints'
 const MAX_RETRIES = 3
 const BASE_DELAY = 500
 
-function getProcessedIds(): Set<string> {
+function fingerprint(obj: unknown): string {
   try {
-    const raw = localStorage.getItem(PROCESSED_IDS_KEY)
-    return new Set<string>(raw ? JSON.parse(raw) : [])
+    const json = JSON.stringify(obj)
+    let h = 5381
+    for (let i = 0; i < json.length; i++) {
+      h = ((h << 5) + h + json.charCodeAt(i)) >>> 0
+    }
+    return h.toString(36) + ':' + json.length
   } catch {
-    return new Set<string>()
+    return ''
   }
 }
 
-function addProcessedIds(ids: string[]): void {
-  const existing = getProcessedIds()
-  for (const id of ids) existing.add(id)
-  const arr = Array.from(existing).slice(-20000)
-  localStorage.setItem(PROCESSED_IDS_KEY, JSON.stringify(arr))
+function getSyncedFingerprints(): Record<string, string> {
+  try {
+    return JSON.parse(localStorage.getItem(SYNCED_FINGERPRINTS_KEY) || '{}')
+  } catch {
+    return {}
+  }
 }
 
-function hasBeenProcessed(id: string): boolean {
-  return getProcessedIds().has(id)
+function setSyncedFingerprints(entries: Record<string, string>): void {
+  const existing = getSyncedFingerprints()
+  for (const k of Object.keys(entries)) existing[k] = entries[k]
+  const keys = Object.keys(existing)
+  if (keys.length > 30000) {
+    for (const k of keys.slice(0, keys.length - 30000)) delete existing[k]
+  }
+  try {
+    localStorage.setItem(SYNCED_FINGERPRINTS_KEY, JSON.stringify(existing))
+  } catch {
+    // stockage plein: on ne bloque jamais la sync
+  }
 }
 
 function delay(ms: number): Promise<void> {
@@ -122,10 +177,10 @@ export async function pushToSupabase(): Promise<{ success: number; failed: numbe
 
   let success = 0
   let failed = 0
-  const processedIds: string[] = []
   const businessId = getCurrentBusinessId()
 
   const results = await Promise.allSettled(TABLES.map(async ({ name, supabaseName }) => {
+    if (PULL_ONLY_TABLES.has(supabaseName)) return
     let query = (db[name] as any)
     if (businessId && TENANT_TABLES.has(supabaseName)) {
       query = query.where('businessId').equals(businessId)
@@ -133,11 +188,13 @@ export async function pushToSupabase(): Promise<{ success: number; failed: numbe
     const items = await query.toArray()
     if (items.length === 0) return
 
+    const synced = getSyncedFingerprints()
     const batch: any[] = []
     for (const item of items) {
-      if (hasBeenProcessed(item.id)) continue
+      const fp = fingerprint(item)
+      if (synced[item.id] === fp) continue
       const { id, ...data } = item
-      batch.push({ id, data })
+      batch.push({ id, data, fp })
     }
     if (batch.length === 0) return
 
@@ -152,7 +209,9 @@ export async function pushToSupabase(): Promise<{ success: number; failed: numbe
         const { error } = await supabase!.from(supabaseName).upsert(sanitized, { onConflict: 'id' })
         if (error) throw error
       })
-      for (const { id } of batch) processedIds.push(id)
+      const entries: Record<string, string> = {}
+      for (const { id, fp } of batch) entries[id] = fp
+      setSyncedFingerprints(entries)
       success += batch.length
     } catch {
       failed += batch.length
@@ -163,10 +222,34 @@ export async function pushToSupabase(): Promise<{ success: number; failed: numbe
     if (r.status === 'rejected') failed++
   }
 
-  addProcessedIds(processedIds)
   useSyncStore.getState().setSyncing(false)
   useSyncStore.getState().setLastSync(new Date().toISOString())
   return { success, failed }
+}
+
+function mapCloudToLocal(
+  supabaseName: string,
+  row: any,
+  existing?: any
+): any {
+  if (supabaseName !== 'profiles') return row
+  const status = row.status || (row.is_active === false ? 'blocked' : 'active')
+  return {
+    id: row.id,
+    businessId: row.businessId || row.business_id || '',
+    name: row.name || '',
+    email: row.email || '',
+    phone: row.phone || undefined,
+    loginId: row.loginId || row.email || '',
+    passwordHash: existing?.passwordHash || '',
+    role: row.role || 'staff',
+    permissions: row.permissions?.length ? row.permissions : ['*'],
+    isActive: row.is_active ?? true,
+    isPrimaryAdmin: row.is_primary_admin ?? (existing?.isPrimaryAdmin ?? false),
+    status,
+    createdAt: row.createdAt || row.created_at || new Date().toISOString(),
+    lastLogin: row.last_login || undefined,
+  }
 }
 
 async function pullTable(
@@ -210,16 +293,20 @@ async function pullTable(
     if (allData.length === 0) return { success, failed }
 
     const table = db[name] as any
-    const newRows = allData.filter(row => !hasBeenProcessed(row.id))
+    const synced = getSyncedFingerprints()
+    const newRows = allData.filter(row => synced[row.id] !== fingerprint(row))
 
     if (newRows.length > 0) {
       const mergedRows: any[] = []
+      const entries: Record<string, string> = {}
       for (const row of newRows) {
         const local = await table.get(row.id)
         if (local && Array.isArray(local.photos) && local.photos.length > 0) {
           row.photos = mergePhotosForSync(local.photos, row.photos)
         }
-        mergedRows.push(row)
+        const mapped = mapCloudToLocal(supabaseName, row, local)
+        mergedRows.push(mapped)
+        entries[mapped.id] = fingerprint(mapped)
       }
       const batchSize = SMALL_TABLES.has(supabaseName) ? 500 : 100
       for (let i = 0; i < mergedRows.length; i += batchSize) {
@@ -233,7 +320,7 @@ async function pullTable(
           }
         }
       }
-      addProcessedIds(mergedRows.map(r => r.id))
+      setSyncedFingerprints(entries)
     }
   } catch {
     failed++

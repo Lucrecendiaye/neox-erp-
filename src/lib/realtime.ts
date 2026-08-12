@@ -26,6 +26,14 @@ const SUBSCRIPTIONS: { table: string; dexieTable: keyof typeof db }[] = [
   { table: 'supplier_payments', dexieTable: 'supplierPayments' },
   { table: 'compensations', dexieTable: 'compensations' },
   { table: 'transfers', dexieTable: 'transfers' },
+  { table: 'stock_movements', dexieTable: 'stockMovements' },
+  { table: 'accounts', dexieTable: 'accounts' },
+  { table: 'credit_payments', dexieTable: 'creditPayments' },
+  { table: 'bon_sorties', dexieTable: 'bonSorties' },
+  { table: 'business_cards', dexieTable: 'businessCards' },
+  { table: 'settings', dexieTable: 'settings' },
+  { table: 'businesses', dexieTable: 'businesses' },
+  { table: 'profiles', dexieTable: 'users' },
 ]
 
 const TENANT_TABLES: Set<string> = new Set([
@@ -33,7 +41,8 @@ const TENANT_TABLES: Set<string> = new Set([
   'invoices', 'credits', 'employees', 'attendance', 'payrolls',
   'cash_book', 'leads', 'notifications', 'locations', 'product_stocks',
   'product_history', 'supplier_invoices', 'supplier_payments',
-  'compensations', 'transfers',
+  'compensations', 'transfers', 'stock_movements', 'accounts',
+  'credit_payments', 'bon_sorties', 'business_cards', 'settings', 'profiles',
 ])
 
 const SESSION_ID = crypto.randomUUID()
@@ -62,9 +71,28 @@ export async function subscribeAll(onChange?: (table: string, event: string, dat
             const payloadBizId = payload.new?.businessId || payload.old?.businessId
             if (businessId && TENANT_TABLES.has(table) && payloadBizId !== businessId) return
             if (payload.eventType === 'INSERT' || payload.eventType === 'UPDATE') {
-              const row = payload.new
+              let row = payload.new
               const dexie = (db as any)[dexieTable]
               if (dexie) {
+                if (table === 'profiles') {
+                  const existing = await dexie.get(row.id)
+                  row = {
+                    id: row.id,
+                    businessId: row.businessId || row.business_id || '',
+                    name: row.name || '',
+                    email: row.email || '',
+                    phone: row.phone || undefined,
+                    loginId: row.loginId || row.email || '',
+                    passwordHash: existing?.passwordHash || '',
+                    role: row.role || 'staff',
+                    permissions: row.permissions?.length ? row.permissions : ['*'],
+                    isActive: row.is_active ?? true,
+                    isPrimaryAdmin: row.is_primary_admin ?? (existing?.isPrimaryAdmin ?? false),
+                    status: row.status || (row.is_active === false ? 'blocked' : 'active'),
+                    createdAt: row.createdAt || row.created_at || new Date().toISOString(),
+                    lastLogin: row.last_login || undefined,
+                  }
+                }
                 const flat = { ...row }
                 const key = row.id
                 delete flat.id
