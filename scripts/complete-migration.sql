@@ -210,6 +210,10 @@ CREATE TABLE public.sales (
   paymentMethod text DEFAULT 'cash',
   splitPayments jsonb DEFAULT '[]'::jsonb,
   status text DEFAULT 'pending',
+  saleChannel text DEFAULT 'shop',
+  deliveryStatus text DEFAULT 'delivered',
+  deliveryAddress text,
+  deliveredAt timestamptz,
   note text,
   createdAt timestamptz DEFAULT now(),
   userId text NOT NULL

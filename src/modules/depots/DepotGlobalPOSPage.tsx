@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { Button, Modal } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import db from '@/db'
-import { cn, formatCurrency, generateId, generateInvoiceNumber, getProductUnits, getUnitPrice, getUnitStep, getUnitMinQty, pickContact } from '@/lib/utils'
+import { cn, formatCurrency, generateId, generateInvoiceNumber, getProductUnits, getUnitPrice, getUnitStep, getUnitMinQty, pickContact, calculateMargin } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { processSale } from '@/engine/operations'
+import { syncWriteObject } from '@/lib/realtime'
 import { exportSalePDF, shareSalePDF, buildProductPhotos } from '@/lib/pdf'
 import { shareViaWeChat } from '@/lib/share'
 import { thermalPrinter, printReceiptHTML } from '@/lib/thermalPrinter'
@@ -23,6 +24,8 @@ import MobileCartSheet from '@/components/pos/MobileCartSheet'
 import PaymentScreen from '@/components/pos/PaymentScreen'
 import { CreditSaleEditModal } from '@/components/credit/CreditSaleModals'
 import { usePermission } from '@/hooks/usePermission'
+import ProductSaleModal, { type ProductSaleSelection } from '@/components/pos/ProductSaleModal'
+import QuickProductModal, { type QuickProductValues } from '@/components/pos/QuickProductModal'
 
 interface CartItem {
   productId: string
@@ -38,6 +41,12 @@ interface CartItem {
 
 function cartItemKey(i: CartItem) {
   return `${i.productId}::${i.unitName}::${i.locationId}`
+}
+
+function maxQuantityForStock(stockPieces: number, unitQuantity: number, unitName: string) {
+  const step = getUnitStep(unitName)
+  if (unitQuantity <= 0 || stockPieces <= 0) return 0
+  return Number((Math.floor((stockPieces / unitQuantity + 0.000001) / step) * step).toFixed(2))
 }
 
 type PriceMode = 'detail' | 'gros'
@@ -59,9 +68,10 @@ export default function DepotGlobalPOSPage() {
   const [cartSheetOpen, setCartSheetOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
   const [priceMode, setPriceMode] = useState<PriceMode>('gros')
-  const [pickModal, setPickModal] = useState<{ product: Product; unitName: string } | null>(null)
-  const [splitModal, setSplitModal] = useState<{ item: CartItem; targetQty: number } | null>(null)
+  const [saleModal, setSaleModal] = useState<{ product: Product; unitName?: string } | null>(null)
+  const [splitModal, setSplitModal] = useState<{ item: CartItem; requiredQty: number } | null>(null)
   const [unitPriceModal, setUnitPriceModal] = useState<{ product: Product; unitName: string; itemKey?: string; locationId?: string } | null>(null)
+  const [quickProductOpen, setQuickProductOpen] = useState(false)
 
   const [customerName, setCustomerName] = useState('')
   const [customerPhone, setCustomerPhone] = useState('')
@@ -84,6 +94,8 @@ export default function DepotGlobalPOSPage() {
   const stockByProduct = useMemo(() => {
     const map = new Map<string, { locationId: string; locationName: string; quantity: number }[]>()
     allStocks?.forEach(s => {
+      const location = locationMap.get(s.locationId)
+      if (location && !location.isActive) return
       if (!map.has(s.productId)) map.set(s.productId, [])
       map.get(s.productId)!.push({
         locationId: s.locationId,
@@ -136,7 +148,7 @@ export default function DepotGlobalPOSPage() {
     } else if (locationId) {
       addToCart(product.id, unitName, locationId, price)
     } else {
-      handleProductClick(product, unitName, price)
+      handleProductClick(product, unitName)
     }
   }
 
@@ -178,23 +190,76 @@ export default function DepotGlobalPOSPage() {
     })
   }
 
-  function handleProductClick(product: Product, unitName?: string, priceOverride?: number) {
+  function handleProductClick(product: Product, unitName?: string) {
     const available = (stockByProduct.get(product.id) || []).filter(s => s.quantity > 0)
     if (available.length === 0) { toast('Aucun stock disponible', 'warning'); return }
-    if (available.length === 1) { addToCart(product.id, unitName, available[0].locationId, priceOverride); return }
-    setPickModal({ product, unitName: unitName || 'Pièce' })
+    setSaleModal({ product, unitName })
   }
 
-  function handlePickDepot(locationId: string) {
-    if (!pickModal) return
-    const p = pickModal.product
-    if (needsUnitPrice(p, pickModal.unitName)) {
-      setUnitPriceModal({ product: p, unitName: pickModal.unitName, locationId })
-      setPickModal(null)
+  function addSelectionToCart(product: Product, selection: ProductSaleSelection) {
+    const unit = getProductUnits(product).find(item => item.name === selection.unitName)
+    const source = (stockByProduct.get(product.id) || []).find(item => item.locationId === selection.locationId)
+    if (!unit || !source) return
+
+    const key = `${product.id}::${unit.name}::${selection.locationId}`
+    const existing = cart.find(item => cartItemKey(item) === key)
+    const existingQty = existing?.quantity || 0
+    const currentTotal = cart
+      .filter(item => item.productId === product.id && item.unitName === unit.name)
+      .reduce((sum, item) => sum + item.quantity, 0)
+    const totalCapacity = (stockByProduct.get(product.id) || [])
+      .reduce((sum, item) => sum + maxQuantityForStock(item.quantity, unit.quantity, unit.name), 0)
+    if (currentTotal + selection.quantity > totalCapacity) {
+      toast(`Stock total insuffisant: maximum ${Math.max(0, Number((totalCapacity - currentTotal).toFixed(2)))}`, 'error')
       return
     }
-    addToCart(pickModal.product.id, pickModal.unitName, locationId)
-    setPickModal(null)
+    const maxQty = maxQuantityForStock(source.quantity, unit.quantity, unit.name)
+    const fromSource = Math.min(selection.quantity, Math.max(0, maxQty - existingQty))
+
+    if (fromSource > 0) {
+      setCart(prev => {
+        const current = prev.find(item => cartItemKey(item) === key)
+        if (current) {
+          return prev.map(item => cartItemKey(item) === key
+            ? { ...item, quantity: Number((item.quantity + fromSource).toFixed(2)), unitPrice: selection.unitPrice }
+            : item)
+        }
+        return [...prev, {
+          productId: product.id,
+          productName: product.name,
+          quantity: fromSource,
+          unitPrice: selection.unitPrice,
+          unitName: unit.name,
+          unitQuantity: unit.quantity,
+          locationId: selection.locationId,
+          locationName: source.locationName,
+          discount: 0,
+        }]
+      })
+    }
+
+    const remaining = Number((selection.quantity - fromSource).toFixed(2))
+    if (remaining > 0) {
+      const sourceItem: CartItem = existing
+        ? { ...existing, quantity: existingQty + fromSource, unitPrice: selection.unitPrice }
+        : {
+            productId: product.id,
+            productName: product.name,
+            quantity: fromSource,
+            unitPrice: selection.unitPrice,
+            unitName: unit.name,
+            unitQuantity: unit.quantity,
+            locationId: selection.locationId,
+            locationName: source.locationName,
+            discount: 0,
+          }
+      const otherLocations = (stockByProduct.get(product.id) || []).filter(item => item.locationId !== selection.locationId && item.quantity > 0)
+      if (otherLocations.length === 0) {
+        toast('Stock total insuffisant pour cette quantité', 'error')
+        return
+      }
+      setSplitModal({ item: sourceItem, requiredQty: remaining })
+    }
   }
 
   function updateQuantity(itemKey: string, delta: number) {
@@ -206,7 +271,7 @@ export default function DepotGlobalPOSPage() {
       if (newQty < minQty) return prev.filter(i => cartItemKey(i) !== itemKey)
 
       const maxFromDepot = allStocks?.find(s => s.productId === item.productId && s.locationId === item.locationId)?.quantity || 0
-      const maxUnit = Math.floor(maxFromDepot / item.unitQuantity)
+      const maxUnit = maxQuantityForStock(maxFromDepot, item.unitQuantity, item.unitName)
 
       if (newQty <= maxUnit) {
         return prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: newQty } : i)
@@ -215,10 +280,11 @@ export default function DepotGlobalPOSPage() {
       const other = (stockByProduct.get(item.productId) || []).filter(s => s.locationId !== item.locationId && s.quantity > 0)
       if (other.length === 0) {
         toast(`Stock insuffisant: max ${maxUnit}`, 'warning')
-        return prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: maxUnit } : i)
+        return maxUnit >= minQty ? prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: maxUnit } : i) : prev.filter(i => cartItemKey(i) !== itemKey)
       }
-      setSplitModal({ item, targetQty: newQty })
-      return prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: maxUnit } : i)
+      const sourceItem = { ...item, quantity: maxUnit }
+      setSplitModal({ item: sourceItem, requiredQty: Number((newQty - maxUnit).toFixed(2)) })
+      return maxUnit >= minQty ? prev.map(i => cartItemKey(i) === itemKey ? sourceItem : i) : prev.filter(i => cartItemKey(i) !== itemKey)
     })
   }
 
@@ -231,7 +297,7 @@ export default function DepotGlobalPOSPage() {
       if (newQty < minQty) return prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: minQty } : i)
 
       const maxFromDepot = allStocks?.find(s => s.productId === item.productId && s.locationId === item.locationId)?.quantity || 0
-      const maxUnit = Math.floor(maxFromDepot / item.unitQuantity)
+      const maxUnit = maxQuantityForStock(maxFromDepot, item.unitQuantity, item.unitName)
 
       if (newQty <= maxUnit) {
         return prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: newQty } : i)
@@ -240,10 +306,11 @@ export default function DepotGlobalPOSPage() {
       const other = (stockByProduct.get(item.productId) || []).filter(s => s.locationId !== item.locationId && s.quantity > 0)
       if (other.length === 0) {
         toast(`Stock insuffisant: max ${maxUnit}`, 'warning')
-        return prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: maxUnit } : i)
+        return maxUnit >= minQty ? prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: maxUnit } : i) : prev.filter(i => cartItemKey(i) !== itemKey)
       }
-      setSplitModal({ item, targetQty: newQty })
-      return prev.map(i => cartItemKey(i) === itemKey ? { ...i, quantity: maxUnit } : i)
+      const sourceItem = { ...item, quantity: maxUnit }
+      setSplitModal({ item: sourceItem, requiredQty: Number((newQty - maxUnit).toFixed(2)) })
+      return maxUnit >= minQty ? prev.map(i => cartItemKey(i) === itemKey ? sourceItem : i) : prev.filter(i => cartItemKey(i) !== itemKey)
     })
   }
 
@@ -262,7 +329,12 @@ export default function DepotGlobalPOSPage() {
       const newUnitPrice = priceMode === 'gros'
         ? (prod.wholesalePrice || getUnitPrice(prod, newUnitName))
         : getUnitPrice(prod, newUnitName)
-      return { ...i, unitName: u.name, unitQuantity: u.quantity, unitPrice: newUnitPrice }
+       const stock = allStocks?.find(s => s.productId === i.productId && s.locationId === i.locationId)?.quantity || 0
+       if (i.quantity > maxQuantityForStock(stock, u.quantity, u.name)) {
+         toast('Stock insuffisant pour cette unité', 'warning')
+         return i
+       }
+       return { ...i, unitName: u.name, unitQuantity: u.quantity, unitPrice: newUnitPrice }
     }))
   }
 
@@ -347,11 +419,19 @@ export default function DepotGlobalPOSPage() {
       change: pay.change,
       paymentMethod: pay.creditAmount > 0 ? 'credit' : pay.payMethod,
       status: 'completed',
+      saleChannel: 'delivery',
+      deliveryStatus: 'pending',
+      deliveryAddress: customerAddress || undefined,
       createdAt: saleDate,
       userId,
     }
 
-    await processSale(sale, { downPaymentMethod: pay.payMethod, dueDate: pay.dueDate || undefined })
+    try {
+      await processSale(sale, { downPaymentMethod: pay.payMethod, dueDate: pay.dueDate || undefined })
+    } catch (error: any) {
+      toast(error?.message || 'Impossible de valider la vente', 'error')
+      return
+    }
 
     if (dexieSettings) {
       const nextNum = (dexieSettings.invoiceNextNumber || 1) + 1
@@ -362,6 +442,51 @@ export default function DepotGlobalPOSPage() {
     setSaleSuccess(true)
     setPaymentOpen(false)
     setCartSheetOpen(false)
+  }
+
+  async function handleQuickProductCreate(values: QuickProductValues) {
+    const now = new Date().toISOString()
+    const product: Product = {
+      id: generateId(),
+      businessId,
+      name: values.name,
+      photos: [],
+      unit: values.unit,
+      purchasePrice: values.purchasePrice,
+      sellingPrice: values.sellingPrice,
+      wholesalePrice: values.wholesalePrice || undefined,
+      packSize: values.unit === 'pack' ? values.packSize || undefined : undefined,
+      margin: calculateMargin(values.purchasePrice, values.sellingPrice),
+      taxRate: 0,
+      stockAlert: 0,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    }
+    await db.products.add(product)
+    await syncWriteObject('products', product).catch(() => {})
+
+    const locationId = values.locationId || locations?.find(location => location.type === 'shop' && location.isActive)?.id || locations?.find(location => location.isActive)?.id
+    const location = locations?.find(item => item.id === locationId)
+    if (locationId && values.stock > 0) {
+      const stock = {
+        id: generateId(), businessId, productId: product.id, locationId,
+        quantity: values.stock, stockAlert: 0, stockMin: 0, stockMax: 999999, updatedAt: now,
+      }
+      await db.productStocks.add(stock)
+      await syncWriteObject('productStocks', stock).catch(() => {})
+      const unit = getProductUnits(product)[0]
+      if (unit && values.stock >= unit.quantity) {
+        const price = priceMode === 'gros' ? (product.wholesalePrice || getUnitPrice(product, unit.name)) : getUnitPrice(product, unit.name)
+        setCart(prev => [...prev, {
+          productId: product.id, productName: product.name, quantity: 1,
+          unitPrice: price, unitName: unit.name, unitQuantity: unit.quantity,
+          locationId, locationName: location?.name || 'Stock', discount: 0,
+        }])
+      }
+    }
+    setQuickProductOpen(false)
+    toast(values.stock > 0 ? 'Produit créé et ajouté au panier' : 'Produit créé', 'success')
   }
 
   const currency = formatCurrency
@@ -468,6 +593,9 @@ export default function DepotGlobalPOSPage() {
                 <div className="col-span-full flex flex-col items-center justify-center py-16 text-surface-400">
                   <Package className="w-12 h-12 mb-3 text-surface-500" />
                   <p className="text-sm">Aucun produit trouvé</p>
+                  <button onClick={() => setQuickProductOpen(true)} className="mt-4 px-4 py-2.5 rounded-xl bg-primary-500 text-on-accent text-sm font-semibold min-h-[44px]">
+                    Créer ce produit
+                  </button>
                 </div>
               )}
             </div>
@@ -614,12 +742,8 @@ export default function DepotGlobalPOSPage() {
                         </select>
                         <span className="text-xs text-surface-500">×</span>
                         <input type="number" min={getUnitMinQty(item.unitName || 'Pièce')} step={getUnitStep(item.unitName || 'Pièce')}
-                          value={item.quantity}
-                          onChange={(e) => {
-                            const minQty = getUnitMinQty(item.unitName || 'Pièce')
-                            const q = Math.max(minQty, Number(e.target.value) || minQty)
-                            setCart(prev => prev.map(i => cartItemKey(i) === key ? { ...i, quantity: q } : i))
-                          }}
+                           value={item.quantity}
+                           onChange={(e) => setQuantity(key, Number(e.target.value))}
                           className="w-14 text-[11px] rounded-md border border-surface-200 bg-surface-50 px-1 py-0.5 text-surface-700 text-center focus:outline-none" />
                       </div>
                       <div className="flex items-center gap-1 mt-1">
@@ -801,37 +925,63 @@ export default function DepotGlobalPOSPage() {
         onConfirm={handleSale}
       />
 
-      <Modal open={pickModal !== null} onClose={() => setPickModal(null)} title="Choisir le dépôt">
-        {pickModal && (
-          <div className="space-y-3">
-            <p className="text-sm font-medium text-surface-900">{pickModal.product.name}</p>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
-              {(stockByProduct.get(pickModal.product.id) || []).filter(s => s.quantity > 0).map(s => (
-                <button key={s.locationId} onClick={() => handlePickDepot(s.locationId)}
-                  className="w-full text-left p-3 rounded-xl border border-surface-200 hover:border-primary-300 hover:bg-primary-50 transition-all flex items-center justify-between">
-                  <span className="text-sm font-medium text-surface-700">{s.locationName}</span>
-                  <span className="text-sm font-bold text-primary-400">Stock: {s.quantity}</span>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-      </Modal>
+      <ProductSaleModal
+        open={saleModal !== null}
+        product={saleModal?.product || null}
+        initialUnitName={saleModal?.unitName}
+        priceMode={priceMode}
+        stockOptions={saleModal ? (stockByProduct.get(saleModal.product.id) || [])
+          .filter(stock => stock.quantity > 0)
+          .map(stock => ({
+            ...stock,
+            isShop: locationMap.get(stock.locationId)?.type === 'shop',
+          })) : []}
+        onConfirm={(selection) => {
+          if (!saleModal) return
+          addSelectionToCart(saleModal.product, selection)
+          setSaleModal(null)
+        }}
+        onClose={() => setSaleModal(null)}
+      />
 
       <SplitDepotModal
         open={splitModal !== null} item={splitModal?.item || null}
-        stockByProduct={stockByProduct} locationMap={locationMap}
-        onConfirm={(locationId, qty) => {
-          if (!splitModal) return
-          addToCart(splitModal.item.productId, splitModal.item.unitName, locationId)
-          setCart(prev => prev.map(i => {
-            if (cartItemKey(i) === `${splitModal.item.productId}::${splitModal.item.unitName}::${locationId}`)
-              return { ...i, quantity: qty }
-            return i
-          }))
-          setSplitModal(null)
-        }}
-        onClose={() => setSplitModal(null)}
+        requiredQty={splitModal?.requiredQty || 0}
+        stockByProduct={stockByProduct}
+        onConfirm={(allocations) => {
+           if (!splitModal) return
+           setCart(prev => {
+             let next = [...prev]
+             for (const allocation of allocations) {
+               const key = `${splitModal.item.productId}::${splitModal.item.unitName}::${allocation.locationId}`
+               const existing = next.find(item => cartItemKey(item) === key)
+               if (existing) {
+                 next = next.map(item => cartItemKey(item) === key
+                   ? { ...item, quantity: Number((item.quantity + allocation.quantity).toFixed(2)) }
+                   : item)
+               } else {
+                 const location = locationMap.get(allocation.locationId)
+                 next.push({
+                   ...splitModal.item,
+                   quantity: allocation.quantity,
+                   locationId: allocation.locationId,
+                   locationName: location?.name || 'Dépôt',
+                 })
+               }
+             }
+             return next
+           })
+           setSplitModal(null)
+         }}
+         onClose={() => setSplitModal(null)}
+      />
+
+      <QuickProductModal
+        open={quickProductOpen}
+        locations={(locations || []).filter(location => location.isActive).map(location => ({ id: location.id, name: location.name }))}
+        defaultLocationId={locations?.find(location => location.type === 'shop' && location.isActive)?.id}
+        onClose={() => setQuickProductOpen(false)}
+        onCreate={handleQuickProductCreate}
       />
 
       <UnitPriceModal
@@ -929,40 +1079,48 @@ export default function DepotGlobalPOSPage() {
   )
 }
 
-function SplitDepotModal({ open, item, stockByProduct, locationMap, onConfirm, onClose }: {
+function SplitDepotModal({ open, item, requiredQty, stockByProduct, onConfirm, onClose }: {
   open: boolean
   item: CartItem | null
+  requiredQty: number
   stockByProduct: Map<string, { locationId: string; locationName: string; quantity: number }[]>
-  locationMap: Map<string, { name: string }>
-  onConfirm: (locationId: string, qty: number) => void
+  onConfirm: (allocations: { locationId: string; quantity: number }[]) => void
   onClose: () => void
 }) {
   const [qtyPerDepot, setQtyPerDepot] = useState<Record<string, number>>({})
+  useEffect(() => {
+    if (open) setQtyPerDepot({})
+  }, [open, item?.productId, item?.unitName, item?.locationId, requiredQty])
   if (!item) return null
   const others = (stockByProduct.get(item.productId) || []).filter(s => s.locationId !== item.locationId && s.quantity > 0)
+  const selectedQty = Object.values(qtyPerDepot).reduce((sum, quantity) => sum + quantity, 0)
+  const remaining = Number((requiredQty - selectedQty).toFixed(2))
+  const step = getUnitStep(item.unitName)
 
   return (
     <Modal open={open} onClose={onClose} title="Répartir sur plusieurs dépôts">
       <div className="p-6 space-y-4">
         <p className="text-sm text-surface-600">
-          Stock insuffisant dans <strong>{item.locationName}</strong>.
-          Répartissez sur les autres dépôts :
+          Stock insuffisant dans <strong>{item.locationName}</strong>. Choisissez exactement <strong>{requiredQty}</strong> {item.unitName} supplémentaire(s) :
         </p>
         {others.map(s => (
           <div key={s.locationId} className="flex items-center gap-3 p-3 rounded-xl border border-surface-200">
             <span className="text-sm font-medium flex-1">{s.locationName}</span>
-            <span className="text-xs text-surface-400">Dispo: {s.quantity}</span>
-            <input type="number" min="0" max={s.quantity} placeholder="0"
+            <span className="text-xs text-surface-400">Dispo: {maxQuantityForStock(s.quantity, item.unitQuantity, item.unitName)}</span>
+            <input type="number" min="0" max={maxQuantityForStock(s.quantity, item.unitQuantity, item.unitName)} step={step} placeholder="0"
               value={qtyPerDepot[s.locationId] || ''}
-              onChange={e => setQtyPerDepot(p => ({ ...p, [s.locationId]: Math.min(s.quantity, Number(e.target.value) || 0) }))}
+              onChange={e => setQtyPerDepot(p => ({ ...p, [s.locationId]: Math.min(maxQuantityForStock(s.quantity, item.unitQuantity, item.unitName), Number(e.target.value) || 0) }))}
               className="w-20 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
           </div>
         ))}
-        <Button onClick={() => {
-          for (const [locId, qty] of Object.entries(qtyPerDepot)) {
-            if (qty > 0) onConfirm(locId, qty)
-          }
-        }} className="w-full">Ajouter au panier</Button>
+        <p className={cn('text-sm font-medium', remaining === 0 ? 'text-emerald-600' : 'text-amber-600')}>
+          {remaining === 0 ? 'Répartition complète.' : `Reste à répartir : ${Math.max(0, remaining)} ${item.unitName}`}
+        </p>
+        <Button
+          onClick={() => onConfirm(Object.entries(qtyPerDepot).filter(([, quantity]) => quantity > 0).map(([locationId, quantity]) => ({ locationId, quantity })))}
+          disabled={remaining !== 0}
+          className="w-full"
+        >Ajouter au panier</Button>
       </div>
     </Modal>
   )

@@ -66,7 +66,8 @@ async function adjustStock(productId: string, locationId: string, delta: number,
   const record = records[0]
   if (!record) return
   const before = record.quantity
-  const after = Math.max(0, before + delta)
+  const after = before + delta
+  if (after < 0) throw new Error(`Stock insuffisant: ${before} disponible(s)`)
   await db.productStocks.update(record.id, { quantity: after, updatedAt: now() })
   const historyEntry = {
     id: generateId(),
@@ -118,6 +119,22 @@ function getMainQty(item: { quantity: number; unitQuantity?: number }): number {
 
 export async function processSale(sale: Sale, opts?: { downPaymentMethod?: PaymentMethod; dueDate?: string }) {
   requirePermission('pos', 'create')
+  const requiredByLocation = new Map<string, number>()
+  const productNames = new Map<string, string>()
+  for (const item of sale.items) {
+    const mainQty = getMainQty(item)
+    const itemLocationId = (item as { locationId?: string }).locationId || sale.locationId
+    if (!itemLocationId || mainQty <= 0) throw new Error(`Quantité invalide pour ${item.productName}`)
+    requiredByLocation.set(`${item.productId}::${itemLocationId}`, (requiredByLocation.get(`${item.productId}::${itemLocationId}`) || 0) + mainQty)
+    productNames.set(`${item.productId}::${itemLocationId}`, item.productName)
+  }
+  for (const [key, required] of requiredByLocation) {
+    const [productId, locationId] = key.split('::')
+    const available = await getStock(productId, locationId)
+    if (available < required) {
+      throw new Error(`Stock insuffisant pour ${productNames.get(key) || 'ce produit'} : ${available} disponible(s), ${required} demandé(s)`)
+    }
+  }
   for (const item of sale.items) {
     const mainQty = getMainQty(item)
     const itemLocationId = (item as { locationId?: string }).locationId || sale.locationId
@@ -184,6 +201,21 @@ export async function processSale(sale: Sale, opts?: { downPaymentMethod?: Payme
 
     await audit('create', 'credit', credit.id, `Crédit ${creditAmount} FCFA pour ${sale.customerName} (${currentUserName()})`)
   }
+}
+
+export async function markSaleDelivered(saleId: string) {
+  requirePermission('pos', 'create')
+  const sale = await db.sales.get(saleId)
+  if (!sale) throw new Error('Vente introuvable')
+  if (sale.saleChannel !== 'delivery') throw new Error('Cette vente n’est pas une livraison')
+  if (sale.deliveryStatus === 'delivered') return sale
+  const deliveredAt = now()
+  await db.sales.update(saleId, { deliveryStatus: 'delivered', deliveredAt })
+  if (isSupabaseConfigured()) {
+    await syncWrite('sales', { id: saleId, deliveryStatus: 'delivered', deliveredAt }).catch(() => {})
+  }
+  await audit('deliver', 'sale', saleId, `Vente ${sale.invoiceNumber} livrée (${currentUserName()})`)
+  return { ...sale, deliveryStatus: 'delivered' as const, deliveredAt }
 }
 
 export async function cancelSale(saleId: string) {
@@ -561,6 +593,7 @@ export async function signBonSortie(bonId: string, sig: { destinateur?: string; 
 
 export async function processStockAdjustment(productId: string, locationId: string, newQty: number, note?: string) {
   requirePermission('products', 'adjust_stock')
+  if (newQty < 0) throw new Error('La quantité ne peut pas être négative')
   const current = await getStock(productId, locationId)
   const delta = newQty - current
   await adjustStock(productId, locationId, delta, 'adjusted', undefined, note || `Ajustement de ${current} à ${newQty} par ${currentUserName()}`)

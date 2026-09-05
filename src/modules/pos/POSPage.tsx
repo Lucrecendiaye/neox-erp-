@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import db from '@/db'
-import { generateId, formatCurrency, generateInvoiceNumber, cn, getProductUnits, getUnitPrice, convertToMainUnit, getUnitStep, getUnitMinQty, pickContact } from '@/lib/utils'
+import { generateId, formatCurrency, generateInvoiceNumber, cn, getProductUnits, getProductUnitInfo, getUnitPrice, convertToMainUnit, getUnitStep, getUnitMinQty, pickContact, calculateMargin } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import {
   Search, ScanLine, ShoppingCart, Minus, Plus, X, Trash2,
@@ -19,6 +19,7 @@ import type { ProductStock } from '@/engine/types'
 import { useAppStore } from '@/stores/appStore'
 import { usePermission } from '@/hooks/usePermission'
 import { processSale } from '@/engine/operations'
+import { syncWriteObject } from '@/lib/realtime'
 import { useSalePayment, ensureCustomer } from './salePayment'
 import { SalePaymentPanel } from './SalePaymentPanel'
 import UnitPriceModal from '@/components/pos/UnitPriceModal'
@@ -26,6 +27,7 @@ import { CreditSaleEditModal } from '@/components/credit/CreditSaleModals'
 import MobileCartSheet from '@/components/pos/MobileCartSheet'
 import PaymentScreen from '@/components/pos/PaymentScreen'
 import SyncIndicator from '@/components/ui/SyncIndicator'
+import QuickProductModal, { type QuickProductValues } from '@/components/pos/QuickProductModal'
 
 type PriceMode = 'detail' | 'gros'
 
@@ -72,6 +74,7 @@ export default function POSPage() {
   const [editSaleId, setEditSaleId] = useState<string | null>(null)
 
   const [unitPriceModal, setUnitPriceModal] = useState<{ product: Product; unitName: string; itemKey?: string } | null>(null)
+  const [quickProductOpen, setQuickProductOpen] = useState(false)
 
 
   const filteredCategories = useMemo(() => {
@@ -186,6 +189,11 @@ function updateQuantity(itemKey: string, delta: number) {
     const step = getUnitStep(i.unitName || 'Pièce')
     const minQty = getUnitMinQty(i.unitName || 'Pièce')
     const newQty = Math.max(minQty, +(i.quantity + delta).toFixed(1))
+    const stock = getProductStock(i.productId)
+    if (newQty * (i.unitQuantity || 1) > stock) {
+      toast(`Stock insuffisant: maximum ${Math.floor(stock / (i.unitQuantity || 1))}`, 'warning')
+      return i
+    }
     return { ...i, quantity: newQty, total: newQty * i.unitPrice - i.discount }
   }))
 }
@@ -195,6 +203,11 @@ function setQuantity(itemKey: string, value: number) {
     if (cartItemKey(i) !== itemKey) return i
     const minQty = getUnitMinQty(i.unitName || 'Pièce')
     const newQty = Math.max(minQty, +(value || minQty).toFixed(1))
+    const stock = getProductStock(i.productId)
+    if (newQty * (i.unitQuantity || 1) > stock) {
+      toast(`Stock insuffisant: maximum ${Math.floor(stock / (i.unitQuantity || 1))}`, 'warning')
+      return i
+    }
     return { ...i, quantity: newQty, total: newQty * i.unitPrice - i.discount }
   }))
 }
@@ -303,11 +316,18 @@ function setQuantity(itemKey: string, value: number) {
       change: pay.change,
       paymentMethod: pay.creditAmount > 0 ? 'credit' : pay.payMethod,
       status: 'completed',
+      saleChannel: 'shop',
+      deliveryStatus: 'delivered',
       createdAt: saleDate,
       userId,
     }
 
-    await processSale(sale, { downPaymentMethod: pay.payMethod, dueDate: pay.dueDate || undefined })
+    try {
+      await processSale(sale, { downPaymentMethod: pay.payMethod, dueDate: pay.dueDate || undefined })
+    } catch (error: any) {
+      toast(error?.message || 'Impossible de valider la vente', 'error')
+      return
+    }
 
     if (settings) {
       const nextNum = (settings.invoiceNextNumber || 1) + 1
@@ -318,6 +338,53 @@ function setQuantity(itemKey: string, value: number) {
     setSaleSuccess(true)
     setPaymentOpen(false)
     setCartSheetOpen(false)
+  }
+
+  async function handleQuickProductCreate(values: QuickProductValues) {
+    if (!shopId) {
+      toast('Boutique introuvable', 'error')
+      return
+    }
+    const now = new Date().toISOString()
+    const product: Product = {
+      id: generateId(),
+      businessId,
+      name: values.name,
+      photos: [],
+      unit: values.unit,
+      purchasePrice: values.purchasePrice,
+      sellingPrice: values.sellingPrice,
+      wholesalePrice: values.wholesalePrice || undefined,
+      packSize: values.unit === 'pack' ? values.packSize || undefined : undefined,
+      margin: calculateMargin(values.purchasePrice, values.sellingPrice),
+      taxRate: 0,
+      stockAlert: 0,
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+    }
+    await db.products.add(product)
+    await syncWriteObject('products', product).catch(() => {})
+    if (values.stock > 0) {
+      const stock = {
+        id: generateId(), businessId, productId: product.id, locationId: shopId,
+        quantity: values.stock, stockAlert: 0, stockMin: 0, stockMax: 999999, updatedAt: now,
+      }
+      await db.productStocks.add(stock)
+      await syncWriteObject('productStocks', stock).catch(() => {})
+      const primaryUnit = getProductUnitInfo(product)
+      const unit = values.stock >= primaryUnit.quantity ? primaryUnit : getProductUnits(product)[0]
+      if (unit && values.stock >= unit.quantity) {
+        const price = priceMode === 'gros' ? (product.wholesalePrice || getUnitPrice(product, unit.name)) : getUnitPrice(product, unit.name)
+        setCart(prev => [...prev, {
+          productId: product.id, productName: product.name, quantity: 1,
+          unitPrice: price, discount: 0, taxRate: product.taxRate,
+          total: price, unitName: unit.name, unitQuantity: unit.quantity,
+        }])
+      }
+    }
+    setQuickProductOpen(false)
+    toast(values.stock > 0 ? 'Produit créé et ajouté au panier' : 'Produit créé', 'success')
   }
 
   const currency = formatCurrency
@@ -518,6 +585,9 @@ function setQuantity(itemKey: string, value: number) {
                 <div className="col-span-full flex flex-col items-center justify-center py-16 text-surface-400">
                   <Package className="w-12 h-12 mb-3 text-surface-500" />
                   <p className="text-sm">Aucun produit trouvé</p>
+                  <button onClick={() => setQuickProductOpen(true)} className="mt-4 px-4 py-2.5 rounded-xl bg-primary-500 text-on-accent text-sm font-semibold min-h-[44px]">
+                    Créer ce produit
+                  </button>
                 </div>
               )}
             </div>
@@ -800,6 +870,14 @@ function setQuantity(itemKey: string, value: number) {
       />
 
       <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleBarcodeScan} />
+
+      <QuickProductModal
+        open={quickProductOpen}
+        locations={shopLocation ? [{ id: shopLocation.id, name: shopLocation.name }] : []}
+        defaultLocationId={shopId}
+        onClose={() => setQuickProductOpen(false)}
+        onCreate={handleQuickProductCreate}
+      />
 
       <UnitPriceModal
         open={!!unitPriceModal}

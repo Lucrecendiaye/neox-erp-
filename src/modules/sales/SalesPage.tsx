@@ -12,7 +12,7 @@ import { shareViaWeChat } from '@/lib/share'
 import type { Sale, SaleItem, PaymentMethod, CompanySettings, CreditPayment } from '@/types'
 import type { Location } from '@/engine/types'
 import { toast } from '@/lib/toast'
-import { deleteSale, editSale } from '@/engine/operations'
+import { deleteSale, editSale, markSaleDelivered } from '@/engine/operations'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import MobileSaleCard from '@/components/sales/MobileSaleCard'
 import MobileActionsSheet from '@/components/sales/MobileActionsSheet'
@@ -22,15 +22,17 @@ import {
   ShoppingBag, ChevronDown, ChevronUp, Plus,
   User, Phone, MapPin, Send, Mail,
   Clock, ArrowUpDown, Wallet, FileSpreadsheet,
-  Receipt, Save, X, RefreshCw, MoreHorizontal, MessageCircle, Truck
+  Receipt, Save, X, RefreshCw, MoreHorizontal, MessageCircle, Truck, CheckCircle
 } from 'lucide-react'
 
-type TabKey = 'active' | 'paid' | 'partial' | 'cancelled'
+type TabKey = 'active' | 'deliveryPending' | 'delivered' | 'paid' | 'partial' | 'cancelled'
 type SaleType = 'retail' | 'wholesale' | 'depot' | 'shop'
 type PeriodKey = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'custom'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'active', label: 'Ventes' },
+  { key: 'deliveryPending', label: 'À livrer' },
+  { key: 'delivered', label: 'Livrées' },
   { key: 'paid', label: 'Payées' },
   { key: 'partial', label: 'Partielles' },
   { key: 'cancelled', label: 'Annulées' },
@@ -71,6 +73,14 @@ function statusBadge(status: string): { variant: 'success' | 'warning' | 'danger
 function getSaleType(sale: Sale, locations: Location[]): SaleType {
   const loc = locations.find(l => l.id === sale.locationId)
   return loc?.type === 'warehouse' ? 'depot' : 'shop'
+}
+
+function isDeliverySale(sale: Sale) {
+  return sale.saleChannel === 'delivery'
+}
+
+function isDeliveredSale(sale: Sale) {
+  return isDeliverySale(sale) && sale.deliveryStatus === 'delivered'
 }
 
 function getPaymentStatusBadge(sale: Sale): React.ReactNode {
@@ -183,11 +193,13 @@ export default function SalesPage() {
 
   const filteredSales = useMemo(() => {
     let result = [...allSales]
-    const activeSales = result.filter(s => s.status === 'completed' || s.status === 'pending')
-    const paidSales = result.filter(s => s.status === 'completed' && s.paid >= s.total)
-    const partialSales = result.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total)
+    const activeSales = result.filter(s => (s.status === 'completed' || s.status === 'pending') && !isDeliverySale(s))
+    const deliveryPendingSales = result.filter(s => isDeliverySale(s) && !isDeliveredSale(s) && s.status !== 'cancelled')
+    const deliveredSales = result.filter(s => isDeliveredSale(s))
+    const paidSales = result.filter(s => s.status === 'completed' && s.paid >= s.total && !isDeliverySale(s))
+    const partialSales = result.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total && !isDeliverySale(s))
     const cancelledSales = result.filter(s => s.status === 'cancelled')
-    const tabMap: Record<TabKey, Sale[]> = { active: activeSales, paid: paidSales, partial: partialSales, cancelled: cancelledSales }
+    const tabMap: Record<TabKey, Sale[]> = { active: activeSales, deliveryPending: deliveryPendingSales, delivered: deliveredSales, paid: paidSales, partial: partialSales, cancelled: cancelledSales }
     result = tabMap[tab] || activeSales
     if (search) {
       const q = search.toLowerCase()
@@ -228,9 +240,11 @@ export default function SalesPage() {
   const tabCounts = useMemo(() => {
     const all = allSales
     return {
-      active: all.filter(s => s.status === 'completed' || s.status === 'pending').length,
-      paid: all.filter(s => s.status === 'completed' && s.paid >= s.total).length,
-      partial: all.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total).length,
+      active: all.filter(s => (s.status === 'completed' || s.status === 'pending') && !isDeliverySale(s)).length,
+      deliveryPending: all.filter(s => isDeliverySale(s) && !isDeliveredSale(s) && s.status !== 'cancelled').length,
+      delivered: all.filter(s => isDeliveredSale(s)).length,
+      paid: all.filter(s => s.status === 'completed' && s.paid >= s.total && !isDeliverySale(s)).length,
+      partial: all.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total && !isDeliverySale(s)).length,
       cancelled: all.filter(s => s.status === 'cancelled').length,
     }
   }, [allSales])
@@ -303,6 +317,17 @@ export default function SalesPage() {
   }
 
   async function handleDelete(sale: Sale) { setDeleteTarget(sale); setPinModalOpen(true) }
+
+  async function handleMarkDelivered(sale: Sale) {
+    try {
+      await markSaleDelivered(sale.id)
+      toast('Vente marquée comme livrée', 'success')
+      setRefreshKey(key => key + 1)
+      setSelectedSale(current => current?.id === sale.id ? { ...current, deliveryStatus: 'delivered', deliveredAt: new Date().toISOString() } : current)
+    } catch (error: any) {
+      toast(error?.message || 'Impossible de confirmer la livraison', 'error')
+    }
+  }
 
   async function confirmDelete() {
     if (!deleteTarget) return
@@ -554,7 +579,7 @@ export default function SalesPage() {
                       <td className="px-4 py-3 text-surface-600 whitespace-nowrap"><div className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-surface-400 shrink-0" /><span>{formatDateTime(sale.createdAt)}</span></div></td>
                       <td className="px-4 py-3"><div className="flex items-center gap-2">{sale.supplierId ? <Truck className="w-3.5 h-3.5 text-amber-500 shrink-0" /> : <User className="w-3.5 h-3.5 text-surface-400 shrink-0" />}<span className="font-medium text-surface-900 truncate max-w-[120px]">{sale.supplierName || sale.customerName || 'Client divers'}</span></div></td>
                       <td className="px-4 py-3 text-surface-500 text-xs">{phone || '—'}</td>
-                      <td className="px-4 py-3"><Badge variant={getSaleType(sale, locations) === 'depot' ? 'warning' : 'info'}>{getSaleType(sale, locations) === 'depot' ? 'Dépôt' : 'Boutique'}</Badge></td>
+                      <td className="px-4 py-3"><Badge variant={isDeliverySale(sale) ? 'warning' : getSaleType(sale, locations) === 'depot' ? 'warning' : 'info'}>{isDeliverySale(sale) ? 'Livraison' : getSaleType(sale, locations) === 'depot' ? 'Dépôt' : 'Boutique'}</Badge></td>
                       <td className="px-4 py-3"><div className="flex items-center gap-1"><Wallet className="w-3 h-3 text-surface-400" /><span className="text-xs">{formatPaymentMethod(sale.paymentMethod)}</span></div></td>
                       <td className="px-4 py-3 text-xs text-surface-600">{seller}</td>
                       <td className="px-4 py-3 text-xs text-surface-600">{locName}</td>
@@ -566,9 +591,10 @@ export default function SalesPage() {
                           <button onClick={() => openDetail(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors" title="Détails"><Eye className="w-4 h-4" /></button>
                           <button onClick={() => handlePrintPDF(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="PDF"><FileText className="w-4 h-4" /></button>
                           <button onClick={() => handleWhatsApp(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-green-400 transition-colors" title="WhatsApp"><Send className="w-4 h-4" /></button>
-                          <button onClick={() => handleWeChat(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-emerald-400 transition-colors" title="WeChat"><MessageCircle className="w-4 h-4" /></button>
-                          <button onClick={() => { handleEmail(sale) }} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="Email"><Mail className="w-4 h-4" /></button>
-                          <button onClick={() => openEditModal(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-400 transition-colors" title="Modifier"><Edit2 className="w-4 h-4" /></button>
+                           <button onClick={() => handleWeChat(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-emerald-400 transition-colors" title="WeChat"><MessageCircle className="w-4 h-4" /></button>
+                           <button onClick={() => { handleEmail(sale) }} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="Email"><Mail className="w-4 h-4" /></button>
+                           {isDeliverySale(sale) && !isDeliveredSale(sale) && <button onClick={() => handleMarkDelivered(sale)} className="touch-target-sm rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400 transition-colors" title="Marquer comme livrée"><CheckCircle className="w-4 h-4" /></button>}
+                           <button onClick={() => openEditModal(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-400 transition-colors" title="Modifier"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => handleDelete(sale)} className="touch-target-sm rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400 transition-colors" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
@@ -603,9 +629,10 @@ export default function SalesPage() {
           { key: 'detail', label: 'Voir détails', icon: <Eye className="w-5 h-5" />, onClick: () => openDetail(actionSheetSale) },
           { key: 'pdf', label: 'Télécharger PDF', icon: <FileText className="w-5 h-5" />, onClick: () => handlePrintPDF(actionSheetSale) },
           { key: 'whatsapp', label: 'Partager PDF par WhatsApp', icon: <Send className="w-5 h-5" />, onClick: () => handleWhatsApp(actionSheetSale) },
-          { key: 'wechat', label: 'Envoyer par WeChat', icon: <MessageCircle className="w-5 h-5" />, onClick: () => handleWeChat(actionSheetSale) },
-          { key: 'email', label: 'Envoyer par Email', icon: <Mail className="w-5 h-5" />, onClick: () => handleEmail(actionSheetSale) },
-          { key: 'edit', label: 'Modifier', icon: <Edit2 className="w-5 h-5" />, onClick: () => openEditModal(actionSheetSale) },
+           { key: 'wechat', label: 'Envoyer par WeChat', icon: <MessageCircle className="w-5 h-5" />, onClick: () => handleWeChat(actionSheetSale) },
+           { key: 'email', label: 'Envoyer par Email', icon: <Mail className="w-5 h-5" />, onClick: () => handleEmail(actionSheetSale) },
+           ...(isDeliverySale(actionSheetSale) && !isDeliveredSale(actionSheetSale) ? [{ key: 'deliver', label: 'Confirmer la livraison', icon: <CheckCircle className="w-5 h-5" />, onClick: () => handleMarkDelivered(actionSheetSale) }] : []),
+           { key: 'edit', label: 'Modifier', icon: <Edit2 className="w-5 h-5" />, onClick: () => openEditModal(actionSheetSale) },
           { key: 'delete', label: 'Supprimer', icon: <Trash2 className="w-5 h-5" />, variant: 'danger', onClick: () => handleDelete(actionSheetSale) },
         ] : []}
       />
@@ -619,6 +646,17 @@ export default function SalesPage() {
               <div><p className="text-xs text-surface-500">Vendeur</p><p className="text-sm text-surface-900">{users.find((u: any) => u.id === selectedSale.userId)?.name || '—'}</p></div>
               <div><p className="text-xs text-surface-500">Paiement</p><p className="text-sm text-surface-900">{formatPaymentMethod(selectedSale.paymentMethod)}</p></div>
             </div>
+
+            {isDeliverySale(selectedSale) && (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between p-4 rounded-xl border border-primary-200 bg-primary-50">
+                <div>
+                  <p className="text-xs text-primary-500 font-medium">Livraison</p>
+                  <p className="text-sm font-semibold text-surface-900">{isDeliveredSale(selectedSale) ? 'Livrée' : 'À livrer'}</p>
+                  {selectedSale.deliveryAddress && <p className="text-xs text-surface-500 mt-1">{selectedSale.deliveryAddress}</p>}
+                </div>
+                {!isDeliveredSale(selectedSale) && <Button size="sm" onClick={() => handleMarkDelivered(selectedSale)}><CheckCircle className="w-4 h-4" /> Confirmer la livraison</Button>}
+              </div>
+            )}
 
             <div>
               <h3 className="text-sm font-semibold text-surface-900 mb-3">Client</h3>

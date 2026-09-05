@@ -82,6 +82,8 @@ export interface Supplier {
 }
 
 export type SaleStatus = 'pending' | 'completed' | 'cancelled' | 'returned'
+export type SaleChannel = 'shop' | 'delivery'
+export type SaleDeliveryStatus = 'pending' | 'delivered'
 export type PaymentMethod = 'cash' | 'card' | 'mobile' | 'credit' | 'bank' | 'split' | 'wave' | 'orange'
 
 export interface SaleItem {
@@ -122,6 +124,10 @@ export interface Sale {
   splitPayments?: SplitPaymentItem[]
   status: SaleStatus
   paymentStatus?: 'unpaid' | 'partial' | 'paid'
+  saleChannel?: SaleChannel
+  deliveryStatus?: SaleDeliveryStatus
+  deliveryAddress?: string
+  deliveredAt?: string
   note?: string
   createdAt: string
   userId: string

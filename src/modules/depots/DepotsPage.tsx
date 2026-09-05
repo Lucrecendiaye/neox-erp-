@@ -108,7 +108,7 @@ export default function DepotsPage() {
           </button>
           {can('pos', 'create') && (
             <button onClick={() => navigate('/depots/vente')} className="px-4 py-2 rounded-xl bg-primary-500 text-on-accent text-sm font-medium hover:bg-primary-500 transition-all flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" /> Vente
+              <TrendingUp className="w-4 h-4" /> Vente à livraison
             </button>
           )}
           {can('depots', 'validate') && (
