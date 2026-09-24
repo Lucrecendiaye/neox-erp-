@@ -174,7 +174,7 @@ export default function CustomersPage() {
                 </div>
               </div>
             </div>
-            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+            <div className="absolute top-3 right-3 flex gap-1 transition-opacity" onClick={(e) => e.stopPropagation()}>
               <button onClick={() => { setSelectedCustomer(c); setFicheOpen(true) }} className="p-1.5 rounded-lg hover:bg-primary-500/15 text-surface-400 hover:text-primary-500" title="Fiche complète">
                 <FileText className="w-4 h-4" />
               </button>

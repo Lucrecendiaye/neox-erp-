@@ -597,10 +597,10 @@ export default function ProductsPage() {
           </>
         }
       >
-        <div className="p-6 space-y-5">
+        <div className="p-4 sm:p-5 space-y-4">
           <div>
             <h3 className="modal-section-title">Informations principales</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Nom du produit" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
               <Select label="Catégorie" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} options={(categories || []).map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
               <Select
@@ -617,7 +617,7 @@ export default function ProductsPage() {
               />
             </div>
             {form.unit === 'pack' && (
-              <div className="bg-surface-50 rounded-xl p-4 space-y-3 mt-4">
+              <div className="bg-surface-50 rounded-xl p-3 space-y-2 mt-3">
                 <p className="text-sm font-medium text-surface-700">Composition du paquet</p>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
@@ -655,30 +655,29 @@ export default function ProductsPage() {
             )}
           </div>
 
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <h3 className="modal-section-title">Prix de revient</h3>
+              <Input
+                label={form.unit === 'piece' ? 'Prix (pièce)' : form.unit === 'dozen' ? 'Prix (douzaine)' : `Prix (paquet de ${piecesPerUnit || '—'})`}
+                type="number"
+                value={form.purchaseCost || ''}
+                onChange={(e) => setForm({ ...form, purchaseCost: +e.target.value || 0 })}
+              />
+              <p className="text-[11px] text-surface-400 mt-1">Le prix de vente sera saisi à chaque vente.</p>
+            </div>
+            <div>
+              <h3 className="modal-section-title">Stock</h3>
+              <Input label={editing ? 'Quantité en stock' : 'Stock initial'} type="number" value={initialStock} onChange={(e) => setInitialStock(+e.target.value)} />
+              {editing && (
+                <p className="text-[11px] text-surface-500 mt-1">La différence sera comptabilisée automatiquement.</p>
+              )}
+            </div>
+          </div>
+
           <div>
             <h3 className="modal-section-title">Image du produit</h3>
             <PhotoUpload photos={photos} onChange={setPhotos} />
-          </div>
-
-          <div>
-            <h3 className="modal-section-title">Prix de revient</h3>
-            <Input
-              label={`Prix de revient (${form.unit === 'piece' ? 'pièce' : form.unit === 'dozen' ? 'douzaine' : `paquet de ${piecesPerUnit || '—'} pièces`})`}
-              type="number"
-              value={form.purchaseCost || ''}
-              onChange={(e) => setForm({ ...form, purchaseCost: +e.target.value || 0 })}
-            />
-            <p className="text-xs text-surface-400 mt-2">Le prix de vente sera saisi au moment de chaque vente.</p>
-          </div>
-
-          <div>
-            <h3 className="modal-section-title">Stock</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label={editing ? 'Quantité en stock' : 'Stock initial'} type="number" value={initialStock} onChange={(e) => setInitialStock(+e.target.value)} />
-            </div>
-            {editing && (
-              <p className="text-xs text-surface-500 mt-2">La différence par rapport au stock actuel sera comptabilisée automatiquement.</p>
-            )}
           </div>
         </div>
       </Modal>

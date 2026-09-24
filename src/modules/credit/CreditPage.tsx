@@ -274,14 +274,14 @@ export default function CreditPage() {
                         <span className="text-xs text-surface-500 w-9 text-right">{c.amount > 0 ? Math.round((c.paid / c.amount) * 100) : 0}%</span>
                       </div>
                     </td>
-                    <td data-label="Échéance" className="px-6 py-4 text-center text-sm text-surface-500">{new Date(c.dueDate).getFullYear() >= 2100 ? 'â€”' : formatDate(c.dueDate)}</td>
+                    <td data-label="Échéance" className="px-6 py-4 text-center text-sm text-surface-500">{new Date(c.dueDate).getFullYear() >= 2100 ? '—' : formatDate(c.dueDate)}</td>
                     <td data-label="Statut" className="px-6 py-4 text-center">
                       <Badge variant={c.status === 'paid' ? 'success' : isOverdue ? 'danger' : 'warning'}>
                         {c.status === 'paid' ? 'Payé' : isOverdue ? 'Échu' : c.status === 'defaulted' ? 'Défaut' : 'Actif'}
                       </Badge>
                     </td>
                     <td data-label="Actions" className="px-6 py-4">
-                      <div className="flex items-center justify-center gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity flex-wrap">
+                      <div className="flex items-center justify-center gap-1.5 flex-wrap">
                         {c.status !== 'paid' && canCreate && (
                           <button onClick={() => openPayModal(c)} className="inline-flex items-center gap-1 px-3 py-1.5 rounded-lg bg-emerald-500/15 text-emerald-600 hover:bg-emerald-500/25 text-xs font-semibold" title="Enregistrer un paiement">
                             <Plus className="w-4 h-4" /> Encaisser
@@ -440,7 +440,7 @@ export default function CreditPage() {
                   <div key={m.id} className="p-2.5 bg-surface-50 rounded-lg border border-surface-200">
                     <p className="text-xs text-surface-600">
                       <span className="font-medium text-surface-800">{m.field === 'payment' ? 'Paiement enregistré' : m.field === 'payment_edit' ? 'Paiement modifié' : m.field === 'payment_deleted' ? 'Paiement supprimé' : 'Vente modifiée'}</span>
-                      {m.field === 'sale_edit' && <span className="text-surface-400"> â€” {m.newValue}</span>}
+                      {m.field === 'sale_edit' && <span className="text-surface-400"> — {m.newValue}</span>}
                     </p>
                     <p className="text-[11px] text-surface-400">{formatDateTime(m.createdAt)}{m.reason ? ` · ${m.reason}` : ''}</p>
                   </div>

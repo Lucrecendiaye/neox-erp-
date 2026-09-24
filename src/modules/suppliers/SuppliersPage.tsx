@@ -119,7 +119,7 @@ export default function SuppliersPage() {
                 </div>
               </div>
             </div>
-            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute top-3 right-3 flex gap-1 transition-opacity">
               <button onClick={(e) => { e.stopPropagation(); navigate(`/suppliers/${s.id}?comp=1`) }} className="p-1.5 rounded-lg hover:bg-primary-50 text-surface-400 hover:text-primary-400" title="Compensation">
                 <Scale className="w-4 h-4" />
               </button>

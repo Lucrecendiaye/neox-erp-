@@ -123,7 +123,7 @@ export default function PhotoUpload({ photos, onChange, max = 5 }: PhotoUploadPr
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           onClick={() => openPicker(false)}
-          className={`w-full rounded-xl border-2 border-dashed flex flex-col items-center justify-center gap-2 py-10 cursor-pointer transition-colors ${
+          className={`w-full rounded-xl border-2 border-dashed flex flex-col sm:flex-row items-center justify-center gap-2 py-5 cursor-pointer transition-colors ${
             dragOver ? 'border-primary-500 bg-primary-50' : 'border-surface-300 hover:border-primary-400 hover:bg-surface-50'
           } ${uploading ? 'opacity-60 pointer-events-none' : ''}`}
         >
@@ -131,9 +131,9 @@ export default function PhotoUpload({ photos, onChange, max = 5 }: PhotoUploadPr
             <Loader2 className="w-6 h-6 text-surface-400 animate-spin" />
           ) : (
             <>
-               <ImagePlus className="w-6 h-6 text-surface-400" />
-              <span className="text-sm text-surface-500 font-medium">Cliquez pour ajouter une photo</span>
-              <span className="text-xs text-surface-400">ou glissez-déposez une image (max {max})</span>
+              <ImagePlus className="w-6 h-6 text-surface-400" />
+              <span className="text-sm text-surface-500 font-medium">Ajouter une photo</span>
+              <span className="text-xs text-surface-400 hidden sm:inline">· cliquez ou glissez (max {max})</span>
             </>
           )}
         </div>

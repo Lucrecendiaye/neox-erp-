@@ -206,7 +206,7 @@ function NotificationCard({ notification: n, onRead, onDelete, unread }: { notif
         </div>
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(n.id) }}
-          className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-500 hover:text-danger opacity-0 group-hover:opacity-100 transition-all"
+          className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-500 hover:text-danger transition-all"
         >
           <Trash2 className="w-4 h-4" />
         </button>
