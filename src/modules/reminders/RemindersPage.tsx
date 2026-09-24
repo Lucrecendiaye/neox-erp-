@@ -138,7 +138,17 @@ export default function RemindersPage() {
                 <Badge variant={statusMeta.variant}>{statusMeta.label}</Badge>
                 <div className="flex gap-1.5">
                   {r.customerPhone && (
-                    <Button size="sm" variant="outline" onClick={() => openWhatsApp(r.customerPhone || '', `Bonjour ${r.customerName}, votre solde de ${formatCurrency(remaining)} reste impayé. Merci de régulariser.`)}>
+                    <Button size="sm" variant="outline" onClick={() => {
+                      const daysLate = r.dueDate ? Math.floor((Date.now() - new Date(r.dueDate).getTime()) / 86400000) : 0
+                      const lines = [
+                        `Bonjour ${r.customerName},`,
+                        `votre solde de ${formatCurrency(remaining)} reste à régler.`,
+                      ]
+                      if (daysLate > 0) lines.push(`⏰ En retard de ${daysLate} jour(s).`)
+                      else if (r.dueDate) lines.push(`Échéance : ${formatDate(r.dueDate)}.`)
+                      lines.push('Merci de bien vouloir régulariser. 🙏')
+                      openWhatsApp(r.customerPhone || '', lines.join('\n'))
+                    }}>
                       <Phone className="w-4 h-4" /> WhatsApp
                     </Button>
                   )}

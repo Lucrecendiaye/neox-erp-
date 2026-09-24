@@ -220,7 +220,77 @@ export async function buildCustomerStatement(customerId: string): Promise<{ line
   return { lines, summary }
 }
 
-/** Enregistre un remboursement d'avance (sortie de caisse). */
+/** Message WhatsApp : relevé résumé envoyable au client. */
+export async function buildStatementWhatsAppMessage(customerId: string, shopName?: string): Promise<string> {
+  const { lines, summary } = await buildCustomerStatement(customerId)
+  const last = lines.slice(-8)
+  const fmt = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} FCFA`
+
+  const rows = last.map(l => `• ${new Date(l.date).toLocaleDateString('fr-FR')} — ${l.label} ${l.reference ? `(${l.reference})` : ''} : ${fmt(l.debit || l.credit)}`).join('\n')
+
+  const netLine = summary.net > 0
+    ? `❗ Solde à régler : ${fmt(summary.net)}`
+    : summary.net < 0
+      ? `💰 Avance détenue pour vous : ${fmt(Math.abs(summary.net))}`
+      : '✅ Compte à jour'
+
+  return [
+    shopName ? `*${shopName}*` : '*Relevé de compte*',
+    '',
+    `Bonjour, voici votre relevé de compte :`,
+    rows,
+    '',
+    `Dette (crédits) : ${fmt(summary.debt)}`,
+    `Avance détenue : ${fmt(summary.advance)}`,
+    `Prêt en cours : ${fmt(summary.loanBalance)}`,
+    netLine,
+  ].filter(Boolean).join('\n')
+}
+
+/** Message WhatsApp : notification de retard de paiement. */
+export async function buildOverdueWhatsAppMessage(customerId: string, customerName: string, shopName?: string): Promise<string> {
+  const summary = await customerAccountSummary(customerId)
+  const fmt = (n: number) => `${Math.round(n).toLocaleString('fr-FR')} FCFA`
+  const credits = await db.credits.where('businessId').equals(currentBizId())
+    .filter(c => c.customerId === customerId && c.status !== 'paid').toArray()
+  const earliestDue = credits
+    .map(c => c.dueDate)
+    .filter((d): d is string => !!d && new Date(d).getFullYear() < 2100)
+    .sort()[0]
+
+  let daysLate = 0
+  if (earliestDue) {
+    daysLate = Math.floor((Date.now() - new Date(earliestDue).getTime()) / 86400000)
+  }
+
+  const lines = [
+    shopName ? `*${shopName}*` : '',
+    '',
+    `Bonjour ${customerName},`,
+    summary.debt > 0
+      ? `un rappel amical : votre solde de *${fmt(summary.debt)}* reste à régler.`
+      : `votre compte présente un solde à régulariser.`,
+  ]
+  if (daysLate > 0) lines.push(`⏰ En retard de ${daysLate} jour(s)${earliestDue ? ` (échéance ${new Date(earliestDue).toLocaleDateString('fr-FR')})` : ''}.`)
+  else if (earliestDue) lines.push(`Échéance : ${new Date(earliestDue).toLocaleDateString('fr-FR')}.`)
+  if (summary.advance > 0) lines.push(`Avance détenue pour vous : ${fmt(summary.advance)}.`)
+  lines.push('', 'Merci de bien vouloir régulariser. 🙏')
+  return lines.filter(Boolean).join('\n')
+}
+
+/** Enregistre une notification de retard (pour la cloche + rappel). */
+export async function recordOverdueNotification(customerId: string, customerName: string, message: string): Promise<void> {
+  const { createNotification } = await import('./notifications')
+  await createNotification({
+    type: 'reminder_due',
+    title: `Relance envoyée — ${customerName}`,
+    message,
+    link: '/customers',
+    recipientId: undefined,
+  })
+}
+
+
 export async function refundAdvance(opts: { customerId: string; customerName: string; amount: number; method: PaymentMethod; note?: string }): Promise<void> {
   requirePermission('customers', 'edit')
   const amount = Math.round(Math.abs(Number(opts.amount) || 0))

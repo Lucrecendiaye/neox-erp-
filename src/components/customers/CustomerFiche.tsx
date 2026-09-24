@@ -7,13 +7,13 @@ import db from '@/db'
 import { formatCurrency, formatDateTime, openWhatsApp } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { createLoan, repayLoan, partyLoanSummary, listLoans } from '@/engine/loan'
-import { addCustomerEntry, refundAdvance, buildCustomerStatement } from '@/engine/customerAccount'
+import { addCustomerEntry, refundAdvance, buildCustomerStatement, buildStatementWhatsAppMessage, buildOverdueWhatsAppMessage, recordOverdueNotification } from '@/engine/customerAccount'
 import { ensureReminder, markReminderDone, postponeReminder, computeReminderStatus } from '@/engine/reminders'
 import { exportCustomerStatementPDF } from '@/lib/pdf'
 import {
   Phone, Mail, MapPin, X, Wallet, ShoppingBag, CreditCard, HandCoins,
   BellRing, History as HistoryIcon, Banknote, Plus, ChevronRight, Check,
-  FileText, ArrowDownCircle, ArrowUpCircle,
+  FileText, ArrowDownCircle, ArrowUpCircle, MessageCircle,
 } from 'lucide-react'
 import type { Customer } from '@/types'
 
@@ -166,6 +166,21 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
     finally { setStatementLoading(false) }
   }
 
+  async function handleWhatsAppStatement() {
+    if (!customer.phone) { toast('Aucun numéro de téléphone pour ce client', 'warning'); return }
+    const msg = await buildStatementWhatsAppMessage(customer.id, settings?.name)
+    openWhatsApp(customer.phone, msg)
+    toast('Relevé envoyé sur WhatsApp', 'success')
+  }
+
+  async function handleWhatsAppOverdue() {
+    if (!customer.phone) { toast('Aucun numéro de téléphone pour ce client', 'warning'); return }
+    const msg = await buildOverdueWhatsAppMessage(customer.id, customer.name, settings?.name)
+    openWhatsApp(customer.phone, msg)
+    await recordOverdueNotification(customer.id, customer.name, msg.split('\n').filter(Boolean).slice(2).join(' ').slice(0, 160))
+    toast('Relance de retard envoyée sur WhatsApp', 'success')
+  }
+
   async function handleNewReminder() {
     const balance = creditBalance
     const firstCredit = credits.find(c => c.status !== 'paid')
@@ -215,6 +230,14 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
             <Button size="sm" variant="outline" onClick={handleDownloadStatement} loading={statementLoading}>
               <FileText className="w-4 h-4" /> Relevé
             </Button>
+            <Button size="sm" variant="outline" onClick={handleWhatsAppStatement}>
+              <MessageCircle className="w-4 h-4" /> Relevé WhatsApp
+            </Button>
+            {netBalance > 0 && (
+              <Button size="sm" variant="outline" onClick={handleWhatsAppOverdue} className="text-amber-600">
+                <BellRing className="w-4 h-4" /> Notifier retard
+              </Button>
+            )}
             <Button size="sm" variant="outline" onClick={() => { setAdvanceAmount(''); setAdvanceModalOpen(true) }}>
               <Wallet className="w-4 h-4" /> Avance
             </Button>
