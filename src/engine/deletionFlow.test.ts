@@ -63,7 +63,8 @@ describe('Suppressions (les pages appellent ces fonctions)', () => {
     await recordCreditPayment(credit.id, 1000, 'cash')
     const payments = await db.creditPayments.where({ creditId: credit.id }).toArray()
     expect(payments.length).toBeGreaterThanOrEqual(1)
-    const target = payments[payments.length - 1]
+    const target = payments.find(p => p.amount === 1000)!
+    expect(target).toBeDefined()
     expect(target.amount).toBe(1000)
     let err: string | null = null
     try { await deleteCreditPayment(target.id) } catch (e: any) { err = e.message }
