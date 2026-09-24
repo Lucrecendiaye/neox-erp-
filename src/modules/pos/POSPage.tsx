@@ -851,7 +851,6 @@ export default function POSPage() {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
               {filteredProducts.map((p) => {
                 const stock = getProductStock(p.id)
-                const units = getProductUnits(p)
                 const sourceStocks = locations
                   .filter(l => l.type === 'shop' || l.type === 'warehouse')
                   .map(l => ({ name: l.type === 'shop' ? 'Boutique' : l.name, quantity: stockAt(p.id, l.id), type: l.type }))
@@ -896,27 +895,19 @@ export default function POSPage() {
                       </div>
                     </div>
                     {!isOut && (
-                      <button
-                        onClick={() => addToCart(p)}
-                        className="w-full mt-2 py-3 rounded-xl bg-primary-500 text-on-accent font-bold text-sm flex items-center justify-center gap-1.5 active:scale-[0.97] transition-transform shadow shadow-primary-200 min-h-[48px]"
-                      >
-                        <Plus className="w-5 h-5" /> Ajouter
-                      </button>
-                    )}
-                    {!isOut && units.length > 0 && (
-                      <div className="mt-2 flex gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
-                        {units.map(u => {
-                          return (
-                            <button
-                              key={u.name}
-                              onClick={() => addToCart(p, u.name)}
-                              className="px-2 py-1 rounded-lg text-[11px] font-medium bg-surface-50 text-surface-500 hover:bg-primary-100 hover:text-primary-400 transition-colors min-h-[32px]"
-                              title={`1 ${u.name} = ${u.quantity} pièces`}
-                            >
-                              1 {u.name}
-                            </button>
-                          )
-                        })}
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        <button
+                          onClick={() => addToCart(p, 'Pièce')}
+                          className="py-3 rounded-xl bg-primary-500 text-on-accent font-bold text-sm flex items-center justify-center gap-1 active:scale-[0.97] transition-transform shadow shadow-primary-200 min-h-[48px]"
+                        >
+                          1 Pièce
+                        </button>
+                        <button
+                          onClick={() => addToCart(p, 'Douzaine')}
+                          className="py-3 rounded-xl bg-primary-500/15 border border-primary-500/40 text-primary-500 font-bold text-sm flex items-center justify-center gap-1 active:scale-[0.97] transition-transform min-h-[48px]"
+                        >
+                          1 Douzaine
+                        </button>
                       </div>
                     )}
                   </div>

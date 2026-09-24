@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { Button, Input, Select, NumericInput, Modal } from '@/components/ui'
-import { formatCurrency, generateId } from '@/lib/utils'
+import { formatCurrency, generateId, getProductUnits } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import db from '@/db'
 import { useBusinessId } from '@/hooks/useBusinessId'
@@ -28,6 +28,8 @@ interface FormItem {
   productName: string
   quantity: string
   unitPrice: string
+  unitName: string
+  unitQuantity: number
 }
 
 interface Props {
@@ -69,7 +71,20 @@ function CartItemRow({ it, products, fmt, onChange, onRemove }: {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-bold text-surface-900 leading-tight truncate">{it.productName}</p>
           <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
-            <button onClick={() => onChange({ quantity: String(Math.max(1, qty - 1)) })}
+            <select
+              value={it.unitName || 'Pièce'}
+              onChange={e => {
+                const unitName = e.target.value
+                const unit = (prod ? getProductUnits(prod) : []).find(u => u.name === unitName)
+                onChange({ unitName, unitQuantity: unit?.quantity || 1 })
+              }}
+              className="text-[11px] rounded-md border border-surface-200 bg-surface-50 px-1.5 py-1 text-surface-600 focus:outline-none"
+            >
+              {(prod ? getProductUnits(prod) : [{ name: 'Pièce', quantity: 1 }, { name: 'Douzaine', quantity: 12 }]).map(u => (
+                <option key={u.name} value={u.name}>{u.name}</option>
+              ))}
+            </select>
+            <button onClick={() => onChange({ quantity: String(Math.max(0.5, qty - 1)) })}
               className="w-7 h-7 rounded-lg bg-surface-50 border border-surface-200 flex items-center justify-center text-surface-500 hover:bg-surface-200 transition-colors">
               <Minus className="w-3.5 h-3.5" />
             </button>
@@ -105,7 +120,7 @@ export default function DeliveryComposePage({ existing, customers, products, sto
   const [saveCustomerAsk, setSaveCustomerAsk] = useState(false)
   const [items, setItems] = useState<FormItem[]>(
     existing && existing.items.length
-      ? existing.items.map(it => ({ key: it.id, productId: it.productId, productName: it.productName, quantity: String(it.quantity), unitPrice: String(it.unitPrice) }))
+      ? existing.items.map(it => ({ key: it.id, productId: it.productId, productName: it.productName, quantity: String(it.quantity), unitPrice: String(it.unitPrice), unitName: it.unitName || 'Pièce', unitQuantity: it.unitQuantity || 1 }))
       : []
   )
   const [feeClient, setFeeClient] = useState(existing ? String(existing.deliveryFeeClient) : '0')
@@ -150,13 +165,14 @@ export default function DeliveryComposePage({ existing, customers, products, sto
   const total = Math.max(0, subtotal - disc + feeC)
   const advanceVal = Math.min(parseFloat(advance) || 0, total)
 
-  function addProduct(p: Product) {
+  function addProduct(p: Product, unitName: string = 'Pièce') {
+    const unit = getProductUnits(p).find(u => u.name === unitName) || { name: 'Pièce', quantity: 1 }
     setItems(prev => {
-      const existingItem = prev.find(it => it.productId === p.id)
+      const existingItem = prev.find(it => it.productId === p.id && it.unitName === unit.name)
       if (existingItem) {
         return prev.map(it => it.key === existingItem.key ? { ...it, quantity: String((parseFloat(it.quantity) || 0) + 1) } : it)
       }
-      return [...prev, { key: generateId(), productId: p.id, productName: p.name, quantity: '1', unitPrice: String(p.sellingPrice || p.wholesalePrice || 0) }]
+      return [...prev, { key: generateId(), productId: p.id, productName: p.name, quantity: '1', unitPrice: String(p.sellingPrice || p.wholesalePrice || 0), unitName: unit.name, unitQuantity: unit.quantity }]
     })
   }
 
@@ -199,6 +215,8 @@ export default function DeliveryComposePage({ existing, customers, products, sto
         productName: it.productName || products.find(p => p.id === it.productId)?.name || '',
         quantity: parseFloat(it.quantity) || 0,
         unitPrice: parseFloat(it.unitPrice) || 0,
+        unitName: it.unitName || 'Pièce',
+        unitQuantity: it.unitQuantity || 1,
         discount: 0,
         taxRate: 0,
         total: Math.round((parseFloat(it.unitPrice) || 0) * (parseFloat(it.quantity) || 0)),
@@ -434,8 +452,8 @@ export default function DeliveryComposePage({ existing, customers, products, sto
                     .filter(l => l.type === 'shop' || l.type === 'warehouse')
                     .map(l => ({ name: l.type === 'shop' ? 'Boutique' : l.name, quantity: stocks.find(s => s.productId === p.id && s.locationId === l.id)?.quantity || 0, type: l.type }))
                   return (
-                    <button key={p.id} onClick={() => addProduct(p)}
-                      className="text-left rounded-2xl border p-3 transition-all bg-surface-100 border-surface-200 hover:border-primary-300 hover:shadow-md active:scale-[0.98] flex flex-col">
+                    <div key={p.id}
+                      className="text-left rounded-2xl border p-3 transition-all bg-surface-100 border-surface-200 hover:border-primary-300 hover:shadow-md flex flex-col">
                       <div className="w-full aspect-square bg-surface-50 rounded-xl flex items-center justify-center overflow-hidden">
                         {p.photos?.[0] ? (
                           <img loading="lazy" src={p.photos[0]} alt="" className="w-full h-full object-contain" />
@@ -450,10 +468,17 @@ export default function DeliveryComposePage({ existing, customers, products, sto
                           <p key={s.name} className="text-[10px] text-surface-400">{s.name} : {s.quantity}</p>
                         ))}
                       </div>
-                      <span className="mt-2 py-1.5 rounded-xl bg-primary-500 text-on-accent font-bold text-xs flex items-center justify-center gap-1 active:scale-[0.97] transition-transform">
-                        <Plus className="w-4 h-4" /> Ajouter
-                      </span>
-                    </button>
+                      <div className="mt-2 grid grid-cols-2 gap-1.5">
+                        <button type="button" onClick={() => addProduct(p, 'Pièce')}
+                          className="py-2 rounded-xl bg-primary-500 text-on-accent font-bold text-xs active:scale-[0.97] transition-transform">
+                          1 Pièce
+                        </button>
+                        <button type="button" onClick={() => addProduct(p, 'Douzaine')}
+                          className="py-2 rounded-xl bg-primary-500/15 border border-primary-500/40 text-primary-500 font-bold text-xs active:scale-[0.97] transition-transform">
+                          1 Douzaine
+                        </button>
+                      </div>
+                    </div>
                   )
                 })}
                 {filteredProducts.length === 0 && (

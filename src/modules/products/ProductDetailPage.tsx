@@ -15,9 +15,9 @@ const actionLabels: Record<string, string> = {
   adjusted: 'Ajustement',
   transferred_in: 'Transfert entrant',
   transferred_out: 'Transfert sortant',
-  supplier_entry: 'EntrÃ©e fournisseur',
+  supplier_entry: 'Entrée fournisseur',
   supplier_exit: 'Sortie fournisseur',
-  created: 'CrÃ©ation',
+  created: 'Création',
   inventory: 'Inventaire',
   price_changed: 'Changement prix',
 }
@@ -84,14 +84,14 @@ export default function ProductDetailPage() {
           </div>
         </div>
         <div className="text-right">
-          <p className="text-sm text-surface-500">CoÃ»t unitaire : {formatCurrency(product?.purchasePrice || 0)}</p>
+          <p className="text-sm text-surface-500">Coût unitaire : {formatCurrency(product?.purchasePrice || 0)}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card>
           <div className="p-4 text-center">
-            <p className="text-sm text-surface-500">CoÃ»t unitaire</p>
+            <p className="text-sm text-surface-500">Coût unitaire</p>
             <p className="text-xl font-bold text-surface-900">{formatCurrency(product?.purchasePrice || 0)}</p>
           </div>
         </Card>
@@ -148,9 +148,9 @@ export default function ProductDetailPage() {
                 <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Action</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Emplacement</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Avant</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">AprÃ¨s</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Après</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Delta</th>
-                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">RÃ©fÃ©rence</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Référence</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th>
               </tr>
             </thead>
@@ -169,13 +169,13 @@ export default function ProductDetailPage() {
                     </td>
                     <td data-label="Emplacement" className="px-4 py-3 text-sm text-surface-500">{locName}</td>
                     <td data-label="Avant" className="px-4 py-3 text-sm text-right">{h.quantityBefore}</td>
-                    <td data-label="AprÃ¨s" className="px-4 py-3 text-sm text-right font-medium">{h.quantityAfter}</td>
+                    <td data-label="Après" className="px-4 py-3 text-sm text-right font-medium">{h.quantityAfter}</td>
                     <td data-label="Delta" className="px-4 py-3 text-sm text-right font-semibold">
                       <span className={delta > 0 ? 'text-success' : delta < 0 ? 'text-danger' : ''}>
                         {delta > 0 ? '+' : ''}{delta}
                       </span>
                     </td>
-                    <td data-label="RÃ©fÃ©rence" className="px-4 py-3 text-sm text-surface-400">{h.reference || h.comment || 'â€”'}</td>
+                    <td data-label="Référence" className="px-4 py-3 text-sm text-surface-400">{h.reference || h.comment || 'â€”'}</td>
                     <td data-label="Date" className="px-4 py-3 text-sm text-surface-400 text-right whitespace-nowrap">{formatDateTime(h.createdAt)}</td>
                   </tr>
                 )

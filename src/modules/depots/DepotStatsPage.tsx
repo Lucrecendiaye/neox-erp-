@@ -33,13 +33,13 @@ export default function DepotStatsPage() {
         </button>
         <div>
           <h1 className="text-2xl font-bold text-surface-900">{location?.name} â€” Statistiques</h1>
-          <p className="text-surface-500 text-sm">{location?.type === 'shop' ? 'Boutique' : 'DÃ©pÃ´t'}</p>
+          <p className="text-surface-500 text-sm">{location?.type === 'shop' ? 'Boutique' : 'Dépôt'}</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <StatCard title="Produits en stock" value={stats.productCount} icon={<Package className="w-5 h-5" />} color="primary" />
-        <StatCard title="QuantitÃ© totale" value={stats.totalQty} icon={<Boxes className="w-5 h-5" />} color="success" />
+        <StatCard title="Quantité totale" value={stats.totalQty} icon={<Boxes className="w-5 h-5" />} color="success" />
         <StatCard title="Stocks bas" value={stats.lowStock} icon={<AlertTriangle className="w-5 h-5" />} color="warning" />
       </div>
 

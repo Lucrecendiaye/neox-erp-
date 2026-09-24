@@ -9,11 +9,11 @@ import { toast } from '@/lib/toast'
 import { createLoan, repayLoan, partyLoanSummary, listLoans } from '@/engine/loan'
 import { addCustomerEntry, refundAdvance, buildCustomerStatement, buildStatementWhatsAppMessage, buildOverdueWhatsAppMessage, recordOverdueNotification } from '@/engine/customerAccount'
 import { ensureReminder, markReminderDone, postponeReminder, computeReminderStatus } from '@/engine/reminders'
-import { exportCustomerStatementPDF } from '@/lib/pdf'
+import { exportCustomerStatementPDF, exportSalePDF, shareSalePDF } from '@/lib/pdf'
 import {
   Phone, Mail, MapPin, X, Wallet, ShoppingBag, CreditCard, HandCoins,
   BellRing, History as HistoryIcon, Banknote, Plus, ChevronRight, Check,
-  FileText, ArrowDownCircle, ArrowUpCircle, MessageCircle,
+  FileText, ArrowDownCircle, ArrowUpCircle, MessageCircle, Send,
 } from 'lucide-react'
 import type { Customer } from '@/types'
 
@@ -329,6 +329,7 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
                     <th className="text-right px-4 py-3">Total</th>
                     <th className="text-right px-4 py-3">Payé</th>
                     <th className="text-left px-4 py-3">Statut</th>
+                    <th className="text-right px-4 py-3">Facture</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -339,9 +340,39 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
                       <td className="px-4 py-2.5 text-right font-semibold">{formatCurrency(s.total)}</td>
                       <td className="px-4 py-2.5 text-right text-emerald-500">{formatCurrency(s.paid)}</td>
                       <td className="px-4 py-2.5"><Badge variant={s.status === 'cancelled' ? 'danger' : s.paid >= s.total ? 'success' : 'warning'}>{s.status === 'cancelled' ? 'Annulée' : s.paid >= s.total ? 'Payée' : 'Partielle'}</Badge></td>
+                      <td className="px-4 py-2.5">
+                        <div className="flex justify-end gap-1.5">
+                          <button
+                            onClick={() => exportSalePDF(s, settings || undefined, undefined, userName(s.userId))}
+                            title="Télécharger la facture (PDF)"
+                            className="p-2 rounded-lg hover:bg-primary-500/15 text-surface-500 hover:text-primary-500 transition-colors"
+                          >
+                            <FileText className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => shareSalePDF(s, settings || undefined, undefined, userName(s.userId))}
+                            title="Envoyer / partager la facture"
+                            className="p-2 rounded-lg hover:bg-emerald-500/15 text-surface-500 hover:text-emerald-500 transition-colors"
+                          >
+                            <Send className="w-4 h-4" />
+                          </button>
+                          {customer.phone && (
+                            <button
+                              onClick={() => {
+                                const msg = `Bonjour ${customer.name}, voici votre facture ${s.invoiceNumber || ''} d'un montant de ${formatCurrency(s.total)} (payé : ${formatCurrency(s.paid)}). Reste : ${formatCurrency(Math.max(0, s.total - (s.paid || 0)))}.`
+                                openWhatsApp(customer.phone, msg)
+                              }}
+                              title="Notifier la facture sur WhatsApp"
+                              className="p-2 rounded-lg hover:bg-emerald-500/15 text-surface-500 hover:text-emerald-500 transition-colors"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                            </button>
+                          )}
+                        </div>
+                      </td>
                     </tr>
                   ))}
-                  {sales.length === 0 && <tr><td colSpan={5} className="text-center py-10 text-surface-400">Aucune vente</td></tr>}
+                  {sales.length === 0 && <tr><td colSpan={6} className="text-center py-10 text-surface-400">Aucune vente</td></tr>}
                 </tbody>
               </table>
             </div>

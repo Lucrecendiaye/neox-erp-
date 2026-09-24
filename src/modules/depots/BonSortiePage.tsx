@@ -22,9 +22,9 @@ import type { CompanySettings } from '@/types'
 
 const statusMeta: Record<string, { label: string; badge: 'warning' | 'info' | 'success' | 'danger' }> = {
   en_attente: { label: 'En attente', badge: 'warning' },
-  valide: { label: 'ValidÃ©', badge: 'info' },
-  recu: { label: 'ReÃ§u', badge: 'success' },
-  annule: { label: 'AnnulÃ©', badge: 'danger' },
+  valide: { label: 'Validé', badge: 'info' },
+  recu: { label: 'Reçu', badge: 'success' },
+  annule: { label: 'Annulé', badge: 'danger' },
 }
 
 function inPeriod(iso: string, period: string) {
@@ -61,30 +61,30 @@ function BonView({ bon, settings, onClose }: { bon: BonSortie; settings?: Compan
         <div className="border border-surface-200 rounded-xl p-3">
           <p className="text-[10px] font-semibold text-[#1e40af] uppercase tracking-wider mb-1">Provenance</p>
           <p className="text-sm font-semibold text-surface-900">{bon.fromLocationName}{bon.fromLocationCode ? ` (${bon.fromLocationCode})` : ''}</p>
-          <p className="text-xs text-surface-500">{bon.fromAddress || 'Adresse non renseignÃ©e'}</p>
+          <p className="text-xs text-surface-500">{bon.fromAddress || 'Adresse non renseignée'}</p>
         </div>
         <div className="border border-surface-200 rounded-xl p-3">
           <p className="text-[10px] font-semibold text-[#1e40af] uppercase tracking-wider mb-1">Destination</p>
           <p className="text-sm font-semibold text-surface-900">{bon.toLocationName}{bon.toLocationCode ? ` (${bon.toLocationCode})` : ''}</p>
-          <p className="text-xs text-surface-500">{bon.toAddress || 'Adresse non renseignÃ©e'}</p>
+          <p className="text-xs text-surface-500">{bon.toAddress || 'Adresse non renseignée'}</p>
         </div>
       </div>
 
       <div className="text-xs text-surface-600 space-y-1">
-        <p><strong>CrÃ©ation :</strong> {formatDate(bon.createdAt)} â€” {bon.createdTime} &nbsp; <strong>ExpÃ©dition :</strong> {bon.shippedAt ? `${formatDate(bon.shippedAt)} â€” ${bon.shippedTime || ''}` : 'â€”'}</p>
+        <p><strong>Création :</strong> {formatDate(bon.createdAt)} â€” {bon.createdTime} &nbsp; <strong>Expédition :</strong> {bon.shippedAt ? `${formatDate(bon.shippedAt)} â€” ${bon.shippedTime || ''}` : 'â€”'}</p>
         <p><strong>Destinateur :</strong> {bon.destinateurName}{bon.destinateurRole ? ` (${bon.destinateurRole})` : ''} &nbsp; <strong>Destinataire :</strong> {bon.destinataireName || 'â€”'}{bon.destinataireRole ? ` (${bon.destinataireRole})` : ''}</p>
-        <p><strong>RÃ©fÃ©rence :</strong> {bon.reference || 'â€”'} &nbsp; <strong>Motif :</strong> {bon.motif || 'â€”'}</p>
+        <p><strong>Référence :</strong> {bon.reference || 'â€”'} &nbsp; <strong>Motif :</strong> {bon.motif || 'â€”'}</p>
         {bon.comments && <p><strong>Observations :</strong> {bon.comments}</p>}
-        {bon.validatedAt && <p className="text-emerald-300"><strong>ValidÃ© le :</strong> {formatDateTime(bon.validatedAt)} par {bon.validatedByName || 'â€”'}</p>}
+        {bon.validatedAt && <p className="text-emerald-300"><strong>Validé le :</strong> {formatDateTime(bon.validatedAt)} par {bon.validatedByName || 'â€”'}</p>}
       </div>
 
       <div className="overflow-x-auto responsive-table rounded-xl border border-surface-200">
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-[#1e40af] text-white text-left text-[10px] uppercase">
-              <th className="px-3 py-2">RÃ©f.</th>
+              <th className="px-3 py-2">Réf.</th>
               <th className="px-3 py-2">Produit</th>
-              <th className="px-3 py-2">QtÃ©</th>
+              <th className="px-3 py-2">Qté</th>
               <th className="px-3 py-2">P.U.</th>
               <th className="px-3 py-2 text-right">Valeur</th>
             </tr>
@@ -92,9 +92,9 @@ function BonView({ bon, settings, onClose }: { bon: BonSortie; settings?: Compan
           <tbody>
             {bon.items.map((it, i) => (
               <tr key={i} className="border-b border-surface-100">
-                <td data-label="RÃ©f." className="px-3 py-2 text-xs text-surface-500">{it.reference || 'â€”'}</td>
+                <td data-label="Réf." className="px-3 py-2 text-xs text-surface-500">{it.reference || 'â€”'}</td>
                 <td data-label="Produit" className="px-3 py-2 font-medium text-surface-900">{it.productName}</td>
-                <td data-label="QtÃ©" className="px-3 py-2">{it.quantity} {it.unit || ''}</td>
+                <td data-label="Qté" className="px-3 py-2">{it.quantity} {it.unit || ''}</td>
                 <td data-label="P.U." className="px-3 py-2">{it.unitPrice ? formatCurrency(it.unitPrice) : 'â€”'}</td>
                 <td data-label="Valeur" className="px-3 py-2 text-right font-semibold">{it.total ? formatCurrency(it.total) : 'â€”'}</td>
               </tr>
@@ -105,15 +105,15 @@ function BonView({ bon, settings, onClose }: { bon: BonSortie; settings?: Compan
 
       <div className="flex flex-wrap gap-4 text-sm font-semibold text-surface-900">
         <span>Articles : {bon.totalArticles}</span>
-        <span>QuantitÃ© : {bon.totalQuantity}</span>
+        <span>Quantité : {bon.totalQuantity}</span>
         {bon.totalValue ? <span>Valeur : {formatCurrency(bon.totalValue)}</span> : null}
       </div>
 
       <div className="text-xs text-surface-600">
         {bon.receivedAt ? (
-          <p className="text-emerald-300"><strong>ReÃ§u le :</strong> {formatDateTime(bon.receivedAt)} par {bon.receivedBy || 'â€”'}</p>
+          <p className="text-emerald-300"><strong>Reçu le :</strong> {formatDateTime(bon.receivedAt)} par {bon.receivedBy || 'â€”'}</p>
         ) : (
-          <p className="text-amber-400"><strong>RÃ©ception non confirmÃ©e</strong></p>
+          <p className="text-amber-400"><strong>Réception non confirmée</strong></p>
         )}
       </div>
 
@@ -196,7 +196,7 @@ export default function BonSortiePage() {
     if (!receptModal) return
     try {
       await confirmTransferReception(receptModal.transferId || '', receptName || currentUser?.name || '')
-      toast('RÃ©ception confirmÃ©e, stock ajoutÃ©', 'success')
+      toast('Réception confirmée, stock ajouté', 'success')
       setReceptModal(null); setReceptName('')
     } catch (e: any) { toast(e.message || 'Erreur', 'error') }
   }
@@ -204,7 +204,7 @@ export default function BonSortiePage() {
   async function handleValidate(bon: BonSortie) {
     try {
       await validateBonSortie(bon.id)
-      toast('Bon validÃ©', 'success')
+      toast('Bon validé', 'success')
     } catch (e: any) { toast(e.message || 'Erreur', 'error') }
   }
 
@@ -212,7 +212,7 @@ export default function BonSortiePage() {
     if (!cancelTarget) return
     try {
       await cancelBonSortie(cancelTarget.id)
-      toast('Bon annulÃ©, stock restituÃ©', 'success')
+      toast('Bon annulé, stock restitué', 'success')
       setCancelTarget(null)
     } catch (e: any) { toast(e.message || 'Erreur', 'error') }
   }
@@ -220,7 +220,7 @@ export default function BonSortiePage() {
   async function handleDuplicate(bon: BonSortie) {
     try {
       const copy = await duplicateBonSortie(bon.id)
-      toast(`Bon dupliquÃ© : ${copy.number}`, 'success')
+      toast(`Bon dupliqué : ${copy.number}`, 'success')
     } catch (e: any) { toast(e.message || 'Erreur', 'error') }
   }
 
@@ -228,7 +228,7 @@ export default function BonSortiePage() {
     if (!signModal) return
     try {
       await signBonSortie(signModal.id, { destinateur: signDest || undefined, responsable: signResp || undefined })
-      toast('Signatures enregistrÃ©es', 'success')
+      toast('Signatures enregistrées', 'success')
       setSignModal(null); setSignDest(''); setSignResp('')
     } catch (e: any) { toast(e.message || 'Erreur', 'error') }
   }
@@ -245,7 +245,7 @@ export default function BonSortiePage() {
         </button>
         <div className="flex-1 min-w-[200px]">
           <h1 className="text-2xl font-bold text-surface-900">Bon de sortie</h1>
-          <p className="text-surface-500 text-sm">Documents de sortie de stock gÃ©nÃ©rÃ©s automatiquement</p>
+          <p className="text-surface-500 text-sm">Documents de sortie de stock générés automatiquement</p>
         </div>
         <Button onClick={() => navigate('/depots')}><Plus className="w-4 h-4" /> Nouveau bon</Button>
       </div>
@@ -253,8 +253,8 @@ export default function BonSortiePage() {
       <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400"><FileText className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Total</p><p className="text-lg font-bold text-surface-900">{stats.total}</p></div></div></div></Card>
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400"><Clock className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">En attente</p><p className="text-lg font-bold text-surface-900">{stats.enAttente}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><CheckCircle2 className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">ReÃ§us</p><p className="text-lg font-bold text-surface-900">{stats.recus}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center text-red-400"><XCircle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">AnnulÃ©s</p><p className="text-lg font-bold text-surface-900">{stats.annules}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><CheckCircle2 className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Reçus</p><p className="text-lg font-bold text-surface-900">{stats.recus}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-red-500/15 flex items-center justify-center text-red-400"><XCircle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Annulés</p><p className="text-lg font-bold text-surface-900">{stats.annules}</p></div></div></div></Card>
         <Card className="hidden sm:block"><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-400"><Truck className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur sortie</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
       </div>
 
@@ -262,28 +262,28 @@ export default function BonSortiePage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="NÂ°, produit, dÃ©pÃ´t, utilisateur..."
+            placeholder="NÂ°, produit, dépôt, utilisateur..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={statusFilter} onChange={e => setStatusFilter(e.target.value)}
           className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
           <option value="all">Tous les statuts</option>
           <option value="en_attente">En attente</option>
-          <option value="valide">ValidÃ©s</option>
-          <option value="recu">ReÃ§us</option>
-          <option value="annule">AnnulÃ©s</option>
+          <option value="valide">Validés</option>
+          <option value="recu">Reçus</option>
+          <option value="annule">Annulés</option>
         </select>
         <select value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
           className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
-          <option value="all">Toutes pÃ©riodes</option>
+          <option value="all">Toutes périodes</option>
           <option value="jour">Aujourd'hui</option>
           <option value="semaine">7 derniers jours</option>
           <option value="mois">Ce mois-ci</option>
-          <option value="annee">Cette annÃ©e</option>
+          <option value="annee">Cette année</option>
         </select>
         <select value={fromFilter} onChange={e => setFromFilter(e.target.value)}
           className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
-          <option value="all">Tous les dÃ©pÃ´ts</option>
+          <option value="all">Tous les dépôts</option>
           {locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
         </select>
       </div>
@@ -298,7 +298,7 @@ export default function BonSortiePage() {
             onClick={() => { setSearch(''); setStatusFilter('all'); setPeriodFilter('all'); setFromFilter('all') }}
             className="px-3 py-1 rounded-lg bg-surface-100 border border-surface-300 text-xs font-medium text-surface-600 hover:bg-surface-50"
           >
-            RÃ©initialiser
+            Réinitialiser
           </button>
         </div>
       )}
@@ -325,7 +325,7 @@ export default function BonSortiePage() {
                   <div className="flex items-center gap-2 text-xs text-surface-500 mb-2">
                     <User className="w-3 h-3 shrink-0" />
                     <span>{b.createdByName || 'â€”'}</span>
-                    <span className="ml-auto text-xs text-surface-400">{b.totalArticles} art. Â· {b.totalQuantity} qtÃ©</span>
+                    <span className="ml-auto text-xs text-surface-400">{b.totalArticles} art. Â· {b.totalQuantity} qté</span>
                   </div>
                   <div className="text-right">
                     <span className="font-bold text-surface-900">{b.totalValue ? formatCurrency(b.totalValue) : 'â€”'}</span>
@@ -342,11 +342,11 @@ export default function BonSortiePage() {
           {paginatedItems.length === 0 && (
             <div className="bg-surface-100 rounded-2xl border border-surface-200 py-12 text-center text-surface-400">
               <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
-              <p className="text-sm font-medium">Aucun bon de sortie trouvÃ©</p>
+              <p className="text-sm font-medium">Aucun bon de sortie trouvé</p>
               {(search || statusFilter !== 'all' || periodFilter !== 'all' || fromFilter !== 'all') && (
                 <button onClick={() => { setSearch(''); setStatusFilter('all'); setPeriodFilter('all'); setFromFilter('all') }}
                   className="mt-3 px-4 py-2 rounded-xl bg-surface-50 border border-surface-300 text-xs font-medium text-surface-600">
-                  RÃ©initialiser les filtres
+                  Réinitialiser les filtres
                 </button>
               )}
             </div>
@@ -386,7 +386,7 @@ export default function BonSortiePage() {
                         <div className="inline-flex gap-1">
                           <button title="Voir" onClick={() => setSelected(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Eye className="w-4 h-4" /></button>
                           <button title="Imprimer" onClick={() => setPrintFormat(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Printer className="w-4 h-4" /></button>
-                          <button title="PDF" onClick={() => { downloadBonSortiePDF(b, settings || undefined, 'a4'); toast('PDF tÃ©lÃ©chargÃ©', 'success') }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><FileDown className="w-4 h-4" /></button>
+                          <button title="PDF" onClick={() => { downloadBonSortiePDF(b, settings || undefined, 'a4'); toast('PDF téléchargé', 'success') }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><FileDown className="w-4 h-4" /></button>
                           <button title="Dupliquer" onClick={() => handleDuplicate(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Copy className="w-4 h-4" /></button>
                         </div>
                       </td>
@@ -394,7 +394,7 @@ export default function BonSortiePage() {
                   )
                 })}
                 {paginatedItems.length === 0 && (
-                  <tr><td colSpan={7} className="px-6 py-12 text-center text-surface-400">Aucun bon de sortie trouvÃ©</td></tr>
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-surface-400">Aucun bon de sortie trouvé</td></tr>
                 )}
               </tbody>
             </table>
@@ -411,10 +411,10 @@ export default function BonSortiePage() {
             <BonView bon={selected} settings={settings || undefined} />
             <div className="px-6 pb-6 flex flex-wrap gap-2">
               <Button variant="outline" onClick={() => setPrintFormat(selected)}><Printer className="w-4 h-4" /> Imprimer</Button>
-              <Button variant="outline" onClick={() => { downloadBonSortiePDF(selected, settings || undefined, 'a4'); toast('PDF tÃ©lÃ©chargÃ©', 'success') }}><FileDown className="w-4 h-4" /> PDF</Button>
+              <Button variant="outline" onClick={() => { downloadBonSortiePDF(selected, settings || undefined, 'a4'); toast('PDF téléchargé', 'success') }}><FileDown className="w-4 h-4" /> PDF</Button>
               <Button variant="outline" onClick={() => handleDuplicate(selected)}><Copy className="w-4 h-4" /> Dupliquer</Button>
               {canManage && (selected.status === 'en_attente' || selected.status === 'valide') && (
-                <Button onClick={() => { setReceptName(currentUser?.name || ''); setReceptModal(selected) }}><CheckCircle2 className="w-4 h-4" /> Confirmer la rÃ©ception</Button>
+                <Button onClick={() => { setReceptName(currentUser?.name || ''); setReceptModal(selected) }}><CheckCircle2 className="w-4 h-4" /> Confirmer la réception</Button>
               )}
               {canManage && selected.status === 'en_attente' && (
                 <Button variant="outline" onClick={() => handleValidate(selected)}><CheckCircle2 className="w-4 h-4" /> Valider</Button>
@@ -428,10 +428,10 @@ export default function BonSortiePage() {
         )}
       </Modal>
 
-      <Modal open={!!receptModal} onClose={() => setReceptModal(null)} title="Confirmer la rÃ©ception">
+      <Modal open={!!receptModal} onClose={() => setReceptModal(null)} title="Confirmer la réception">
         <div className="p-6 space-y-4">
           <p className="text-sm text-surface-600">
-            Le stock de destination <strong>{receptModal?.toLocationName}</strong> sera ajoutÃ© et le bon {receptModal?.number} passera au statut <strong>ReÃ§u</strong>.
+            Le stock de destination <strong>{receptModal?.toLocationName}</strong> sera ajouté et le bon {receptModal?.number} passera au statut <strong>Reçu</strong>.
           </p>
           <div>
             <label className="text-xs font-medium text-surface-500 mb-1 block">Nom du destinataire</label>
@@ -439,7 +439,7 @@ export default function BonSortiePage() {
               className="w-full px-3 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
           <div className="flex gap-2 pt-2">
-            <Button className="flex-1" onClick={handleRecept}>Confirmer la rÃ©ception</Button>
+            <Button className="flex-1" onClick={handleRecept}>Confirmer la réception</Button>
             <Button variant="ghost" onClick={() => setReceptModal(null)}>Annuler</Button>
           </div>
         </div>
@@ -448,7 +448,7 @@ export default function BonSortiePage() {
       <Modal open={!!signModal} onClose={() => setSignModal(null)} title={`Signatures â€” ${signModal?.number || ''}`}>
         <div className="p-6 space-y-4">
           <div>
-            <label className="text-xs font-medium text-surface-500 mb-1 block">Signature du destinateur (expÃ©diteur)</label>
+            <label className="text-xs font-medium text-surface-500 mb-1 block">Signature du destinateur (expéditeur)</label>
             <input value={signDest} onChange={e => setSignDest(e.target.value)} placeholder="Nom du signataire"
               className="w-full px-3 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
           </div>
@@ -468,7 +468,7 @@ export default function BonSortiePage() {
         <div className="p-6 space-y-4">
           <p className="text-sm text-surface-600 flex items-start gap-2">
             <AlertTriangle className="w-4 h-4 text-amber-500 mt-0.5 shrink-0" />
-            Le bon {cancelTarget?.number} sera annulÃ© et le stock de <strong>{cancelTarget?.fromLocationName}</strong> sera restituÃ©. Cette action est irrÃ©versible.
+            Le bon {cancelTarget?.number} sera annulé et le stock de <strong>{cancelTarget?.fromLocationName}</strong> sera restitué. Cette action est irréversible.
           </p>
           <div className="flex gap-2 pt-2">
             <Button variant="ghost" onClick={() => setCancelTarget(null)}>Retour</Button>
@@ -479,10 +479,10 @@ export default function BonSortiePage() {
 
       <Modal open={!!printFormat} onClose={() => setPrintFormat(null)} title={`Imprimer ${printFormat?.number || ''}`}>
         <div className="p-6">
-          <p className="text-xs text-surface-500 mb-4">Choisissez un format d'impression. Le document s'ouvrira dans une nouvelle fenÃªtre.</p>
+          <p className="text-xs text-surface-500 mb-4">Choisissez un format d'impression. Le document s'ouvrira dans une nouvelle fenêtre.</p>
           <div className="grid gap-2">
             <Button onClick={() => { if (printFormat) openPrint(printFormat, 'a4'); setPrintFormat(null) }}><Printer className="w-4 h-4" /> A4 â€” Document officiel</Button>
-            <Button variant="outline" onClick={() => { if (printFormat) openPrint(printFormat, 'a5'); setPrintFormat(null) }}><Printer className="w-4 h-4" /> A5 â€” Format rÃ©duit</Button>
+            <Button variant="outline" onClick={() => { if (printFormat) openPrint(printFormat, 'a5'); setPrintFormat(null) }}><Printer className="w-4 h-4" /> A5 â€” Format réduit</Button>
             <Button variant="outline" onClick={() => { if (printFormat) openPrint(printFormat, 'thermal'); setPrintFormat(null) }}><Printer className="w-4 h-4" /> 80 mm â€” Imprimante thermique</Button>
           </div>
         </div>

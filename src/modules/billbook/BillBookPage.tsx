@@ -68,7 +68,7 @@ export default function BillBookPage() {
 
   function openSaveTemplate(invoice: Invoice) {
     setSelectedInvoice(invoice)
-    setTemplateName(`ModÃ¨le ${invoice.number}`)
+    setTemplateName(`Modèle ${invoice.number}`)
     setTemplateModal(true)
   }
 
@@ -88,18 +88,18 @@ export default function BillBookPage() {
     const updated = [...templates, template]
     setTemplates(updated)
     saveTemplates(updated)
-    toast('ModÃ¨le enregistrÃ© avec succÃ¨s', 'success')
+    toast('Modèle enregistré avec succès', 'success')
     setTemplateModal(false)
     setSelectedInvoice(null)
     setTemplateName('')
   }
 
   function handleDeleteTemplate(id: string) {
-    if (!confirm('Supprimer ce modÃ¨le ?')) return
+    if (!confirm('Supprimer ce modèle ?')) return
     const updated = templates.filter(t => t.id !== id)
     setTemplates(updated)
     saveTemplates(updated)
-    toast('ModÃ¨le supprimÃ©', 'success')
+    toast('Modèle supprimé', 'success')
   }
 
   function handleNewFromTemplate(template: InvoiceTemplate) {
@@ -129,10 +129,10 @@ export default function BillBookPage() {
     try {
       await db.invoices.add(invoice)
       await db.settings.update('default', { invoiceNextNumber: nextNum + 1 })
-      toast(`Facture ${invoice.number} crÃ©Ã©e depuis le modÃ¨le`, 'success')
+      toast(`Facture ${invoice.number} créée depuis le modèle`, 'success')
       setNewFromTemplate(null)
     } catch {
-      toast('Erreur lors de la crÃ©ation de la facture', 'error')
+      toast('Erreur lors de la création de la facture', 'error')
     }
   }
 
@@ -148,7 +148,7 @@ export default function BillBookPage() {
     sale: 'Vente',
     purchase: 'Achat',
     credit_note: 'Avoir',
-    debit_note: 'DÃ©bit',
+    debit_note: 'Débit',
   }
 
   return (
@@ -156,11 +156,11 @@ export default function BillBookPage() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Registre des factures</h1>
-          <p className="text-surface-500 text-sm mt-1">{invoices?.length || 0} factures Â· {templates.length} modÃ¨les</p>
+          <p className="text-surface-500 text-sm mt-1">{invoices?.length || 0} factures Â· {templates.length} modèles</p>
         </div>
         <div className="flex gap-2">
           <Button variant="ghost" onClick={() => setShowTemplates(!showTemplates)}>
-            <Save className="w-4 h-4" /> {showTemplates ? 'Factures' : 'ModÃ¨les'}
+            <Save className="w-4 h-4" /> {showTemplates ? 'Factures' : 'Modèles'}
           </Button>
         </div>
       </div>
@@ -176,11 +176,11 @@ export default function BillBookPage() {
 
       {showTemplates ? (
         <div className="space-y-3">
-          <h2 className="text-lg font-semibold text-surface-900">ModÃ¨les enregistrÃ©s</h2>
+          <h2 className="text-lg font-semibold text-surface-900">Modèles enregistrés</h2>
           {filteredTemplates.length === 0 && (
             <div className="text-center py-16">
               <Save className="w-12 h-12 text-surface-500 mx-auto mb-3" />
-              <p className="text-surface-400">Aucun modÃ¨le enregistrÃ©</p>
+              <p className="text-surface-400">Aucun modèle enregistré</p>
             </div>
           )}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -204,14 +204,14 @@ export default function BillBookPage() {
                       <button
                         onClick={() => handleNewFromTemplate(template)}
                         className="p-1.5 rounded-lg hover:bg-primary-50 text-surface-400 hover:text-primary-400"
-                        title="CrÃ©er une facture depuis ce modÃ¨le"
+                        title="Créer une facture depuis ce modèle"
                       >
                         <Plus className="w-4 h-4" />
                       </button>
                       <button
                         onClick={() => handleDeleteTemplate(template.id)}
                         className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-danger"
-                        title="Supprimer le modÃ¨le"
+                        title="Supprimer le modèle"
                       >
                         <Trash2 className="w-4 h-4" />
                       </button>
@@ -239,13 +239,13 @@ export default function BillBookPage() {
                 <div className="flex items-center gap-3 shrink-0">
                   <div className="text-right">
                     <p className="font-semibold text-surface-900">{formatCurrency(inv.total)}</p>
-                    <Badge variant={statusColors[inv.status]}>{inv.status === 'draft' ? 'Brouillon' : inv.status === 'sent' ? 'EnvoyÃ©e' : inv.status === 'paid' ? 'PayÃ©e' : inv.status === 'overdue' ? 'En retard' : 'AnnulÃ©e'}</Badge>
+                    <Badge variant={statusColors[inv.status]}>{inv.status === 'draft' ? 'Brouillon' : inv.status === 'sent' ? 'Envoyée' : inv.status === 'paid' ? 'Payée' : inv.status === 'overdue' ? 'En retard' : 'Annulée'}</Badge>
                   </div>
                   <div className="flex gap-1">
                     <button
                       onClick={() => openSaveTemplate(inv)}
                       className="p-1.5 rounded-lg hover:bg-amber-500/15 text-surface-400 hover:text-amber-400"
-                      title="Enregistrer comme modÃ¨le"
+                      title="Enregistrer comme modèle"
                     >
                       <Save className="w-4 h-4" />
                     </button>
@@ -265,7 +265,7 @@ export default function BillBookPage() {
                     <thead>
                       <tr className="text-surface-400 text-xs">
                         <th className="text-left pb-2">Produit</th>
-                        <th className="text-right pb-2">QtÃ©</th>
+                        <th className="text-right pb-2">Qté</th>
                         <th className="text-right pb-2">Prix unit.</th>
                         <th className="text-right pb-2">Total</th>
                       </tr>
@@ -299,17 +299,17 @@ export default function BillBookPage() {
           {(!filtered || filtered.length === 0) && (
             <div className="text-center py-16">
               <FileText className="w-12 h-12 text-surface-500 mx-auto mb-3" />
-              <p className="text-surface-400">Aucune facture trouvÃ©e</p>
+              <p className="text-surface-400">Aucune facture trouvée</p>
             </div>
           )}
           <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
         </div>
       )}
 
-      <Modal open={templateModal} onClose={() => setTemplateModal(false)} title="Enregistrer comme modÃ¨le">
+      <Modal open={templateModal} onClose={() => setTemplateModal(false)} title="Enregistrer comme modèle">
         <div className="p-6 space-y-4">
           <Input
-            label="Nom du modÃ¨le"
+            label="Nom du modèle"
             value={templateName}
             onChange={(e) => setTemplateName(e.target.value)}
             placeholder="Ex: Facture mensuelle"
@@ -337,13 +337,13 @@ export default function BillBookPage() {
         </div>
       </Modal>
 
-      <Modal open={!!newFromTemplate} onClose={() => setNewFromTemplate(null)} title="CrÃ©er une facture depuis le modÃ¨le" size="md">
+      <Modal open={!!newFromTemplate} onClose={() => setNewFromTemplate(null)} title="Créer une facture depuis le modèle" size="md">
         <div className="p-6 space-y-4">
           {newFromTemplate && (
             <>
               <div className="bg-amber-500/15 rounded-xl p-4 text-sm flex items-center gap-3">
                 <Copy className="w-5 h-5 text-amber-400" />
-                <span>Nouvelle facture basÃ©e sur <strong>{newFromTemplate.name}</strong></span>
+                <span>Nouvelle facture basée sur <strong>{newFromTemplate.name}</strong></span>
               </div>
               <div className="bg-surface-50 rounded-xl p-4 space-y-1 text-sm">
                 <div className="flex justify-between text-surface-500">
@@ -368,7 +368,7 @@ export default function BillBookPage() {
         </div>
         <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
           <Button variant="ghost" onClick={() => setNewFromTemplate(null)}>Annuler</Button>
-          <Button onClick={handleCreateFromTemplate}>CrÃ©er la facture</Button>
+          <Button onClick={handleCreateFromTemplate}>Créer la facture</Button>
         </div>
       </Modal>
     </div>

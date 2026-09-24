@@ -145,14 +145,14 @@ export default function DepotStockPage() {
     await db.productStocks.where('productId').equals(productId).delete()
     await db.products.delete(productId)
     try { await syncDeleteObject('products', productId) } catch {}
-    toast('Produit supprimÃ© du dÃ©pÃ´t', 'success')
+    toast('Produit supprimé du dépôt', 'success')
     setConfirmDelete(null)
   }
 
   async function handleAdjust() {
     if (!adjProduct || adjQty < 0) return toast('Champs invalides', 'warning')
     await processStockAdjustment(adjProduct, locationId!, adjQty, adjNote)
-    toast('Stock ajustÃ©', 'success')
+    toast('Stock ajusté', 'success')
     setAdjModal(false); setAdjProduct(''); setAdjQty(0); setAdjNote('')
   }
 
@@ -179,7 +179,7 @@ export default function DepotStockPage() {
     })
     setBonModal(true)
     setTransferModal(false); setTransferTarget(''); setTransferItems([])
-    toast('Transfert effectuÃ© automatiquement', 'success')
+    toast('Transfert effectué automatiquement', 'success')
   }
 
   const otherLocations = allLocations?.filter(l => l.id !== locationId) || []
@@ -234,7 +234,7 @@ export default function DepotStockPage() {
         photos: editPhotos, packSize, margin: 0, taxRate: editForm.taxRate, updatedAt: now,
       }
       if (isCloud) { await sb.update('products', editing.id, data) } else { await db.products.update(editing.id, data) }
-      toast('Produit mis Ã  jour', 'success')
+      toast('Produit mis à jour', 'success')
       setEditModal(false)
     } catch { toast('Erreur', 'error') }
   }
@@ -286,7 +286,7 @@ export default function DepotStockPage() {
       await db.productStocks.add(newStock as any)
       try { await syncWriteObject('productStocks', newStock) } catch {}
 
-      toast('Produit crÃ©Ã©', 'success')
+      toast('Produit créé', 'success')
       setCreateModal(false)
     } catch { toast('Erreur', 'error') }
   }
@@ -300,10 +300,10 @@ export default function DepotStockPage() {
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-surface-900">{location?.name || 'Stock'}</h1>
-          <p className="text-surface-500 text-sm">{stats.totalProducts} produits Â· {stats.categoryCount} catÃ©gories</p>
+          <p className="text-surface-500 text-sm">{stats.totalProducts} produits Â· {stats.categoryCount} catégories</p>
         </div>
         {can('products', 'create') && <Button onClick={openCreateProduct}><Plus className="w-4 h-4" /> Nouveau produit</Button>}
-        {can('depots', 'transfer') && <Button onClick={() => setTransferModal(true)}><ArrowRightLeft className="w-4 h-4" /> TransfÃ©rer</Button>}
+        {can('depots', 'transfer') && <Button onClick={() => setTransferModal(true)}><ArrowRightLeft className="w-4 h-4" /> Transférer</Button>}
         <Button onClick={() => navigate(`/depots/history/${locationId}`)}><History className="w-4 h-4" /> Mouvement</Button>
       </div>
 
@@ -311,7 +311,7 @@ export default function DepotStockPage() {
        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
          <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><DollarSign className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur stock</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalCost)}</p></div></div></div></Card>
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Produits</p><p className="text-lg font-bold text-surface-900">{stats.totalProducts}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-400"><Layers className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">CatÃ©gories</p><p className="text-lg font-bold text-surface-900">{stats.categoryCount}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-400"><Layers className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Catégories</p><p className="text-lg font-bold text-surface-900">{stats.categoryCount}</p></div></div></div></Card>
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400"><AlertTriangle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Stock faible</p><p className={cn('text-lg font-bold', stats.lowStockCount > 0 ? 'text-amber-400' : 'text-surface-900')}>{stats.lowStockCount}</p></div></div></div></Card>
       </div>
 
@@ -334,7 +334,7 @@ export default function DepotStockPage() {
         </select>
         <select value={categoryId} onChange={e => setCategoryId(e.target.value)}
           className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
-          <option value="all">Toutes catÃ©gories</option>
+          <option value="all">Toutes catégories</option>
           {categories.map((c: any) => <option key={c.id} value={c.id}>{c.name}</option>)}
         </select>
         {can('depots', 'adjust_stock') && (
@@ -371,11 +371,11 @@ export default function DepotStockPage() {
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
                    <span className="text-surface-400">Stock</span>
                   <span className={cn('text-right font-medium', isOut ? 'text-red-400' : isLow ? 'text-amber-400' : 'text-surface-900')}>
-                    {qty} piÃ¨ces
+                    {qty} pièces
                   </span>
                   <span className="text-surface-400">Seuil stock</span>
                   <span className="text-right font-medium text-surface-900">{p.stockAlert || '-'}</span>
-                  <span className="text-surface-400">CoÃ»t stock</span>
+                  <span className="text-surface-400">Coût stock</span>
                   <span className="text-right font-medium text-surface-900">{formatCurrency(totalCost)}</span>
                   <span className="text-surface-400">Vendus</span>
                   <span className="text-right font-medium text-surface-900">{soldQty}</span>
@@ -389,7 +389,7 @@ export default function DepotStockPage() {
                     <Edit2 className="w-4 h-4" />
                   </button>
                 )}
-                <button onClick={() => navigate(`/products/${p.id}`)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors" title="Fiche dÃ©taillÃ©e">
+                <button onClick={() => navigate(`/products/${p.id}`)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors" title="Fiche détaillée">
                   <Eye className="w-4 h-4" />
                 </button>
                 {can('depots', 'adjust_stock') && (
@@ -412,7 +412,7 @@ export default function DepotStockPage() {
         {filteredProducts.length === 0 && (
           <div className="col-span-full flex flex-col items-center justify-center py-16 text-surface-400">
             <Package className="w-12 h-12 mb-3 text-surface-500" />
-            <p className="text-sm">Aucun produit trouvÃ©</p>
+            <p className="text-sm">Aucun produit trouvé</p>
             <p className="text-xs text-surface-400">Essayez de modifier vos filtres</p>
           </div>
         )}
@@ -421,7 +421,7 @@ export default function DepotStockPage() {
       {/* Modals */}
       <Modal open={confirmDelete !== null} onClose={() => setConfirmDelete(null)} title="Confirmer la suppression">
         <div className="p-6 space-y-4">
-          <p className="text-sm text-surface-600">Supprimer dÃ©finitivement <strong>{productMap.get(confirmDelete || '')?.name}</strong> et tout son stock ?</p>
+          <p className="text-sm text-surface-600">Supprimer définitivement <strong>{productMap.get(confirmDelete || '')?.name}</strong> et tout son stock ?</p>
           <div className="flex gap-2">
             <Button onClick={() => setConfirmDelete(null)} variant="outline" className="flex-1">Annuler</Button>
             <Button onClick={() => handleDeleteStock(confirmDelete!)} className="flex-1 bg-red-600 hover:bg-red-500">Supprimer</Button>
@@ -433,10 +433,10 @@ export default function DepotStockPage() {
         <div className="p-6 space-y-4">
           <select value={adjProduct} onChange={e => setAdjProduct(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm">
-            <option value="">SÃ©lectionner un produit</option>
+            <option value="">Sélectionner un produit</option>
             {allProducts?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <NumericInput placeholder="Nouvelle quantitÃ©" value={adjQty} onChange={e => setAdjQty(Number(e.target.value))}
+          <NumericInput placeholder="Nouvelle quantité" value={adjQty} onChange={e => setAdjQty(Number(e.target.value))}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
           <input placeholder="Note (optionnel)" value={adjNote} onChange={e => setAdjNote(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
@@ -444,7 +444,7 @@ export default function DepotStockPage() {
         </div>
       </Modal>
 
-      <Modal open={transferModal} onClose={() => setTransferModal(false)} title="TransfÃ©rer vers">
+      <Modal open={transferModal} onClose={() => setTransferModal(false)} title="Transférer vers">
         <div className="p-6 space-y-3">
           <select value={transferTarget} onChange={e => setTransferTarget(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm">
@@ -473,7 +473,7 @@ export default function DepotStockPage() {
                       <p className="text-[11px] text-surface-400">Disponible : {available}</p>
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
-                      <select value={item?.unitName || 'PiÃ¨ce'}
+                      <select value={item?.unitName || 'Pièce'}
                     onChange={e => {
                       const unit = units.find(u => u.name === e.target.value) || units[0]
                       setTransferItems(prev => {
@@ -485,13 +485,13 @@ export default function DepotStockPage() {
                     className="text-xs px-2 py-1.5 rounded-lg border border-surface-300 bg-surface-100">
                     {units.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
                   </select>
-                  <NumericInput min="0" placeholder="QtÃ©" value={item?.qty ?? ''}
+                  <NumericInput min="0" placeholder="Qté" value={item?.qty ?? ''}
                     onChange={e => {
                       const qty = Number(e.target.value)
                       setTransferItems(prev => {
                         const ex = prev.find(i => i.productId === p.id)
                         if (ex) return prev.map(i => i.productId === p.id ? { ...i, qty } : i)
-                        return [...prev, { productId: p.id, qty, unitName: 'PiÃ¨ce', unitQuantity: 1 }]
+                        return [...prev, { productId: p.id, qty, unitName: 'Pièce', unitQuantity: 1 }]
                       })
                     }}
                     className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
@@ -501,7 +501,7 @@ export default function DepotStockPage() {
               )
             })}
           </div>
-          <Button onClick={handleTransfer} className="w-full">TransfÃ©rer</Button>
+          <Button onClick={handleTransfer} className="w-full">Transférer</Button>
         </div>
       </Modal>
 
@@ -514,7 +514,7 @@ export default function DepotStockPage() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setCreateModal(false)}>Annuler</Button>
-            <Button onClick={handleCreateProduct}>CrÃ©er</Button>
+            <Button onClick={handleCreateProduct}>Créer</Button>
           </>
         }
       >
@@ -523,11 +523,11 @@ export default function DepotStockPage() {
             <h3 className="modal-section-title">Informations principales</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Nom du produit" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
-              <Select label="CatÃ©gorie" value={createForm.categoryId} onChange={(e) => setCreateForm({ ...createForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="SÃ©lectionner..." />
-              <Select label="UnitÃ©" value={createForm.unit} onChange={(e) => {
+              <Select label="Catégorie" value={createForm.categoryId} onChange={(e) => setCreateForm({ ...createForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
+              <Select label="Unité" value={createForm.unit} onChange={(e) => {
                 const unit = e.target.value as 'piece' | 'dozen' | 'pack'
                 setCreateForm(prev => ({ ...prev, unit, purchaseCost: 0, packSize: 0 }))
-              }} options={[{ value: 'piece', label: 'PiÃ¨ce' }, { value: 'dozen', label: 'Douzaine' }]} />
+              }} options={[{ value: 'piece', label: 'Pièce' }, { value: 'dozen', label: 'Douzaine' }]} />
             </div>
             {createForm.unit === 'pack' && (
               <div className="bg-surface-50 rounded-xl p-4 space-y-3 mt-4">
@@ -535,7 +535,7 @@ export default function DepotStockPage() {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <input type="radio" id="create-comp-piece" name="createPackComp" checked={createPackUnit === 'piece'} onChange={() => { setCreatePackUnit('piece'); setCreateForm(f => ({ ...f, packSize: 0 })) }} className="w-4 h-4 text-primary-500" />
-                    <label htmlFor="create-comp-piece" className="text-sm text-surface-700">PiÃ¨ces</label>
+                    <label htmlFor="create-comp-piece" className="text-sm text-surface-700">Pièces</label>
                   </div>
                   <div className="flex items-center gap-2">
                     <input type="radio" id="create-comp-dozen" name="createPackComp" checked={createPackUnit === 'dozen'} onChange={() => { setCreatePackUnit('dozen'); setCreateForm(f => ({ ...f, packSize: 0 })) }} className="w-4 h-4 text-primary-500" />
@@ -545,8 +545,8 @@ export default function DepotStockPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-surface-500">1 paquet =</span>
                   <NumericInput min="1" value={createPackQty || ''} onChange={(e) => { setCreatePackQty(+e.target.value); setCreateForm(f => ({ ...f, packSize: 0 })) }} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
-                  <span className="text-sm text-surface-500">{createPackUnit === 'dozen' ? 'douzaines' : 'piÃ¨ces'}</span>
-                  {createPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {createPackUnit === 'dozen' ? createPackQty * 12 : createPackQty} piÃ¨ces</span>}
+                  <span className="text-sm text-surface-500">{createPackUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
+                  {createPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {createPackUnit === 'dozen' ? createPackQty * 12 : createPackQty} pièces</span>}
                 </div>
               </div>
             )}
@@ -560,7 +560,7 @@ export default function DepotStockPage() {
           <div>
             <h3 className="modal-section-title">Prix de revient</h3>
             <Input
-              label={`Prix de revient (${createForm.unit === 'piece' ? 'piÃ¨ce' : createForm.unit === 'dozen' ? 'douzaine' : `paquet de ${createPackUnit === 'dozen' ? createPackQty * 12 : createPackQty || 'â€”'} piÃ¨ces`})`}
+              label={`Prix de revient (${createForm.unit === 'piece' ? 'pièce' : createForm.unit === 'dozen' ? 'douzaine' : `paquet de ${createPackUnit === 'dozen' ? createPackQty * 12 : createPackQty || 'â€”'} pièces`})`}
               type="number"
               value={createForm.purchaseCost || ''}
               onChange={(e) => setCreateForm({ ...createForm, purchaseCost: +e.target.value || 0 })}
@@ -571,7 +571,7 @@ export default function DepotStockPage() {
           <div>
             <h3 className="modal-section-title">Stock</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="Stock initial dans ce dÃ©pÃ´t" type="number" value={createInitialStock} onChange={(e) => setCreateInitialStock(+e.target.value)} />
+              <Input label="Stock initial dans ce dépôt" type="number" value={createInitialStock} onChange={(e) => setCreateInitialStock(+e.target.value)} />
             </div>
           </div>
         </div>
@@ -586,7 +586,7 @@ export default function DepotStockPage() {
         footer={
           <>
             <Button variant="ghost" onClick={() => setEditModal(false)}>Annuler</Button>
-            <Button onClick={handleSaveEdit}>Mettre Ã  jour</Button>
+            <Button onClick={handleSaveEdit}>Mettre à jour</Button>
           </>
         }
       >
@@ -595,11 +595,11 @@ export default function DepotStockPage() {
             <h3 className="modal-section-title">Informations principales</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Nom du produit" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
-              <Select label="CatÃ©gorie" value={editForm.categoryId} onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="SÃ©lectionner..." />
-              <Select label="UnitÃ©" value={editForm.unit} onChange={(e) => {
+              <Select label="Catégorie" value={editForm.categoryId} onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
+              <Select label="Unité" value={editForm.unit} onChange={(e) => {
                 const unit = e.target.value as 'piece' | 'dozen' | 'pack'
                 setEditForm(prev => ({ ...prev, unit, purchaseCost: 0, packSize: 0 }))
-              }} options={[{ value: 'piece', label: 'PiÃ¨ce' }, { value: 'dozen', label: 'Douzaine' }]} />
+              }} options={[{ value: 'piece', label: 'Pièce' }, { value: 'dozen', label: 'Douzaine' }]} />
             </div>
             {editForm.unit === 'pack' && (
               <div className="bg-surface-50 rounded-xl p-4 space-y-3 mt-4">
@@ -607,7 +607,7 @@ export default function DepotStockPage() {
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
                     <input type="radio" id="edit-comp-piece" name="editPackComp" checked={editPackUnit === 'piece'} onChange={() => { setEditPackUnit('piece'); setEditForm(f => ({ ...f, packSize: 0 })) }} className="w-4 h-4 text-primary-500" />
-                    <label htmlFor="edit-comp-piece" className="text-sm text-surface-700">PiÃ¨ces</label>
+                    <label htmlFor="edit-comp-piece" className="text-sm text-surface-700">Pièces</label>
                   </div>
                   <div className="flex items-center gap-2">
                     <input type="radio" id="edit-comp-dozen" name="editPackComp" checked={editPackUnit === 'dozen'} onChange={() => { setEditPackUnit('dozen'); setEditForm(f => ({ ...f, packSize: 0 })) }} className="w-4 h-4 text-primary-500" />
@@ -617,8 +617,8 @@ export default function DepotStockPage() {
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-surface-500">1 paquet =</span>
                    <NumericInput min="1" value={editPackQty || ''} onChange={(e) => { setEditPackQty(+e.target.value); setEditForm(f => ({ ...f, packSize: 0 })) }} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
-                  <span className="text-sm text-surface-500">{editPackUnit === 'dozen' ? 'douzaines' : 'piÃ¨ces'}</span>
-                  {editPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty} piÃ¨ces</span>}
+                  <span className="text-sm text-surface-500">{editPackUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
+                  {editPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty} pièces</span>}
                 </div>
               </div>
             )}
@@ -632,7 +632,7 @@ export default function DepotStockPage() {
           <div>
             <h3 className="modal-section-title">Prix de revient</h3>
             <Input
-              label={`Prix de revient (${editForm.unit === 'piece' ? 'piÃ¨ce' : editForm.unit === 'dozen' ? 'douzaine' : `paquet de ${editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty || 'â€”'} piÃ¨ces`})`}
+              label={`Prix de revient (${editForm.unit === 'piece' ? 'pièce' : editForm.unit === 'dozen' ? 'douzaine' : `paquet de ${editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty || 'â€”'} pièces`})`}
               type="number"
               value={editForm.purchaseCost || ''}
               onChange={(e) => setEditForm({ ...editForm, purchaseCost: +e.target.value || 0 })}
@@ -667,14 +667,14 @@ export default function DepotStockPage() {
                 <thead>
                   <tr className="border-b border-surface-200">
                     <th className="text-left py-2 text-surface-500 font-medium">Produit</th>
-                    <th className="text-right py-2 text-surface-500 font-medium">QuantitÃ©</th>
+                    <th className="text-right py-2 text-surface-500 font-medium">Quantité</th>
                   </tr>
                 </thead>
                 <tbody>
                   {bonInfo.items.map((item, idx) => (
                     <tr key={idx} className="border-b border-surface-100">
                       <td data-label="Produit" className="py-2 text-surface-900">{item.name}</td>
-                      <td data-label="QuantitÃ©" className="py-2 text-right text-surface-900 font-medium">{item.qty}</td>
+                      <td data-label="Quantité" className="py-2 text-right text-surface-900 font-medium">{item.qty}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -682,7 +682,7 @@ export default function DepotStockPage() {
               </div>
               <p className="text-xs text-success bg-success/10 border border-success/20 rounded-lg px-3 py-2 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 shrink-0" />
-                Transfert effectuÃ© automatiquement : le stock a Ã©tÃ© dÃ©duit de l'origine et ajoutÃ© Ã  la destination. Il peut Ãªtre annulÃ© depuis l'onglet Bon de sortie.
+                Transfert effectué automatiquement : le stock a été déduit de l'origine et ajouté à la destination. Il peut être annulé depuis l'onglet Bon de sortie.
               </p>
               <Button className="w-full" variant="outline" onClick={() => setBonModal(false)}>
                 Fermer
@@ -691,7 +691,7 @@ export default function DepotStockPage() {
                 <Button onClick={() => {
                   const w = window.open('', '_blank')
                   if (!w) return
-                  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bon de sortie ${bonInfo.bonNumber}</title><style>body{font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto}h1{font-size:18px;margin-bottom:4px}p{margin:2px 0;color:#555;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px 4px;text-align:left;border-bottom:1px solid #ddd}th{color:#888;font-size:11px;text-transform:uppercase}td{font-size:14px}.total{margin-top:12px;text-align:right;font-size:14px;font-weight:bold}.footer{margin-top:40px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#aaa;text-align:center}</style></head><body><h1>Bon de sortie nÂ°${bonInfo.bonNumber}</h1><p>Origine : ${bonInfo.from}</p><p>Destination : ${bonInfo.to}</p><p>Date : ${formatDateLong(bonInfo.date)}</p><p>Utilisateur : ${currentUser?.name || ''}</p><table><thead><tr><th>Produit</th><th style="text-align:right">QuantitÃ©</th></tr></thead><tbody>${bonInfo.items.map(i => `<tr><td>${i.name}</td><td style="text-align:right">${i.qty}</td></tr>`).join('')}</tbody></table><p class="total">Total articles : ${bonInfo.items.reduce((s, i) => s + i.qty, 0)}</p><div style="margin-top:30px;font-size:11px;color:#888"><p>Signature expÃ©diteur : ___________________________</p><p>Signature destinataire : ________________________</p></div><div class="footer"><p>Document gÃ©nÃ©rÃ© automatiquement - Neox ERP</p></div></body></html>`)
+                  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bon de sortie ${bonInfo.bonNumber}</title><style>body{font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto}h1{font-size:18px;margin-bottom:4px}p{margin:2px 0;color:#555;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px 4px;text-align:left;border-bottom:1px solid #ddd}th{color:#888;font-size:11px;text-transform:uppercase}td{font-size:14px}.total{margin-top:12px;text-align:right;font-size:14px;font-weight:bold}.footer{margin-top:40px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#aaa;text-align:center}</style></head><body><h1>Bon de sortie nÂ°${bonInfo.bonNumber}</h1><p>Origine : ${bonInfo.from}</p><p>Destination : ${bonInfo.to}</p><p>Date : ${formatDateLong(bonInfo.date)}</p><p>Utilisateur : ${currentUser?.name || ''}</p><table><thead><tr><th>Produit</th><th style="text-align:right">Quantité</th></tr></thead><tbody>${bonInfo.items.map(i => `<tr><td>${i.name}</td><td style="text-align:right">${i.qty}</td></tr>`).join('')}</tbody></table><p class="total">Total articles : ${bonInfo.items.reduce((s, i) => s + i.qty, 0)}</p><div style="margin-top:30px;font-size:11px;color:#888"><p>Signature expéditeur : ___________________________</p><p>Signature destinataire : ________________________</p></div><div class="footer"><p>Document généré automatiquement - Neox ERP</p></div></body></html>`)
                   w.document.close()
                   setTimeout(() => { w.print() }, 500)
                 }} className="flex-1">
@@ -707,9 +707,9 @@ export default function DepotStockPage() {
                     bonInfo.date,
                     useAppStore.getState().settings || undefined
                   )
-                  toast('PDF tÃ©lÃ©chargÃ©', 'success')
+                  toast('PDF téléchargé', 'success')
                 }} className="flex-1">
-                  <Printer className="w-4 h-4" /> TÃ©lÃ©charger PDF
+                  <Printer className="w-4 h-4" /> Télécharger PDF
                 </Button>
                 <Button variant="ghost" onClick={() => setBonModal(false)}>Fermer</Button>
               </div>
@@ -731,7 +731,7 @@ export default function DepotStockPage() {
           setPinAction(null)
         }}
         title="Confirmation PIN"
-        description="Cette action est protÃ©gÃ©e. Entrez votre code PIN de sÃ©curitÃ© pour continuer."
+        description="Cette action est protégée. Entrez votre code PIN de sécurité pour continuer."
         actionLabel="Confirmer"
       />
     </div>
