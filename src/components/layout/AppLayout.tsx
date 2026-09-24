@@ -8,10 +8,10 @@ import { cn } from '@/lib/utils'
 export default function AppLayout() {
   const { sidebarOpen } = useAppStore()
   const location = useLocation()
-  const isPos = location.pathname === '/pos' || location.pathname === '/depots/vente'
+  const isPos = location.pathname === '/pos'
 
   return (
-    <div className="h-screen w-screen flex overflow-hidden safe-area-top" style={{ background: 'var(--surface-50)' }}>
+    <div className="h-[100dvh] w-screen flex overflow-hidden safe-area-top" style={{ background: 'var(--surface-50)' }}>
       <Sidebar />
       <div className={cn(
         'hidden lg:block shrink-0 transition-all duration-300',

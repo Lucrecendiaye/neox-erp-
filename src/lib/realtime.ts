@@ -30,6 +30,9 @@ const SUBSCRIPTIONS: { table: string; dexieTable: keyof typeof db }[] = [
   { table: 'accounts', dexieTable: 'accounts' },
   { table: 'credit_payments', dexieTable: 'creditPayments' },
   { table: 'bon_sorties', dexieTable: 'bonSorties' },
+  { table: 'cash_operations', dexieTable: 'cashOps' },
+  { table: 'cash_categories', dexieTable: 'cashCategories' },
+  { table: 'deliveries', dexieTable: 'deliveries' },
   { table: 'business_cards', dexieTable: 'businessCards' },
   { table: 'settings', dexieTable: 'settings' },
   { table: 'businesses', dexieTable: 'businesses' },
@@ -42,7 +45,8 @@ const TENANT_TABLES: Set<string> = new Set([
   'cash_book', 'leads', 'notifications', 'locations', 'product_stocks',
   'product_history', 'supplier_invoices', 'supplier_payments',
   'compensations', 'transfers', 'stock_movements', 'accounts',
-  'credit_payments', 'bon_sorties', 'business_cards', 'settings', 'profiles',
+  'credit_payments', 'bon_sorties', 'cash_operations', 'cash_categories',
+  'deliveries', 'business_cards', 'settings', 'profiles',
 ])
 
 const SESSION_ID = crypto.randomUUID()
@@ -78,11 +82,12 @@ export async function subscribeAll(onChange?: (table: string, event: string, dat
                   const existing = await dexie.get(row.id)
                   row = {
                     id: row.id,
+                    authUserId: row.auth_user_id || row.authUserId || '',
                     businessId: row.businessId || row.business_id || '',
                     name: row.name || '',
                     email: row.email || '',
                     phone: row.phone || undefined,
-                    loginId: row.loginId || row.email || '',
+                    loginId: row.login_id || row.loginId || row.email || '',
                     passwordHash: existing?.passwordHash || '',
                     role: row.role || 'staff',
                     permissions: row.permissions?.length ? row.permissions : ['*'],
@@ -94,7 +99,7 @@ export async function subscribeAll(onChange?: (table: string, event: string, dat
                   }
                 }
                 const flat = { ...row }
-                const key = row.id
+                const key = table === 'settings' ? 'default' : row.id
                 delete flat.id
                 if (Array.isArray(flat.photos)) {
                   const local = await dexie.get(key)
@@ -102,12 +107,21 @@ export async function subscribeAll(onChange?: (table: string, event: string, dat
                     flat.photos = mergePhotosForSync(local.photos, flat.photos)
                   }
                 }
+                if (table === 'sales') {
+                  const paid = Number(flat.paid) || 0
+                  const total = Number(flat.total) || 0
+                  flat.paymentStatus = flat.paymentStatus || (paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid')
+                  if (flat.supplierId === undefined) {
+                    const existing = await dexie.get(key)
+                    if (existing?.supplierId) flat.supplierId = existing.supplierId
+                  }
+                }
                 await dexie.put({ id: key, ...flat })
               }
             } else if (payload.eventType === 'DELETE') {
               const dexie = (db as any)[dexieTable]
               if (dexie && payload.old?.id) {
-                await dexie.delete(payload.old.id)
+                await dexie.delete(table === 'settings' ? 'default' : payload.old.id)
               }
             }
             onChange?.(table, payload.eventType, payload.new)

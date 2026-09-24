@@ -1,5 +1,5 @@
 export { default as Button } from './Button'
-export { default as Input } from './Input'
+export { default as Input, NumericInput } from './Input'
 export { default as Select } from './Select'
 export { Card, CardHeader, CardTitle, StatCard } from './Card'
 export { Badge } from './Badge'

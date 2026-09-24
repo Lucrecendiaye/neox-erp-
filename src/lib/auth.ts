@@ -6,6 +6,68 @@ import type { User, UserStatus, AuthSession } from '@/types'
 const SESSION_KEY = 'neox-session-ready'
 const SESSION_ID_KEY = 'neox-session-id'
 
+// ---------------------------------------------------------------------------
+// Accès Supabase « brut » : certains navigateurs peuvent échouer à initialiser
+// le client (crypto absente, extension…). Ce fallback utilise fetch directement
+// et garantit un login fonctionnel avec les mêmes endpoints / clés.
+// ---------------------------------------------------------------------------
+function supabaseEnv(): { url: string; key: string } {
+  return {
+    url: (import.meta.env.VITE_SUPABASE_URL || '') as string,
+    key: (import.meta.env.VITE_SUPABASE_ANON_KEY || '') as string,
+  }
+}
+
+async function rawRpc(fn: string, params: Record<string, any>): Promise<any> {
+  const { url, key } = supabaseEnv()
+  if (!url || !key) return null
+  try {
+    const r = await fetch(`${url}/rest/v1/rpc/${fn}`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify(params || {}),
+    })
+    if (!r.ok) return null
+    const text = await r.text()
+    return text && text !== 'null' ? JSON.parse(text) : null
+  } catch {
+    return null
+  }
+}
+
+interface RawAuthToken {
+  access_token: string
+  token_type: string
+  expires_in: number
+  user?: { id: string; email: string }
+}
+
+async function rawSignInPassword(email: string, password: string): Promise<{ ok: boolean; reason?: string }> {
+  const { url, key } = supabaseEnv()
+  if (!url || !key) return { ok: false }
+  try {
+    const r = await fetch(`${url}/auth/v1/token?grant_type=password`, {
+      method: 'POST',
+      headers: { apikey: key, Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, password }),
+    })
+    if (!r.ok) {
+      const body = await r.text().catch(() => '')
+      const msg = body || ''
+      if (/confirm/i.test(msg)) return { ok: false, reason: 'Compte non confirmé : vérifiez votre boîte email, ou faites réinitialiser votre mot de passe par un administrateur' }
+      return { ok: false }
+    }
+    const data: RawAuthToken = await r.json()
+    if (data?.access_token) {
+      localStorage.setItem('neox-supabase-token', data.access_token)
+      return { ok: true }
+    }
+    return { ok: false }
+  } catch {
+    return { ok: false }
+  }
+}
+
 export const USER_STATUSES: { value: UserStatus; label: string }[] = [
   { value: 'active', label: 'Actif' },
   { value: 'blocked', label: 'Bloqué' },
@@ -62,16 +124,44 @@ function profileToUser(profile: any): User {
   }
 }
 
+function phoneCandidates(raw: string): string[] {
+  const digit = raw.replace(/[^\d]/g, '')
+  return [
+    raw,
+    raw.replace(/[\s\-\(\)]/g, ''),
+    '+' + digit,
+    digit,
+  ].filter((v, i, a) => v && a.indexOf(v) === i)
+}
+
 export async function findUserByIdentifier(identifier: string): Promise<{ user?: User; email?: string }> {
   const id = (identifier || '').trim().toLowerCase()
   if (!id) return {}
   if (isSupabaseConfigured()) {
-    const { data: profile } = await supabase.rpc('public_lookup_profile', { p_identifier: id })
-    if (profile) return { user: profileToUser(profile), email: profile.email || id }
+    // Le profil (email/téléphone/identifiant) est recherché via public_lookup_profile.
+    // Pour un téléphone, plusieurs formats sont essayés (espaces, +ing, chiffres nus).
+    const candidates = isPhoneIdentifier(id)
+      ? [...phoneCandidates(id).map(c => c.toLowerCase()), ...phoneCandidates(id).map(c => '+' + c.replace(/^\++/, ''))]
+      : [id]
+    for (const c of [...new Set(candidates)]) {
+      let profile: any = null
+      try {
+        const { data } = await supabase.rpc('public_lookup_profile', { p_identifier: c }).catch(() => ({ data: null }))
+        profile = data || null
+      } catch { /* ignorer */ }
+      if (!profile) profile = await rawRpc('public_lookup_profile', { p_identifier: c })
+      if (profile) return { user: profileToUser(profile), email: profile.email || c }
+    }
     let email = id
     if (isPhoneIdentifier(id)) {
-      const { data } = await supabase.rpc('public_lookup_email_by_phone', { phone: id })
-      if (data && data.length > 0) email = data[0].email
+      try {
+        const { data } = await supabase.rpc('public_lookup_email_by_phone', { phone: id }).catch(() => ({ data: null }))
+        if (data && data.length > 0) email = data[0].email
+      } catch { /* ignorer */ }
+      if (email === id) {
+        const raw = await rawRpc('public_lookup_email_by_phone', { phone: id })
+        if (Array.isArray(raw) && raw.length > 0) email = raw[0].email
+      }
     }
     return { email }
   }
@@ -135,8 +225,26 @@ export async function signIn(identifier: string, password: string): Promise<Logi
   const check = canSignIn(user)
   if (!check.ok) return { status: 'blocked', reason: check.reason }
 
-  const { error } = await supabase.auth.signInWithPassword({ email, password })
-  if (error) return { status: 'blocked', reason: 'Identifiant ou mot de passe incorrect' }
+  let error: { message?: string; code?: string } | null = null
+  try {
+    const res = await supabase.auth.signInWithPassword({ email, password })
+    error = res?.error || null
+  } catch {
+    error = { message: 'client_crash' }
+  }
+
+  // Fallback brut si le client échoue (échec crypto / initialisation / CORS local)
+  if (error) {
+    const raw = await rawSignInPassword(email, password)
+    if (!raw.ok) {
+      if (raw.reason) return { status: 'blocked', reason: raw.reason }
+      const msg = error.message || ''
+      if (/confirm/i.test(msg) || /confirm/i.test(String(error.code || ''))) {
+        return { status: 'blocked', reason: 'Compte non confirmé : vérifiez votre boîte email, ou faites réinitialiser votre mot de passe par un administrateur' }
+      }
+      return { status: 'blocked', reason: 'Identifiant ou mot de passe incorrect' }
+    }
+  }
 
   await establishSupabaseSession(user, email)
   return { status: 'ok', user }

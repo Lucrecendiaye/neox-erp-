@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Modal, Button, ProductSearch } from '@/components/ui'
+import { Modal, Button, ProductSearch, NumericInput } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import db from '@/db'
@@ -172,7 +172,7 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
     }
   }, [open, sale])
 
-  const total = items.reduce((s, i) => s + i.total + i.total * (i.taxRate || 0) / 100, 0)
+  const total = items.reduce((s, i) => s + i.total, 0)
   const restant = Math.max(0, (sale?.total || 0) - (sale?.paid || 0))
 
   function updateItem(index: number, field: keyof SaleItem, value: any) {
@@ -204,7 +204,7 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
     next[index] = {
       productId: product.id, productName: product.name,
       quantity: 1, unitPrice: product.sellingPrice, discount: 0,
-      taxRate: product.taxRate || 0, total: product.sellingPrice,
+      taxRate: 0, total: product.sellingPrice,
     }
     setItems(next)
   }
@@ -214,7 +214,7 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
     if (items.some(i => !i.productId || !i.productName)) { toast('Veuillez compléter les produits', 'error'); return }
     const subtotal = items.reduce((s, i) => s + i.total, 0)
     const discountTotal = items.reduce((s, i) => s + i.discount, 0)
-    const taxTotal = items.reduce((s, i) => s + i.total * (i.taxRate || 0) / 100, 0)
+    const taxTotal = 0
     setSaving(true)
     try {
       await editSale(sale.id, {
@@ -222,7 +222,7 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
         customerId: customerId || undefined,
         paymentMethod,
         items,
-        subtotal, discountTotal, taxTotal, total: subtotal + taxTotal,
+        subtotal, discountTotal, taxTotal, total: subtotal,
       })
       toast('Vente modifiée avec succès', 'success')
       onSaved?.()
@@ -290,9 +290,9 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
                       onSelect={(id) => selectProduct(idx, id)}
                     />
                   </td>
-                  <td className="px-3 py-2"><input type="number" value={item.quantity} min={1} onChange={(e) => updateItem(idx, 'quantity', Math.max(1, +e.target.value))} className="w-20 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-center" /></td>
-                  <td className="px-3 py-2"><input type="number" value={item.unitPrice} min={0} onChange={(e) => updateItem(idx, 'unitPrice', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
-                  <td className="px-3 py-2"><input type="number" value={item.discount} min={0} onChange={(e) => updateItem(idx, 'discount', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
+                  <td className="px-3 py-2"><NumericInput value={item.quantity} min={1} onChange={(e) => updateItem(idx, 'quantity', Math.max(1, +e.target.value))} className="w-20 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-center" /></td>
+                  <td className="px-3 py-2"><NumericInput value={item.unitPrice} min={0} onChange={(e) => updateItem(idx, 'unitPrice', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
+                  <td className="px-3 py-2"><NumericInput value={item.discount} min={0} onChange={(e) => updateItem(idx, 'discount', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
                   <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
                   <td className="px-3 py-2 text-center">
                     {items.length > 1 && <button onClick={() => removeItem(idx)} className="p-1 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400"><X className="w-4 h-4" /></button>}
@@ -302,7 +302,7 @@ export function CreditSaleEditModal({ open, onClose, saleId, onSaved }: {
             </tbody>
             <tfoot>
               <tr className="bg-surface-50/50 font-bold">
-                <td colSpan={4} className="px-3 py-3 text-right">Total (TTC)</td>
+                <td colSpan={4} className="px-3 py-3 text-right">Total</td>
                 <td className="px-3 py-3 text-right">{formatCurrency(total)}</td>
                 <td></td>
               </tr>

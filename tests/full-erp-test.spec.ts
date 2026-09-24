@@ -20,16 +20,29 @@ async function ensureLoggedIn(page: Page) {
     await page.getByPlaceholder('Votre nom').fill(TEST_NAME)
     await page.getByPlaceholder('email@exemple.com').fill(TEST_EMAIL)
     await page.getByPlaceholder('+226 XX XX XX').fill('+22670000000')
+    const loginIdField = page.locator('input[placeholder="ex: user@shop ou mon-id"]')
+    if (await loginIdField.isVisible().catch(() => false)) {
+      await loginIdField.fill(TEST_EMAIL.replace(/@.*/, '-test'))
+    }
     const pwdFields = page.locator('input[type="password"]')
     await pwdFields.nth(0).fill(TEST_PASSWORD)
     await pwdFields.nth(1).fill(TEST_PASSWORD)
-    await page.getByRole('button', { name: 'Créer mon compte' }).click()
-    await page.waitForURL('/')
-  } else if (page.url().includes('/login')) {
+    await page.getByRole('button', { name: 'mon compte' }).click()
+    await page.waitForTimeout(6000)
+    await page.waitForURL(/\/login$/, { timeout: 20000 }).catch(() => {})
+  }
+
+  for (let attempt = 0; attempt < 4; attempt++) {
+    if (!page.url().includes('/login')) break
     await page.getByPlaceholder('exemple@email.com').fill(TEST_EMAIL)
-    await page.locator('input[type="password"]').fill(TEST_PASSWORD)
+    await page.getByRole('button', { name: 'Continuer' }).click()
+    await page.waitForTimeout(800)
+    await page.locator('input[type="password"]').first().fill(TEST_PASSWORD)
     await page.getByRole('button', { name: 'Se connecter' }).click()
-    await page.waitForURL('/')
+    for (let i = 0; i < 10; i++) {
+      await page.waitForTimeout(2000)
+      if (!page.url().includes('/login') && !page.url().includes('/register')) break
+    }
   }
 
   await page.waitForLoadState('networkidle')

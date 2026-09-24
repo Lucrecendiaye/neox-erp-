@@ -4,9 +4,10 @@ import { toast } from '@/lib/toast'
 import { PAY_METHOD_LABELS, type PayMethod, type useSalePayment } from '@/modules/pos/salePayment'
 import {
   Banknote, Smartphone, Phone, CreditCard, Calendar, ChevronLeft, User, MapPin,
-  Check, AlertTriangle, HandCoins, Contact as ContactIcon, ChevronDown, X, Truck,
+  Check, AlertTriangle, HandCoins, Contact as ContactIcon, ChevronDown, X, Truck, Layers, Plus, Trash2,
 } from 'lucide-react'
 import type { Customer, Supplier } from '@/types'
+import { NumericInput } from '@/components/ui'
 
 type PaymentHook = ReturnType<typeof useSalePayment>
 
@@ -29,6 +30,7 @@ interface PaymentScreenProps {
   customerOpen: boolean
   setCustomerOpen: (v: boolean) => void
   onConfirm: (createCustomer?: boolean) => void
+  submitting?: boolean
   suppliers?: Supplier[]
   supplierId?: string
   setSupplierId?: (id: string) => void
@@ -38,11 +40,12 @@ interface PaymentScreenProps {
   setSupplierPhone?: (v: string) => void
 }
 
-const GIANT_METHODS: { key: PayMethod | 'credit'; label: string; icon: React.ReactNode; color: string }[] = [
+const GIANT_METHODS: { key: PayMethod | 'credit' | 'split'; label: string; icon: React.ReactNode; color: string }[] = [
   { key: 'cash', label: 'Espèces', icon: <Banknote className="w-7 h-7" />, color: 'bg-emerald-500' },
   { key: 'wave', label: 'Wave', icon: <Smartphone className="w-7 h-7" />, color: 'bg-blue-500' },
   { key: 'orange', label: 'Orange Money', icon: <Phone className="w-7 h-7" />, color: 'bg-orange-500' },
   { key: 'card', label: 'Carte', icon: <CreditCard className="w-7 h-7" />, color: 'bg-violet-500' },
+  { key: 'split', label: 'Mixte', icon: <Layers className="w-7 h-7" />, color: 'bg-teal-500' },
   { key: 'credit', label: 'Crédit', icon: <HandCoins className="w-7 h-7" />, color: 'bg-amber-500' },
 ]
 
@@ -61,21 +64,23 @@ export default function PaymentScreen(props: PaymentScreenProps) {
 
   if (!open) return null
 
-  const isCredit = pay.paymentType === 'credit'
+  const isCredit = pay.isCredit
   const isCash = pay.paymentType === 'complet' && pay.payMethod === 'cash'
   const showChange = isCash && pay.change > 0
   const showShort = isCash && pay.isShort
 
-  const activeKey: PayMethod | 'credit' = isCredit ? 'credit' : pay.payMethod
+  const activeKey: PayMethod | 'credit' | 'split' = pay.isSplit ? 'split' : isCredit ? 'credit' : pay.payMethod
 
   const typedNameMatches = props.customerName.trim().length > 0 &&
     !props.customerId &&
     props.customers.some(c => (c.name || '').toLowerCase() === props.customerName.trim().toLowerCase())
 
-  function selectMethod(key: PayMethod | 'credit') {
+  function selectMethod(key: PayMethod | 'credit' | 'split') {
     if (key === 'credit') {
       pay.setPaymentType('credit')
       pay.setPayMethod('cash')
+    } else if (key === 'split') {
+      pay.setPaymentType('split')
     } else {
       pay.setPaymentType('complet')
       pay.setPayMethod(key)
@@ -115,7 +120,7 @@ export default function PaymentScreen(props: PaymentScreenProps) {
     props.onConfirm(create)
   }
 
-  const canConfirm = !pay.isShort && total > 0 && (!isCredit || props.customerName.trim().length > 0)
+  const canConfirm = !pay.isShort && total > 0 && (!isCredit || props.customerName.trim().length > 0) && (!pay.isSplit || pay.splitPaid > 0)
 
   return (
     <div className="fixed inset-0 z-[60] bg-surface-50 lg:hidden flex flex-col">
@@ -218,7 +223,7 @@ export default function PaymentScreen(props: PaymentScreenProps) {
           )}
         </div>
 
-        {/* Fournisseur (optionnel, vente dépôt) */}
+        {/* Fournisseur (optionnel pour une vente professionnelle) */}
         {props.suppliers && (
           <div className="bg-surface-100 border border-surface-200 rounded-3xl p-4 shadow-sm space-y-3">
             <div className="flex items-center justify-between">
@@ -298,8 +303,7 @@ export default function PaymentScreen(props: PaymentScreenProps) {
             <div className="flex items-center gap-3">
               <div className="relative flex-1">
                 <Banknote className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-400" />
-                <input
-                  type="number" min="0" value={pay.amountReceived || ''}
+                <NumericInput min="0" value={pay.amountReceived || ''}
                   placeholder="Montant reçu"
                   autoFocus
                   onChange={(e) => pay.setAmountReceived(Math.max(0, Number(e.target.value) || 0))}
@@ -332,7 +336,7 @@ export default function PaymentScreen(props: PaymentScreenProps) {
         )}
 
         {/* Crédit */}
-        {isCredit && (
+        {isCredit && !pay.isSplit && (
           <div className="bg-surface-100 border border-amber-500/40 rounded-2xl p-4 shadow-sm space-y-3">
             <div className="flex items-center gap-2">
               <HandCoins className="w-5 h-5 text-amber-500" />
@@ -341,8 +345,7 @@ export default function PaymentScreen(props: PaymentScreenProps) {
 
             <div className="flex items-center gap-2">
               <Banknote className="w-5 h-5 text-surface-400 shrink-0" />
-              <input
-                type="number" min="0" max={total} value={pay.amountReceived || ''}
+                <NumericInput min="0" max={total} value={pay.amountReceived || ''}
                 placeholder="Montant payé maintenant (optionnel)"
                 inputMode="numeric"
                 onChange={(e) => pay.setAmountReceived(Math.min(total, Math.max(0, Number(e.target.value) || 0)))}
@@ -370,13 +373,96 @@ export default function PaymentScreen(props: PaymentScreenProps) {
             )}
           </div>
         )}
+
+        {/* Paiement mixte */}
+        {pay.isSplit && (
+          <div className="bg-surface-100 border border-teal-500/40 rounded-2xl p-4 shadow-sm space-y-3">
+            <div className="flex items-center gap-2">
+              <Layers className="w-5 h-5 text-teal-500" />
+              <p className="font-bold text-surface-900">Paiement mixte</p>
+            </div>
+            <p className="text-sm text-surface-500">Répartissez le paiement entre plusieurs moyens (Espèces, Wave, Orange Money, Carte, Virement).</p>
+
+            <div className="space-y-3">
+              {pay.splitPayments.map(p => (
+                <div key={p.id} className="flex gap-2 items-start">
+                  <select
+                    value={p.method}
+                    onChange={(e) => pay.setSplitMethod(p.id, e.target.value as PayMethod)}
+                    className="w-1/2 rounded-xl border border-surface-300 bg-surface-50 px-2 py-3 text-sm text-surface-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                  >
+                    {PAY_METHOD_LABELS && (['cash', 'wave', 'orange', 'mobile', 'card', 'bank'] as PayMethod[]).map(m => (
+                      <option key={m} value={m}>{PAY_METHOD_LABELS[m]}</option>
+                    ))}
+                  </select>
+                  <NumericInput min="0" value={p.amount || ''}
+                    placeholder="Montant"
+                    inputMode="numeric"
+                    onChange={(e) => pay.setSplitAmount(p.id, Number(e.target.value) || 0)}
+                    className="flex-1 rounded-xl border border-surface-300 bg-surface-50 px-3 py-3 text-base font-bold text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px]"
+                  />
+                  <button
+                    onClick={() => pay.removeSplitPayment(p.id)}
+                    disabled={pay.splitPayments.length <= 1}
+                    className="shrink-0 p-3 rounded-xl text-surface-400 hover:text-danger transition-colors disabled:opacity-40"
+                    aria-label="Supprimer"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            {pay.splitPayments.length < 5 && (
+              <button
+                onClick={() => pay.addSplitPayment()}
+                className="flex items-center gap-1.5 text-sm font-medium text-teal-500 hover:text-teal-600"
+              >
+                <Plus className="w-4 h-4" /> Ajouter un moyen de paiement
+              </button>
+            )}
+
+            <div className="flex items-center justify-between rounded-xl bg-teal-500/15 border border-teal-500/30 px-4 py-3">
+              <span className="text-sm font-bold text-teal-600">Total payé</span>
+              <span className="text-2xl font-extrabold text-teal-600">{formatCurrency(Math.min(pay.splitPaid, total))}</span>
+            </div>
+            {pay.splitPaid > total && (
+              <div className="flex items-center justify-between rounded-xl bg-emerald-500/10 border border-emerald-500/30 px-4 py-3">
+                <span className="text-sm font-bold text-emerald-500">Monnaie à rendre</span>
+                <span className="text-lg font-extrabold text-emerald-500">{formatCurrency(pay.splitPaid - total)}</span>
+              </div>
+            )}
+            {pay.splitPaid < total && (
+              <div className="flex items-center justify-between rounded-xl bg-amber-500/15 border border-amber-500/40 px-4 py-3">
+                <span className="text-sm font-bold text-amber-600">Reste à payer (crédit)</span>
+                <span className="text-3xl font-extrabold text-amber-600">{formatCurrency(total - pay.splitPaid)}</span>
+              </div>
+            )}
+            {pay.splitPaid < total && (
+              <div className="flex items-center gap-2">
+                <Calendar className="w-5 h-5 text-surface-400 shrink-0" />
+                <input
+                  type="date"
+                  value={pay.dueDate}
+                  onChange={(e) => pay.setDueDate(e.target.value)}
+                  className="w-full px-4 py-3 rounded-xl bg-surface-50 border border-surface-300 text-base text-surface-900 focus:outline-none focus:ring-2 focus:ring-teal-400 min-h-[48px]"
+                />
+              </div>
+            )}
+            {pay.isCredit && !props.customerName.trim() && (
+              <p className="flex items-center gap-1.5 text-xs font-semibold text-red-400">
+                <AlertTriangle className="w-3.5 h-3.5" /> Client requis : un crédit sera créé pour le reste
+              </p>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Validate */}
       <div className="shrink-0 border-t border-surface-200 bg-surface-100 px-4 pt-3 pb-3 safe-area-bottom">
         <button
           onClick={handleConfirm}
-          disabled={!canConfirm || (isCredit && !props.customerName.trim())}
+          disabled={!canConfirm || (isCredit && !props.customerName.trim()) || props.submitting}
           className={cn(
             'w-full py-4 rounded-2xl text-lg font-bold transition-all flex items-center justify-center gap-2 active:scale-[0.98]',
             canConfirm && (!isCredit || props.customerName.trim())
@@ -385,11 +471,15 @@ export default function PaymentScreen(props: PaymentScreenProps) {
           )}
         >
           <Check className="w-6 h-6" />
-          {isCredit
-            ? `Enregistrer le crédit (${formatCurrency(Math.max(0, total - pay.paid))} restant)`
-            : showChange
-              ? `Valider · rendre ${formatCurrency(pay.change)}`
-              : `Valider ${formatCurrency(total)}`}
+          {props.submitting ? 'Enregistrement...' : pay.isSplit
+            ? pay.splitPaid >= total
+              ? `Valider ${formatCurrency(total)}`
+              : `Valider · crédit de ${formatCurrency(Math.max(0, total - pay.splitPaid))}`
+            : isCredit
+              ? `Enregistrer le crédit (${formatCurrency(Math.max(0, total - pay.paid))} restant)`
+              : showChange
+                ? `Valider · rendre ${formatCurrency(pay.change)}`
+                : `Valider ${formatCurrency(total)}`}
         </button>
       </div>
 

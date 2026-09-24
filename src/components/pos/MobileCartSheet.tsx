@@ -1,6 +1,8 @@
+import { useState } from 'react'
 import { cn, formatCurrency, getProductUnits, getUnitMinQty, getUnitStep } from '@/lib/utils'
-import { X, Minus, Plus, Trash2, ShoppingCart, Package, ChevronRight } from 'lucide-react'
+import { X, Minus, Plus, Trash2, ShoppingCart, Package, ChevronRight, SlidersHorizontal } from 'lucide-react'
 import type { Product } from '@/types'
+import { NumericInput } from '@/components/ui'
 
 export interface CartSheetItem {
   productId: string
@@ -20,6 +22,7 @@ function cartItemKey(i: CartSheetItem) {
 interface MobileCartSheetProps {
   open: boolean
   onClose: () => void
+  title?: string
   cart: CartSheetItem[]
   products: Product[]
   subtotal: number
@@ -37,7 +40,8 @@ interface MobileCartSheetProps {
 }
 
 export default function MobileCartSheet(props: MobileCartSheetProps) {
-  const { open, onClose, cart, products, subtotal, discount, setDiscount, total } = props
+  const { open, onClose, title, cart, products, subtotal, discount, setDiscount, total } = props
+  const [showAdvanced, setShowAdvanced] = useState(false)
 
   return (
     <div className={cn('fixed inset-0 z-50 lg:hidden', !open && 'pointer-events-none')}>
@@ -58,9 +62,17 @@ export default function MobileCartSheet(props: MobileCartSheetProps) {
         <div className="flex items-center justify-between px-4 py-2 shrink-0">
           <div className="flex items-center gap-2">
             <ShoppingCart className="w-5 h-5 text-primary-500" />
-            <h2 className="text-lg font-bold text-surface-900">Panier ({cart.length})</h2>
+            <h2 className="text-lg font-bold text-surface-900">{title || 'Panier'} ({cart.length})</h2>
           </div>
           <div className="flex items-center gap-1">
+            {cart.length > 0 && (
+              <button
+                onClick={() => setShowAdvanced(!showAdvanced)}
+                className={cn('inline-flex items-center gap-1 px-2.5 py-2 rounded-xl text-xs font-semibold transition-colors', showAdvanced ? 'bg-primary-50 text-primary-500' : 'text-surface-500')}
+              >
+                <SlidersHorizontal className="w-4 h-4" /> Options
+              </button>
+            )}
             {cart.length > 0 && (
               <button onClick={props.clearCart} className="touch-target rounded-xl text-surface-400 hover:text-danger transition-colors" title="Vider">
                 <Trash2 className="w-5 h-5" />
@@ -100,23 +112,25 @@ export default function MobileCartSheet(props: MobileCartSheetProps) {
                         {(item as CartSheetItem).locationName}
                       </span>
                     )}
-                    <div className="flex items-center gap-2 mt-1">
-                      <select
-                        value={item.unitName || 'Pièce'}
-                        onChange={(e) => props.updateCartUnit(key, e.target.value)}
-                        className="text-xs rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-surface-700 focus:outline-none min-h-[36px]"
-                      >
-                        {units.map(u => (<option key={u.name} value={u.name}>{u.name}</option>))}
-                      </select>
-                      {props.canEditPrice && (
-                        <input
-                          type="number" min="0" step="1" value={item.unitPrice}
-                          onChange={(e) => props.updateCartPrice(key, Math.max(0, Number(e.target.value) || 0))}
-                          className="w-20 text-xs rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-surface-900 text-right focus:outline-none min-h-[36px]"
-                          inputMode="numeric"
-                        />
-                      )}
-                    </div>
+                    {showAdvanced && (
+                      <div className="flex items-center gap-2 mt-1">
+                        <select
+                          value={item.unitName || 'Pièce'}
+                          onChange={(e) => props.updateCartUnit(key, e.target.value)}
+                          className="text-xs rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-surface-700 focus:outline-none min-h-[36px]"
+                        >
+                          {units.map(u => (<option key={u.name} value={u.name}>{u.name}</option>))}
+                        </select>
+                        {props.canEditPrice && (
+                          <NumericInput
+                            min="0" step="1" value={item.unitPrice}
+                            onChange={(e) => props.updateCartPrice(key, Math.max(0, Number(e.target.value) || 0))}
+                            className="w-20 text-xs rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-surface-900 text-right focus:outline-none min-h-[36px]"
+                            inputMode="numeric"
+                          />
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-2 mt-3">
@@ -126,8 +140,7 @@ export default function MobileCartSheet(props: MobileCartSheetProps) {
                   >
                     <Minus className="w-5 h-5" />
                   </button>
-                  <input
-                    type="number"
+                  <NumericInput
                     min={getUnitMinQty(item.unitName || 'Pièce')}
                     step={getUnitStep(item.unitName || 'Pièce')}
                     value={item.quantity}
@@ -162,16 +175,17 @@ export default function MobileCartSheet(props: MobileCartSheetProps) {
               <span className="text-surface-500">Sous-total</span>
               <span className="text-surface-900 font-medium">{formatCurrency(subtotal)}</span>
             </div>
-            <div className="flex justify-between items-center gap-3 text-sm">
-              <span className="text-surface-500">Remise</span>
-              <input
-                type="number" min="0" value={discount || ''}
-                onChange={(e) => props.setDiscount(Math.max(0, Number(e.target.value) || 0))}
-                placeholder="0"
-                className="w-24 text-right rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-surface-900 focus:outline-none min-h-[36px]"
-                inputMode="numeric"
-              />
-            </div>
+            {showAdvanced && (
+              <div className="flex justify-between items-center gap-3 text-sm">
+                <span className="text-surface-500">Remise</span>
+                  <NumericInput min="0" value={discount || ''}
+                  onChange={(e) => props.setDiscount(Math.max(0, Number(e.target.value) || 0))}
+                  placeholder="0"
+                  className="w-24 text-right rounded-lg border border-surface-200 bg-surface-50 px-2 py-1.5 text-surface-900 focus:outline-none min-h-[36px]"
+                  inputMode="numeric"
+                />
+              </div>
+            )}
             <div className="flex justify-between items-baseline pt-1">
               <span className="text-base font-semibold text-surface-900">Total à payer</span>
               <span className="text-2xl font-extrabold text-primary-500">{formatCurrency(total)}</span>

@@ -42,15 +42,15 @@ export default function SearchDialog({ open, onClose }: SearchDialogProps) {
       ? []
       : [
           ...(allProducts || [])
-            .filter((p) => p.name.toLowerCase().includes(q) || (p.barcode || '').includes(q))
+            .filter((p) => (p.name || '').toLowerCase().includes(q))
             .slice(0, 5)
-            .map((p) => ({ label: p.name, sub: p.barcode || p.reference || '', icon: Package, route: '/products' as const, id: p.id })),
+            .map((p) => ({ label: p.name, sub: 'Produit', icon: Package, route: '/products' as const, id: p.id })),
           ...(allCustomers || [])
-            .filter((c) => c.name.toLowerCase().includes(q) || c.phone.includes(q))
+            .filter((c) => (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q))
             .slice(0, 5)
             .map((c) => ({ label: c.name, sub: c.phone, icon: Users, route: '/customers' as const, id: c.id })),
           ...(allSuppliers || [])
-            .filter((s) => s.name.toLowerCase().includes(q) || s.phone.includes(q))
+            .filter((s) => (s.name || '').toLowerCase().includes(q) || (s.phone || '').includes(q))
             .slice(0, 5)
             .map((s) => ({ label: s.name, sub: s.phone, icon: Truck, route: '/suppliers' as const, id: s.id })),
 

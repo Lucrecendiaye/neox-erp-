@@ -50,6 +50,8 @@ function entryKind(label: string): 'argent' | 'produits' {
   return 'produits'
 }
 
+const CELL_GRID = 'grid-cols-[minmax(0,1fr)_104px_104px] sm:grid-cols-[minmax(0,1fr)_140px_140px]'
+
 export default function SupplierFicheComptable({
   rows, totals, title, emptyText,
   contactName = 'Fournisseur',
@@ -181,10 +183,10 @@ export default function SupplierFicheComptable({
       </div>
 
       {/* En-têtes de colonnes */}
-      <div className="mt-3 mx-4 grid grid-cols-[1fr_90px_90px] sm:grid-cols-[1fr_130px_130px] gap-2 px-3 py-2 rounded-xl bg-surface-50 border border-surface-200">
+      <div className={cn('mt-3 mx-4 grid gap-2 px-3 py-2 rounded-xl bg-surface-50 border border-surface-200', CELL_GRID)}>
         <span className="text-[10px] font-bold uppercase tracking-wider text-surface-500 self-center">Entrées</span>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-danger text-center bg-danger/10 rounded-lg px-1 py-1.5">Vous avez donné</span>
-        <span className="text-[10px] font-bold uppercase tracking-wider text-success text-right">Vous avez reçu</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-danger text-center bg-danger/10 rounded-lg px-1 py-1.5 leading-tight">Vous avez donné</span>
+        <span className="text-[10px] font-bold uppercase tracking-wider text-success text-right leading-tight">Vous avez reçu</span>
       </div>
 
       {/* Historique */}
@@ -201,17 +203,18 @@ export default function SupplierFicheComptable({
               <div
                 key={idx}
                 className={cn(
-                  'grid grid-cols-[1fr_90px_90px] sm:grid-cols-[1fr_130px_130px] gap-2 px-3 py-3 border-b border-surface-200/70',
+                  'grid gap-2 px-3 py-3 border-b border-surface-200/70',
+                  CELL_GRID,
                   idx % 2 === 0 ? 'bg-surface-50/40' : 'bg-surface-100/40'
                 )}
               >
                 <div className="min-w-0">
-                  <p className="text-xs font-bold text-surface-900">{formatLongDateTime(r.date)}</p>
+                  <p className="text-xs font-bold text-surface-900 leading-snug">{formatLongDateTime(r.date)}</p>
                   <p className="text-[11px] text-surface-500 truncate mt-0.5">
                     {r.label}
                     {r.reference && <span className="text-surface-400"> · {r.reference}</span>}
                   </p>
-                  <div className="flex items-center gap-2 mt-1.5">
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
                     <span className={cn(
                       'inline-flex items-center px-2 py-0.5 rounded-full text-[9px] font-bold uppercase tracking-wide',
                       isGiven ? 'bg-danger/15 text-danger' : 'bg-success/15 text-success'
@@ -223,21 +226,21 @@ export default function SupplierFicheComptable({
                     </span>
                   </div>
                 </div>
-                <div className="flex flex-col justify-center items-center">
+                <div className="flex flex-col justify-center items-center min-w-0 px-1">
                   {isGiven ? (
                     <>
-                      <p className="text-sm font-extrabold text-danger">{formatCurrency(r.debit)}</p>
-                      <p className="text-[9px] text-danger/70 mt-0.5">{kind === 'argent' ? 'argent donné' : 'produits donnés'}</p>
+                      <p className="text-xs sm:text-sm font-extrabold text-danger break-words text-center">{formatCurrency(r.debit)}</p>
+                      <p className="text-[9px] text-danger/70 mt-0.5 text-center leading-tight">{kind === 'argent' ? 'argent donné' : 'produits donnés'}</p>
                     </>
                   ) : (
                     <span className="text-surface-300">—</span>
                   )}
                 </div>
-                <div className="flex flex-col justify-center items-end">
+                <div className="flex flex-col justify-center items-end min-w-0 pl-1">
                   {!isGiven && r.credit > 0 ? (
                     <>
-                      <p className="text-sm font-extrabold text-success">{formatCurrency(r.credit)}</p>
-                      <p className="text-[9px] text-success/70 mt-0.5">{kind === 'argent' ? 'argent reçu' : 'produits reçus'}</p>
+                      <p className="text-xs sm:text-sm font-extrabold text-success break-words text-right">{formatCurrency(r.credit)}</p>
+                      <p className="text-[9px] text-success/70 mt-0.5 text-center leading-tight">{kind === 'argent' ? 'argent reçu' : 'produits reçus'}</p>
                     </>
                   ) : (
                     <span className="text-surface-300">—</span>
@@ -248,10 +251,10 @@ export default function SupplierFicheComptable({
           })}
 
           {/* Totaux */}
-          <div className="mt-3 grid grid-cols-[1fr_90px_90px] sm:grid-cols-[1fr_130px_130px] gap-2 px-3 py-3 rounded-2xl bg-surface-50 border border-surface-200">
+          <div className={cn('mt-3 grid gap-2 px-3 py-3 rounded-2xl bg-surface-50 border border-surface-200', CELL_GRID)}>
             <span className="text-xs font-bold text-surface-900 self-center">TOTAL</span>
-            <span className="text-sm font-extrabold text-danger text-center">{formatCurrency(givenTotal)}</span>
-            <span className="text-sm font-extrabold text-success text-right">{formatCurrency(receivedTotal)}</span>
+            <span className="text-xs sm:text-sm font-extrabold text-danger text-center break-words">{formatCurrency(givenTotal)}</span>
+            <span className="text-xs sm:text-sm font-extrabold text-success text-right break-words">{formatCurrency(receivedTotal)}</span>
           </div>
         </div>
       )}

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { Card, CardHeader, CardTitle, Button, Badge, Modal } from '@/components/ui'
+import { Card, CardHeader, CardTitle, Button, Badge, Modal, NumericInput } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
 import { formatCurrency, formatDate, formatDateTime, generateId } from '@/lib/utils'
@@ -398,10 +398,10 @@ export default function SupplierDetailPage() {
               }} className="flex-1 px-3 py-2 rounded-xl border border-surface-300 text-sm">
                 {products?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <input type="number" placeholder="Qté" value={item.qty} onChange={e => {
+              <NumericInput placeholder="Qté" value={item.qty} onChange={e => {
                 const updated = [...invItems]; updated[idx].qty = Number(e.target.value); setInvItems(updated)
               }} className="w-20 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
-              <input type="number" placeholder="PU" value={item.price} onChange={e => {
+              <NumericInput placeholder="PU" value={item.price} onChange={e => {
                 const updated = [...invItems]; updated[idx].price = Number(e.target.value); setInvItems(updated)
               }} className="w-24 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
             </div>
@@ -424,7 +424,7 @@ export default function SupplierDetailPage() {
             <option value="mobile">Mobile Money</option>
             <option value="mixed">Mixte (espèces + produits)</option>
           </select>
-          <input type="number" placeholder="Montant à payer" value={payAmount || ''} onChange={e => setPayAmount(Number(e.target.value))}
+          <NumericInput placeholder="Montant à payer" value={payAmount || ''} onChange={e => setPayAmount(Number(e.target.value))}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
           {payType === 'mixed' && (
             <div className="space-y-2">
@@ -436,10 +436,10 @@ export default function SupplierDetailPage() {
                   }} className="flex-1 px-3 py-2 rounded-xl border border-surface-300 text-sm">
                     {products?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
-                  <input type="number" placeholder="Qté" value={item.qty} onChange={e => {
+                  <NumericInput placeholder="Qté" value={item.qty} onChange={e => {
                     const updated = [...payProductItems]; updated[idx].qty = Number(e.target.value); setPayProductItems(updated)
                   }} className="w-20 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
-                  <input type="number" placeholder="PU" value={item.price} onChange={e => {
+                  <NumericInput placeholder="PU" value={item.price} onChange={e => {
                     const updated = [...payProductItems]; updated[idx].price = Number(e.target.value); setPayProductItems(updated)
                   }} className="w-24 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
                 </div>
@@ -458,7 +458,7 @@ export default function SupplierDetailPage() {
             <option value="debt_to_goods">Dette fournisseur → Marchandises (paiement en nature)</option>
             <option value="goods_to_debt">Marchandises → Dette fournisseur (remboursement en stock)</option>
           </select>
-          <input type="number" placeholder="Montant de la dette" value={compAmount || ''} onChange={e => setCompAmount(Number(e.target.value))}
+          <NumericInput placeholder="Montant de la dette" value={compAmount || ''} onChange={e => setCompAmount(Number(e.target.value))}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
           {compItems.map((item, idx) => (
             <div key={idx} className="flex gap-2 items-center">
@@ -467,10 +467,10 @@ export default function SupplierDetailPage() {
               }} className="flex-1 px-3 py-2 rounded-xl border border-surface-300 text-sm">
                 {products?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <input type="number" placeholder="Qté" value={item.qty} onChange={e => {
+                  <NumericInput placeholder="Qté" value={item.qty} onChange={e => {
                 const updated = [...compItems]; updated[idx].qty = Number(e.target.value); setCompItems(updated)
               }} className="w-20 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
-              <input type="number" placeholder="PU" value={item.price} onChange={e => {
+                  <NumericInput placeholder="PU" value={item.price} onChange={e => {
                 const updated = [...compItems]; updated[idx].price = Number(e.target.value); setCompItems(updated)
               }} className="w-24 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
             </div>

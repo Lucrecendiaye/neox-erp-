@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { Search, Package, Check, X, Barcode } from 'lucide-react'
+import { Search, Package, Check, X } from 'lucide-react'
 import type { Product } from '@/types'
-import { formatCurrency } from '@/lib/utils'
 
 interface ProductSearchProps {
   products: Product[]
@@ -40,9 +39,6 @@ export default function ProductSearch({ products, value, onSelect, placeholder =
     const q = query.trim().toLowerCase()
     const pool = q ? products.filter((p) => {
       return p.name.toLowerCase().includes(q)
-        || (p.barcode || '').includes(q)
-        || (p.reference || '').toLowerCase().includes(q)
-        || (p.brand || '').toLowerCase().includes(q)
     }) : products
     return pool.slice(0, 30)
   }, [products, query])
@@ -99,7 +95,6 @@ export default function ProductSearch({ products, value, onSelect, placeholder =
             const isSelected = p.id === value
             const q = query.trim().toLowerCase()
             const name = q && p.name.toLowerCase().includes(q) ? highlightMatch(p.name, q) : p.name
-            const refMatch = q && ((p.barcode || '').includes(q) || (p.reference || '').toLowerCase().includes(q))
             return (
               <button
                 key={p.id}
@@ -118,12 +113,7 @@ export default function ProductSearch({ products, value, onSelect, placeholder =
                 <span className="flex-1 min-w-0">
                   <span className="block truncate font-medium text-surface-800">{name}</span>
                   <span className="block truncate text-xs text-surface-400">
-                    {formatCurrency(p.sellingPrice)}
-                    {refMatch && (
-                      <span className="inline-flex items-center gap-0.5 ml-1.5">
-                        <Barcode className="w-3 h-3" /> {p.barcode || p.reference}
-                      </span>
-                    )}
+                    Prix à définir à la vente
                   </span>
                 </span>
                 {isSelected && <Check className="w-4 h-4 text-primary-400 shrink-0" />}

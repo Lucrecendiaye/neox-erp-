@@ -42,6 +42,17 @@ export function formatDateTime(date: string | Date, locale = 'fr-FR'): string {
   })
 }
 
+// Note: avoid `dateStyle` / `timeStyle` options — they throw
+// "Invalid option" on older JS engines (some WebViews / Safari).
+export function formatDateLong(date: string | Date, locale = 'fr-FR'): string {
+  return new Date(date).toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })
+}
+
+export function formatDateTimeLong(date: string | Date, locale = 'fr-FR'): string {
+  const d = new Date(date)
+  return `${d.toLocaleDateString(locale, { day: 'numeric', month: 'long', year: 'numeric' })} à ${d.toLocaleTimeString(locale, { hour: '2-digit', minute: '2-digit' })}`
+}
+
 export function generateId(): string {
   return crypto.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
 }

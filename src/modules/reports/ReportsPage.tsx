@@ -6,9 +6,27 @@ import db from '@/db'
 import { formatCurrency, formatDate } from '@/lib/utils'
 import { exportReportPDF } from '@/lib/pdf'
 import SupplierFicheComptable from '@/components/suppliers/SupplierFicheComptable'
-import { FileText, FileSpreadsheet, TrendingUp, ShoppingCart, Package, Truck, DollarSign, ArrowRightLeft } from 'lucide-react'
+import AccountingModule from './AccountingModule'
+import { FileText, FileSpreadsheet, TrendingUp, ShoppingCart, Package, Truck, DollarSign, ArrowRightLeft, Calculator } from 'lucide-react'
+import type { Sale } from '@/types'
+import type { Location } from '@/engine/types'
 
-type ReportId = 'sales' | 'purchases' | 'inventory' | 'supplier_invoices' | 'cashflow' | 'compensations'
+type ReportId = 'accounting' | 'sales' | 'purchases' | 'inventory' | 'supplier_invoices' | 'cashflow' | 'compensations'
+
+function saleSourceSummary(sale: Sale, locations: Location[]): string {
+  const totals = new Map<string, number>()
+  for (const item of sale.items) {
+    const locationId = item.locationId || sale.locationId
+    const location = locations.find(l => l.id === locationId)
+    const label = location?.type === 'shop' ? 'Boutique' : location?.name || locationId
+    totals.set(label, (totals.get(label) || 0) + item.quantity * (item.unitQuantity || 1))
+  }
+  return [...totals.entries()].map(([name, quantity]) => `${name}: ${quantity}`).join(' · ')
+}
+
+function saleTypeLabel(sale: Sale, deliverySaleIds: Set<string>): string {
+  return sale.saleType === 'delivery' || deliverySaleIds.has(sale.id) ? 'Livraison' : 'Boutique'
+}
 
 export default function ReportsPage() {
   const businessId = useBusinessId()
@@ -25,9 +43,11 @@ export default function ReportsPage() {
   const customers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId])
   const cashBook = useLiveQuery(() => db.cashBook.where('businessId').equals(businessId).toArray(), [businessId])
   const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
+  const deliveries = useLiveQuery(() => db.deliveries.where('businessId').equals(businessId).toArray(), [businessId])
+  const deliverySaleIds = useMemo(() => new Set((deliveries || []).map(d => d.saleId).filter(Boolean) as string[]), [deliveries])
   const supplierInvoices = useLiveQuery(() => db.supplierInvoices.where('businessId').equals(businessId).toArray(), [businessId])
   const compensations = useLiveQuery(() => db.compensations?.where('businessId').equals(businessId).toArray() || [], [businessId])
-  const stocks = useLiveQuery(() => db.productStocks.toArray(), [])
+  const stocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
   const suppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId])
   const users = useLiveQuery(() => db.users.where('businessId').equals(businessId).toArray(), [businessId])
 
@@ -36,7 +56,7 @@ export default function ReportsPage() {
     return sales.filter(s => {
       const d = s.createdAt?.split('T')[0] || ''
       if (d < dateFrom || d > dateTo) return false
-      if (locationFilter !== 'all' && s.locationId !== locationFilter) return false
+       if (locationFilter !== 'all' && !s.items.some(i => (i.locationId || s.locationId) === locationFilter)) return false
       return true
     })
   }, [sales, dateFrom, dateTo, locationFilter])
@@ -91,6 +111,24 @@ export default function ReportsPage() {
     const count = filteredSales.length
     const avg = count > 0 ? total / count : 0
     return { total, count, avg }
+  }, [filteredSales])
+
+  const paymentMethodStats = useMemo(() => {
+    const totals = new Map<string, number>()
+    for (const s of filteredSales) {
+      const splits = (s.splitPayments || []).filter(p => p.amount > 0)
+      if (splits.length > 0) {
+        for (const p of splits) totals.set(p.method, (totals.get(p.method) || 0) + p.amount)
+      } else {
+        const key = s.paymentMethod || 'cash'
+        totals.set(key, (totals.get(key) || 0) + (s.paid || 0))
+      }
+    }
+    const labels: Record<string, string> = {
+      cash: 'Espèces', wave: 'Wave', orange: 'Orange Money', mobile: 'Mobile Money',
+      card: 'Carte', bank: 'Virement', credit: 'Crédit', split: 'Mixte',
+    }
+    return [...totals.entries()].map(([key, value]) => ({ key, label: labels[key] || key, value }))
   }, [filteredSales])
 
   const purchaseStats = useMemo(() => {
@@ -196,7 +234,7 @@ export default function ReportsPage() {
 
     const cost = filteredSales.reduce((sum, s) => sum + s.items.reduce((c, it) => {
       const p = products?.find(pr => pr.id === it.productId)
-      return c + it.quantity * (p?.purchasePrice || 0)
+      return c + it.quantity * (it.unitQuantity || 1) * (p?.purchasePrice || 0)
     }, 0), 0)
     const revenue = filteredSales.reduce((sum, s) => sum + s.total, 0)
 
@@ -213,8 +251,8 @@ export default function ReportsPage() {
 
     switch (reportType) {
       case 'sales':
-        headers = ['Facture', 'Client', 'Date', 'Total', 'Méthode', 'Emplacement']
-        data = filteredSales.map(s => [s.invoiceNumber, s.customerName || 'Divers', formatDate(s.createdAt), s.total.toString(), s.paymentMethod, s.locationId || ''])
+        headers = ['Facture', 'Client', 'Date', 'Total', 'Méthode', 'Type', 'Sources']
+        data = filteredSales.map(s => [s.invoiceNumber, s.customerName || 'Divers', formatDate(s.createdAt), s.total.toString(), s.paymentMethod, saleTypeLabel(s, deliverySaleIds), saleSourceSummary(s, locations || [])])
         break
       case 'purchases':
         headers = ['ID', 'Fournisseur', 'Date', 'Total', 'Emplacement']
@@ -263,8 +301,8 @@ export default function ReportsPage() {
 
     switch (reportType) {
       case 'sales':
-        headers = ['Facture', 'Client', 'Date', 'Total', 'Méthode']
-        data = filteredSales.map(s => [s.invoiceNumber, s.customerName || 'Divers', formatDate(s.createdAt), formatCurrency(s.total), s.paymentMethod])
+        headers = ['Facture', 'Client', 'Date', 'Total', 'Méthode', 'Type', 'Sources']
+        data = filteredSales.map(s => [s.invoiceNumber, s.customerName || 'Divers', formatDate(s.createdAt), formatCurrency(s.total), s.paymentMethod, saleTypeLabel(s, deliverySaleIds), saleSourceSummary(s, locations || [])])
         break
       case 'purchases':
         headers = ['ID', 'Fournisseur', 'Date', 'Total']
@@ -305,6 +343,7 @@ export default function ReportsPage() {
   }
 
   const reportConfig = [
+    { id: 'accounting' as const, label: 'Comptabilité', icon: <Calculator className="w-4 h-4" />, color: 'secondary' },
     { id: 'sales' as const, label: 'Ventes', icon: <TrendingUp className="w-4 h-4" />, color: 'primary' },
     { id: 'purchases' as const, label: 'Achats', icon: <ShoppingCart className="w-4 h-4" />, color: 'info' },
     { id: 'inventory' as const, label: 'Stock', icon: <Package className="w-4 h-4" />, color: 'success' },
@@ -322,6 +361,9 @@ export default function ReportsPage() {
         <p className="text-surface-500 text-sm mt-1">Analysez et exportez vos données</p>
       </div>
 
+      {reportType === 'accounting' && <AccountingModule />}
+
+      {reportType !== 'accounting' && (
       <div className="flex flex-wrap gap-3 items-center">
         <div className="flex-1 min-w-[200px]">
           <label className="text-xs text-surface-500 mb-1 block">Du</label>
@@ -344,6 +386,7 @@ export default function ReportsPage() {
           </div>
         )}
       </div>
+      )}
 
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
         {reportConfig.map(r => (
@@ -443,6 +486,33 @@ export default function ReportsPage() {
         </div>
       )}
 
+      {reportType === 'sales' && (
+        <Card>
+          <div className="p-4">
+            <p className="text-sm font-semibold text-surface-900 mb-3">Paiements par mode (filtre appliqué)</p>
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'cash', label: 'Espèces' },
+                { key: 'wave', label: 'Wave' },
+                { key: 'orange', label: 'Orange Money' },
+                { key: 'mobile', label: 'Mobile Money' },
+                { key: 'card', label: 'Carte' },
+                { key: 'bank', label: 'Virement' },
+                { key: 'credit', label: 'Crédit' },
+              ].map(pm => {
+                const found = paymentMethodStats.find(p => p.key === pm.key)
+                return (
+                  <div key={pm.key} className="flex-1 min-w-[130px] rounded-xl bg-surface-50 border border-surface-200 px-3 py-2">
+                    <p className="text-xs text-surface-500">{pm.label}</p>
+                    <p className="text-sm font-bold text-surface-900">{formatCurrency(found?.value || 0)}</p>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+        </Card>
+      )}
+
       {reportType === 'purchases' && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Card><div className="p-4 text-center"><p className="text-xs text-surface-500">Total achats</p><p className="text-xl font-bold text-surface-900">{formatCurrency(purchaseStats.total)}</p></div></Card>
@@ -483,7 +553,7 @@ export default function ReportsPage() {
         </div>
       )}
 
-      <Card>
+      {reportType !== 'accounting' && <Card>
         <CardHeader>
           <CardTitle>{reportConfig.find(r => r.id === reportType)?.label || 'Rapport'}</CardTitle>
           <div className="flex gap-2">
@@ -502,7 +572,7 @@ export default function ReportsPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
-                {reportType === 'sales' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Facture</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Client</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Total</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Méthode</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Emplacement</th></>}
+                 {reportType === 'sales' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Facture</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Client</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Total</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Méthode</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Type</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Sources</th></>}
                 {reportType === 'purchases' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">ID</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Fournisseur</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Total</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Emplacement</th></>}
                 {reportType === 'inventory' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Produit</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Emplacement</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Qté</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Valeur</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Alerte</th></>}
                 {reportType === 'cashflow' && <><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th><th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Type</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Catégorie</th><th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Montant</th><th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Description</th></>}
@@ -517,7 +587,8 @@ export default function ReportsPage() {
                   <td data-label="Date" className="px-4 py-3 text-sm text-surface-500">{formatDate(s.createdAt)}</td>
                   <td data-label="Total" className="px-4 py-3 text-right text-sm font-semibold">{formatCurrency(s.total)}</td>
                   <td data-label="Méthode" className="px-4 py-3 text-center"><Badge variant="info">{s.paymentMethod}</Badge></td>
-                  <td data-label="Emplacement" className="px-4 py-3 text-sm text-surface-500">{locations?.find(l => l.id === s.locationId)?.name || s.locationId || '—'}</td>
+                   <td data-label="Type" className="px-4 py-3 text-sm text-surface-500">{saleTypeLabel(s, deliverySaleIds)}</td>
+                   <td data-label="Sources" className="px-4 py-3 text-sm text-surface-500">{saleSourceSummary(s, locations || []) || '—'}</td>
                 </tr>
               ))}
               {reportType === 'purchases' && filteredPurchases.map(p => (
@@ -576,6 +647,7 @@ export default function ReportsPage() {
         </div>
         )}
       </Card>
+      }
     </div>
   )
 }

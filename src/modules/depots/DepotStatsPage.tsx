@@ -5,23 +5,23 @@ import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
 import { formatCurrency } from '@/lib/utils'
 import { getLocationStockValue } from '@/engine/operations'
-import { ArrowLeft, TrendingUp, Package, ShoppingCart } from 'lucide-react'
+import { ArrowLeft, Package, AlertTriangle, Boxes } from 'lucide-react'
 
 export default function DepotStatsPage() {
   const { locationId } = useParams()
   const navigate = useNavigate()
   const location = useLiveQuery(() => db.locations.get(locationId!), [locationId])
-  const sales = useLiveQuery(() => db.sales.where('locationId').equals(locationId!).toArray(), [locationId])
+  const stocks = useLiveQuery(() => db.productStocks.where('locationId').equals(locationId!).toArray(), [locationId])
   const stockValue = useLiveQuery(() => getLocationStockValue(locationId!), [locationId])
 
   const stats = useMemo(() => {
-    const totalSales = sales?.reduce((s, x) => s + x.total, 0) || 0
-    const totalProfit = sales?.reduce((s, x) => {
-      const cost = x.items.reduce((c, i) => c + i.quantity * 0, 0)
-      return s + x.total - cost
-    }, 0) || 0
-    return { totalSales, totalProfit, saleCount: sales?.length || 0 }
-  }, [sales])
+    const rows = stocks || []
+    return {
+      productCount: rows.filter(x => x.quantity > 0).length,
+      totalQty: rows.reduce((s, x) => s + x.quantity, 0),
+      lowStock: rows.filter(x => x.quantity <= x.stockAlert).length,
+    }
+  }, [stocks])
 
   return (
     <div className="w-full h-full flex flex-col gap-6">
@@ -36,9 +36,9 @@ export default function DepotStatsPage() {
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <StatCard title="Chiffre d'affaires" value={formatCurrency(stats.totalSales)} icon={<TrendingUp className="w-5 h-5" />} color="primary" />
-        <StatCard title="Bénéfices" value={formatCurrency(stats.totalProfit)} icon={<Package className="w-5 h-5" />} color="success" />
-        <StatCard title="Ventes" value={stats.saleCount} icon={<ShoppingCart className="w-5 h-5" />} color="info" />
+        <StatCard title="Produits en stock" value={stats.productCount} icon={<Package className="w-5 h-5" />} color="primary" />
+        <StatCard title="Quantité totale" value={stats.totalQty} icon={<Boxes className="w-5 h-5" />} color="success" />
+        <StatCard title="Stocks bas" value={stats.lowStock} icon={<AlertTriangle className="w-5 h-5" />} color="warning" />
       </div>
 
       <Card>

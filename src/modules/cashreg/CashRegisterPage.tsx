@@ -20,6 +20,8 @@ interface CashShift {
   cardTotal: number
   mobileTotal: number
   bankTotal: number
+  waveTotal: number
+  orangeTotal: number
   cashSales: number
   totalSales: number
   totalExpenses: number
@@ -29,6 +31,20 @@ interface CashShift {
 }
 
 const STORAGE_KEY = 'neox-cash-shifts'
+
+function paymentBreakdown(sale: { paymentMethod: string; paid: number; splitPayments?: { method: string; amount: number }[] }): Record<string, number> {
+  const parts: Record<string, number> = {
+    cash: 0, wave: 0, orange: 0, mobile: 0, card: 0, bank: 0,
+  }
+  const splits = (sale.splitPayments || []).filter(p => p.amount > 0)
+  if (splits.length > 0) {
+    for (const p of splits) parts[p.method] = (parts[p.method] || 0) + p.amount
+  } else {
+    const key = sale.paymentMethod === 'split' ? 'cash' : (sale.paymentMethod || 'cash')
+    parts[key] = (parts[key] || 0) + (sale.paid || 0)
+  }
+  return parts
+}
 
 function getShifts(): CashShift[] {
   try {
@@ -69,8 +85,33 @@ export default function CashRegisterPage() {
     if (!sales) return 0
     const today = new Date().toISOString().split('T')[0]
     return sales
-      .filter(s => s.createdAt.startsWith(today) && s.paymentMethod === 'cash')
-      .reduce((sum, s) => sum + s.total, 0)
+      .filter(s => s.createdAt.startsWith(today))
+      .reduce((sum, s) => sum + paymentBreakdown(s).cash, 0)
+  }, [sales])
+
+  const todayMethodBreakdown = useMemo(() => {
+    if (!sales) return []
+    const today = new Date().toISOString().split('T')[0]
+    const totals = sales
+      .filter(s => s.createdAt.startsWith(today))
+      .reduce((acc, s) => {
+        const parts = paymentBreakdown(s)
+        acc.cash += parts.cash
+        acc.wave += parts.wave
+        acc.orange += parts.orange
+        acc.mobile += parts.mobile
+        acc.card += parts.card
+        acc.bank += parts.bank
+        return acc
+      }, { cash: 0, wave: 0, orange: 0, mobile: 0, card: 0, bank: 0 })
+    return [
+      { label: 'Espèces', value: totals.cash },
+      { label: 'Wave', value: totals.wave },
+      { label: 'Orange Money', value: totals.orange },
+      { label: 'Mobile Money', value: totals.mobile },
+      { label: 'Carte', value: totals.card },
+      { label: 'Virement', value: totals.bank },
+    ].filter(l => l.value > 0)
   }, [sales])
 
   const todayExpenses = useMemo(() => {
@@ -95,6 +136,8 @@ export default function CashRegisterPage() {
       cardTotal: 0,
       mobileTotal: 0,
       bankTotal: 0,
+      waveTotal: 0,
+      orangeTotal: 0,
       cashSales: 0,
       totalSales: 0,
       totalExpenses: 0,
@@ -118,23 +161,32 @@ export default function CashRegisterPage() {
     const todaySalesData = sales?.filter(s => s.createdAt.startsWith(today)) || []
     const todayExpensesData = cashBook?.filter(e => e.date.startsWith(today) && e.type === 'out') || []
 
-    const cashSalesSum = todaySalesData.filter(s => s.paymentMethod === 'cash').reduce((s, x) => s + x.total, 0)
-    const cardSalesSum = todaySalesData.filter(s => s.paymentMethod === 'card').reduce((s, x) => s + x.total, 0)
-    const mobileSalesSum = todaySalesData.filter(s => s.paymentMethod === 'mobile').reduce((s, x) => s + x.total, 0)
-    const bankSalesSum = todaySalesData.filter(s => s.paymentMethod === 'bank').reduce((s, x) => s + x.total, 0)
+    const totals = todaySalesData.reduce((acc, s) => {
+      const parts = paymentBreakdown(s)
+      acc.cash += parts.cash
+      acc.wave += parts.wave
+      acc.orange += parts.orange
+      acc.mobile += parts.mobile
+      acc.card += parts.card
+      acc.bank += parts.bank
+      return acc
+    }, { cash: 0, wave: 0, orange: 0, mobile: 0, card: 0, bank: 0 })
+
     const totalSalesSum = todaySalesData.reduce((s, x) => s + x.total, 0)
     const expensesSum = todayExpensesData.reduce((s, e) => s + e.amount, 0)
-    const expected = currentShift.initialCash + cashSalesSum - expensesSum
+    const expected = currentShift.initialCash + totals.cash - expensesSum
 
     const closed: CashShift = {
       ...currentShift,
       closedAt: new Date().toISOString(),
       actualCash: actual,
       expectedCash: expected,
-      cashSales: cashSalesSum,
-      cardTotal: cardSalesSum,
-      mobileTotal: mobileSalesSum,
-      bankTotal: bankSalesSum,
+      cashSales: totals.cash,
+      cardTotal: totals.card,
+      mobileTotal: totals.mobile,
+      bankTotal: totals.bank,
+      waveTotal: totals.wave,
+      orangeTotal: totals.orange,
       totalSales: totalSalesSum,
       totalExpenses: expensesSum,
       difference: actual - expected,
@@ -204,6 +256,9 @@ export default function CashRegisterPage() {
                 <th className="text-left text-xs font-semibold text-surface-500 uppercase px-4 py-3">Ouverture</th>
                 <th className="text-left text-xs font-semibold text-surface-500 uppercase px-4 py-3">Fermeture</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-4 py-3">Initial</th>
+                <th className="text-right text-xs font-semibold text-surface-500 uppercase px-4 py-3">Espèces</th>
+                <th className="text-right text-xs font-semibold text-surface-500 uppercase px-4 py-3">Wave</th>
+                <th className="text-right text-xs font-semibold text-surface-500 uppercase px-4 py-3">Orange</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-4 py-3">Ventes</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-4 py-3">Attendu</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-4 py-3">Réel</th>
@@ -216,8 +271,11 @@ export default function CashRegisterPage() {
                 <tr key={s.id} className="hover:bg-surface-50">
                   <td data-label="Ouverture" className="px-4 py-3 text-sm text-surface-600">{formatDateTime(s.openedAt)}</td>
                   <td data-label="Fermeture" className="px-4 py-3 text-sm text-surface-600">{s.closedAt ? formatDateTime(s.closedAt) : '-'}</td>
-                  <td data-label="Initial" className="px-4 py-3 text-right text-sm font-medium">{formatCurrency(s.initialCash)}</td>
-                  <td data-label="Ventes" className="px-4 py-3 text-right text-sm">{formatCurrency(s.totalSales)}</td>
+<td data-label="Initial" className="px-4 py-3 text-right text-sm font-medium">{formatCurrency(s.initialCash)}</td>
+                <td data-label="Espèces" className="px-4 py-3 text-right text-sm">{formatCurrency(s.cashSales)}</td>
+                <td data-label="Wave" className="px-4 py-3 text-right text-sm">{formatCurrency(s.waveTotal || 0)}</td>
+                <td data-label="Orange" className="px-4 py-3 text-right text-sm">{formatCurrency(s.orangeTotal || 0)}</td>
+                <td data-label="Ventes" className="px-4 py-3 text-right text-sm">{formatCurrency(s.totalSales)}</td>
                   <td data-label="Attendu" className="px-4 py-3 text-right text-sm">{formatCurrency(s.expectedCash)}</td>
                   <td data-label="Réel" className="px-4 py-3 text-right text-sm">{formatCurrency(s.actualCash)}</td>
                   <td data-label="Écart" className={`px-4 py-3 text-right text-sm font-semibold ${s.difference >= 0 ? 'text-success' : 'text-danger'}`}>
@@ -232,7 +290,7 @@ export default function CashRegisterPage() {
               ))}
               {closedShifts.length === 0 && (
                 <tr>
-                  <td colSpan={8} className="text-center py-12 text-sm text-surface-400">Aucun shift fermé</td>
+                  <td colSpan={11} className="text-center py-12 text-sm text-surface-400">Aucun shift fermé</td>
                 </tr>
               )}
             </tbody>
@@ -280,6 +338,19 @@ export default function CashRegisterPage() {
               <p className="text-xs text-surface-400">Attendu</p>
               <p className="font-semibold text-primary-400">{formatCurrency((currentShift?.initialCash || 0) + todayCashSales - todayExpenses)}</p>
             </div>
+          </div>
+
+          <div className="rounded-xl border border-surface-200 bg-surface-50 p-3 space-y-1.5">
+            <p className="text-xs font-semibold text-surface-500 uppercase">Détail par mode de paiement</p>
+            {todayMethodBreakdown.map((line, idx) => (
+              <div key={idx} className="flex justify-between text-sm">
+                <span className="text-surface-500">{line.label}</span>
+                <span className="font-semibold text-surface-900">{formatCurrency(line.value)}</span>
+              </div>
+            ))}
+            {todayMethodBreakdown.length === 0 && (
+              <p className="text-sm text-surface-400">Aucune vente aujourd'hui</p>
+            )}
           </div>
 
           <div>

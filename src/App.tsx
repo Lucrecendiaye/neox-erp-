@@ -6,7 +6,6 @@ import OfflineBanner from '@/components/ui/OfflineBanner'
 import PWAInstallPrompt from '@/components/ui/PWAInstallPrompt'
 import AppLayout from '@/components/layout/AppLayout'
 import PermissionRoute from '@/components/layout/PermissionRoute'
-import Dashboard from '@/modules/dashboard/Dashboard'
 import SettingsPage from '@/modules/settings/SettingsPage'
 import TrashPage from '@/modules/trash/TrashPage'
 import LoginPage from '@/modules/auth/LoginPage'
@@ -22,6 +21,7 @@ import { subscribeAll } from '@/lib/realtime'
 import { syncAll } from '@/lib/syncEngine'
 import { scheduleAutoBackup } from '@/lib/autoBackup'
 import { purgeOldRecords } from '@/lib/purgeData'
+import { usePermission } from '@/hooks/usePermission'
 registerSW()
 
 const ProductsPage = lazy(() => import('@/modules/products/ProductsPage'))
@@ -38,13 +38,32 @@ const ReportsPage = lazy(() => import('@/modules/reports/ReportsPage'))
 const DepotsPage = lazy(() => import('@/modules/depots/DepotsPage'))
 const DepotStockPage = lazy(() => import('@/modules/depots/DepotStockPage'))
 const DepotStatsPage = lazy(() => import('@/modules/depots/DepotStatsPage'))
-const DepotGlobalPOSPage = lazy(() => import('@/modules/depots/DepotGlobalPOSPage'))
 const DepotHistoryPage = lazy(() => import('@/modules/depots/DepotHistoryPage'))
 const DepotGlobalStockPage = lazy(() => import('@/modules/depots/DepotGlobalStockPage'))
 const BonSortiePage = lazy(() => import('@/modules/depots/BonSortiePage'))
 const UsersPage = lazy(() => import('@/modules/users/UsersPage'))
 const MorePage = lazy(() => import('@/modules/more/MorePage'))
+const AuditPage = lazy(() => import('@/modules/audit/AuditPage'))
+const BillBookPage = lazy(() => import('@/modules/billbook/BillBookPage'))
+const InvoicesPage = lazy(() => import('@/modules/invoices/InvoicesPage'))
+const CashBookPage = lazy(() => import('@/modules/cashbook/CashBookPage'))
+const CashRegisterPage = lazy(() => import('@/modules/cashreg/CashRegisterPage'))
+const CashOpsPage = lazy(() => import('@/modules/cash/CashOpsPage'))
+const TreasuryPage = lazy(() => import('@/modules/treasury/TreasuryPage'))
+const NotificationsPage = lazy(() => import('@/modules/notifications/NotificationsPage'))
+const SmsRemindersPage = lazy(() => import('@/modules/sms/SmsRemindersPage'))
+const RemindersPage = lazy(() => import('@/modules/reminders/RemindersPage'))
+const DeliveriesPage = lazy(() => import('@/modules/deliveries/DeliveriesPage'))
+const MyDeliveriesPage = lazy(() => import('@/modules/deliveries/MyDeliveriesPage'))
 
+function HomeRedirect() {
+  const { canAny } = usePermission()
+
+  if (canAny('cash')) return <Navigate to="/treasury" replace />
+  if (canAny('pos')) return <Navigate to="/pos" replace />
+  if (canAny('customers')) return <Navigate to="/customers" replace />
+  return <Navigate to="/more" replace />
+}
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { session, initialized } = useAppStore()
@@ -256,7 +275,7 @@ export default function App() {
             </Suspense>
           </ProtectedRoute>
         }>
-          <Route path="/" element={<Dashboard />} />
+          <Route path="/" element={<HomeRedirect />} />
           <Route path="/products" element={<PermissionRoute module="products"><ProductsPage /></PermissionRoute>} />
           <Route path="/products/:productId" element={<PermissionRoute module="products"><ProductDetailPage /></PermissionRoute>} />
           <Route path="/pos" element={<PermissionRoute module="pos"><POSPage /></PermissionRoute>} />
@@ -266,19 +285,30 @@ export default function App() {
           <Route path="/payments" element={<PermissionRoute module="payments"><SupplierPaymentsPage /></PermissionRoute>} />
           <Route path="/sales" element={<PermissionRoute module="sales"><SalesPage /></PermissionRoute>} />
           <Route path="/credits" element={<PermissionRoute module="sales"><CreditPage /></PermissionRoute>} />
+          <Route path="/deliveries" element={<PermissionRoute module="deliveries"><DeliveriesPage /></PermissionRoute>} />
+          <Route path="/mes-livraisons" element={<PermissionRoute module="deliveries"><MyDeliveriesPage /></PermissionRoute>} />
           <Route path="/purchases" element={<PermissionRoute module="purchases"><PurchasesPage /></PermissionRoute>} />
           <Route path="/reports" element={<PermissionRoute module="reports"><ReportsPage /></PermissionRoute>} />
           <Route path="/settings" element={<PermissionRoute module="settings"><SettingsPage /></PermissionRoute>} />
           <Route path="/depots" element={<PermissionRoute module="depots"><DepotsPage /></PermissionRoute>} />
           <Route path="/depots/stock/:locationId" element={<PermissionRoute module="depots"><DepotStockPage /></PermissionRoute>} />
           <Route path="/depots/stats/:locationId" element={<PermissionRoute module="depots"><DepotStatsPage /></PermissionRoute>} />
-          <Route path="/depots/vente" element={<PermissionRoute module="pos" action="create"><DepotGlobalPOSPage /></PermissionRoute>} />
           <Route path="/depots/history/:locationId" element={<PermissionRoute module="depots"><DepotHistoryPage /></PermissionRoute>} />
           <Route path="/depots/stock-global" element={<PermissionRoute module="depots"><DepotGlobalStockPage /></PermissionRoute>} />
           <Route path="/depots/bons-sortie" element={<PermissionRoute module="depots"><BonSortiePage /></PermissionRoute>} />
           <Route path="/users" element={<PermissionRoute module="users"><UsersPage /></PermissionRoute>} />
           <Route path="/trash" element={<TrashPage />} />
           <Route path="/more" element={<MorePage />} />
+          <Route path="/invoices" element={<PermissionRoute module="invoices"><InvoicesPage /></PermissionRoute>} />
+          <Route path="/billbook" element={<PermissionRoute module="invoices"><BillBookPage /></PermissionRoute>} />
+          <Route path="/cashbook" element={<PermissionRoute module="cashbook"><CashBookPage /></PermissionRoute>} />
+          <Route path="/cash" element={<PermissionRoute module="cash"><CashOpsPage /></PermissionRoute>} />
+          <Route path="/treasury" element={<PermissionRoute module="cash"><TreasuryPage /></PermissionRoute>} />
+          <Route path="/cashreg" element={<PermissionRoute module="cashbook"><CashRegisterPage /></PermissionRoute>} />
+          <Route path="/sms" element={<PermissionRoute module="sms"><SmsRemindersPage /></PermissionRoute>} />
+<Route path="/reminders" element={<PermissionRoute module="sales"><RemindersPage /></PermissionRoute>} />
+          <Route path="/audit" element={<PermissionRoute module="audit"><AuditPage /></PermissionRoute>} />
+          <Route path="/notifications" element={<PermissionRoute module="notifications"><NotificationsPage /></PermissionRoute>} />
         </Route>
       </Routes>
     </BrowserRouter>

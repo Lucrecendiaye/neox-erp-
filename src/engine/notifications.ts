@@ -1,11 +1,48 @@
 import db from '@/db'
 import { generateId } from '@/lib/utils'
+import { syncWriteObject } from '@/lib/realtime'
+import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAppStore } from '@/stores/appStore'
 import type { Notification } from '@/types'
 
 function bizId(): string {
   const state = useAppStore.getState()
   return state.currentBusiness?.id || state.user?.businessId || ''
+}
+
+export interface CreateNotificationInput {
+  type: Notification['type']
+  title: string
+  message: string
+  link?: string
+  recipientId?: string
+  senderId?: string
+  transferId?: string
+  shopId?: string
+}
+
+/** Crée une notification (locale + synchronisée vers le cloud pour le temps réel). */
+export async function createNotification(input: CreateNotificationInput): Promise<Notification> {
+  const state = useAppStore.getState()
+  const notif: Notification = {
+    id: generateId(),
+    businessId: bizId(),
+    type: input.type,
+    title: input.title,
+    message: input.message,
+    read: false,
+    link: input.link,
+    recipientId: input.recipientId,
+    senderId: input.senderId || state.user?.id || '',
+    transferId: input.transferId,
+    shopId: input.shopId,
+    createdAt: new Date().toISOString(),
+  }
+  await db.notifications.add(notif)
+  if (isSupabaseConfigured()) {
+    await syncWriteObject('notifications', notif).catch(() => {})
+  }
+  return notif
 }
 
 export async function checkStockAlerts(): Promise<Notification[]> {

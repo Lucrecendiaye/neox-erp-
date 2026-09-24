@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
+import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination, NumericInput } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
@@ -11,6 +11,7 @@ import { shareViaWeChat } from '@/lib/share'
 import { Search, Plus, Edit2, Trash2, FileText, Download, Send, ChevronDown, ChevronUp, X, Plus as PlusIcon, Printer, MessageCircle } from 'lucide-react'
 import { exportInvoicePDF, buildProductPhotos } from '@/lib/pdf'
 import { softDelete } from '@/lib/softDelete'
+import { nextInvoiceNumber } from '@/engine/invoiceNumbers'
 import type { Invoice, SaleItem, Customer, Supplier, Product } from '@/types'
 
 const statusColors = {
@@ -73,8 +74,8 @@ export default function InvoicesPage() {
   const totals = useMemo(() => {
     const subtotal = items.reduce((s, i) => s + (i.unitPrice * i.quantity), 0)
     const discountTotal = items.reduce((s, i) => s + i.discount, 0)
-    const taxTotal = items.reduce((s, i) => s + (i.unitPrice * i.quantity * i.taxRate / 100), 0)
-    return { subtotal, discountTotal, taxTotal, total: subtotal - discountTotal + taxTotal }
+    const taxTotal = 0
+    return { subtotal, discountTotal, taxTotal, total: subtotal - discountTotal }
   }, [items])
 
   function openCreate() {
@@ -106,7 +107,7 @@ export default function InvoicesPage() {
     if (!product) return
     const existing = items.find(i => i.productId === productId)
     if (existing) {
-      setItems(items.map(i => i.productId === productId ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * i.unitPrice * (1 + i.taxRate / 100) - i.discount } : i))
+      setItems(items.map(i => i.productId === productId ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * i.unitPrice - i.discount } : i))
       return
     }
     setItems([...items, {
@@ -115,8 +116,8 @@ export default function InvoicesPage() {
       quantity: 1,
       unitPrice: product.sellingPrice,
       discount: 0,
-      taxRate: product.taxRate,
-      total: product.sellingPrice * (1 + product.taxRate / 100),
+      taxRate: 0,
+      total: product.sellingPrice,
     }])
   }
 
@@ -128,22 +129,22 @@ export default function InvoicesPage() {
     setItems(items.map(i => {
       if (i.productId !== productId) return i
       const updated = { ...i, [field]: value }
-      updated.total = updated.unitPrice * updated.quantity * (1 + updated.taxRate / 100) - updated.discount
+      updated.total = updated.unitPrice * updated.quantity - updated.discount
       return updated
     }))
   }
 
   async function handleSave() {
     const now = new Date().toISOString()
-    const nextNum = (settings?.invoiceNextNumber || 1)
-    const prefix = settings?.invoicePrefix || 'INV-'
+    const number = editing ? editing.number : await nextInvoiceNumber()
     const invoice: Invoice = {
       id: editing ? editing.id : generateId(),
       businessId,
       type,
-      number: editing ? editing.number : `${prefix}${String(nextNum).padStart(5, '0')}`,
+      number,
       partyId: partyId || undefined,
       partyName: partyName || 'Client',
+      partyPhone: parties.find(p => p.id === partyId)?.phone,
       items: items.map(i => ({
         productId: i.productId,
         productName: i.productName,
@@ -169,9 +170,6 @@ export default function InvoicesPage() {
         toast('Facture mise à jour avec succès', 'success')
       } else {
         await db.invoices.add(invoice)
-        if (settings) {
-          await db.settings.update('default', { invoiceNextNumber: nextNum + 1 })
-        }
         toast('Facture créée avec succès', 'success')
       }
       setModalOpen(false)
@@ -283,10 +281,10 @@ export default function InvoicesPage() {
                   <tbody>
                     {inv.items.map((item, idx) => (
                       <tr key={idx} className="border-t border-surface-50">
-                        <td className="py-2 text-surface-900">{item.productName}</td>
-                        <td className="py-2 text-right text-surface-600">{item.quantity}</td>
-                        <td className="py-2 text-right text-surface-600">{formatCurrency(item.unitPrice)}</td>
-                        <td className="py-2 text-right font-medium">{formatCurrency(item.unitPrice * item.quantity)}</td>
+                        <td data-label="Produit" className="py-2 text-surface-900">{item.productName}</td>
+                        <td data-label="Qté" className="py-2 text-right text-surface-600">{item.quantity}</td>
+                        <td data-label="Prix unit." className="py-2 text-right text-surface-600">{formatCurrency(item.unitPrice)}</td>
+                        <td data-label="Total" className="py-2 text-right font-medium">{formatCurrency(item.unitPrice * item.quantity)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -295,12 +293,6 @@ export default function InvoicesPage() {
                       <td colSpan={3} className="pt-2 text-right text-surface-500">Sous-total</td>
                       <td className="pt-2 text-right text-surface-900">{formatCurrency(inv.subtotal)}</td>
                     </tr>
-                    {inv.taxTotal > 0 && (
-                      <tr>
-                        <td colSpan={3} className="text-right text-surface-500">TVA</td>
-                        <td className="text-right text-surface-900">{formatCurrency(inv.taxTotal)}</td>
-                      </tr>
-                    )}
                     <tr>
                       <td colSpan={3} className="text-right font-semibold text-surface-900">Total</td>
                       <td className="text-right font-bold text-surface-900">{formatCurrency(inv.total)}</td>
@@ -376,15 +368,14 @@ export default function InvoicesPage() {
                   </div>
                   <div className="flex items-center gap-2">
                     <button onClick={() => updateItem(item.productId, 'quantity', Math.max(1, item.quantity - 1))} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><ChevronDown className="w-3 h-3" /></button>
-                    <input
-                      type="number" min="1" value={item.quantity}
+                      <NumericInput min="1" value={item.quantity}
                       onChange={(e) => updateItem(item.productId, 'quantity', Math.max(1, Number(e.target.value) || 1))}
                       inputMode="numeric"
                       className="w-14 text-sm px-1 py-1 rounded-lg border border-surface-200 text-center"
                     />
                     <button onClick={() => updateItem(item.productId, 'quantity', item.quantity + 1)} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><ChevronUp className="w-3 h-3" /></button>
                   </div>
-                  <input type="number" value={item.unitPrice} onChange={(e) => updateItem(item.productId, 'unitPrice', Number(e.target.value))} className="w-20 text-sm px-2 py-1 rounded-lg border border-surface-200 text-right" />
+                  <NumericInput value={item.unitPrice} onChange={(e) => updateItem(item.productId, 'unitPrice', Number(e.target.value))} className="w-20 text-sm px-2 py-1 rounded-lg border border-surface-200 text-right" />
                   <p className="text-sm font-semibold text-surface-900 w-20 text-right">{formatCurrency(item.unitPrice * item.quantity)}</p>
                   <button onClick={() => removeItem(item.productId)} className="p-1 rounded-md hover:bg-red-500/15 text-surface-400 hover:text-danger"><X className="w-4 h-4" /></button>
                 </div>
@@ -400,7 +391,6 @@ export default function InvoicesPage() {
 
           <div className="bg-surface-50 rounded-xl p-4 space-y-1 text-sm">
             <div className="flex justify-between text-surface-500"><span>Sous-total</span><span>{formatCurrency(totals.subtotal)}</span></div>
-            {totals.taxTotal > 0 && <div className="flex justify-between text-surface-500"><span>TVA</span><span>{formatCurrency(totals.taxTotal)}</span></div>}
             <div className="flex justify-between font-bold text-surface-900 pt-1 border-t border-surface-200"><span>Total</span><span>{formatCurrency(totals.total)}</span></div>
           </div>
 

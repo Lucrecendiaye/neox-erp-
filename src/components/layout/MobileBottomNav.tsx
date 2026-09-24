@@ -1,7 +1,7 @@
 import { NavLink, useLocation } from 'react-router-dom'
 import { cn } from '@/lib/utils'
 import {
-  LayoutDashboard, ShoppingCart, HandCoins, Package, BarChart3, Settings
+  Landmark, ShoppingCart, Users, Package, MoreHorizontal
 } from 'lucide-react'
 import { usePermission } from '@/hooks/usePermission'
 
@@ -13,12 +13,11 @@ interface NavItem {
 }
 
 const items: NavItem[] = [
-  { to: '/', label: 'Accueil', module: 'dashboard', icon: <LayoutDashboard className="w-6 h-6" /> },
-  { to: '/pos', label: 'Caisse', module: 'pos', icon: <ShoppingCart className="w-6 h-6" /> },
-  { to: '/credits', label: 'Crédits', module: 'sales', icon: <HandCoins className="w-6 h-6" /> },
+  { to: '/treasury', label: 'Trésorerie', module: 'cash', icon: <Landmark className="w-6 h-6" /> },
+  { to: '/pos', label: 'Vente', module: 'pos', icon: <ShoppingCart className="w-6 h-6" /> },
+  { to: '/customers', label: 'Clients', module: 'customers', icon: <Users className="w-6 h-6" /> },
   { to: '/products', label: 'Stock', module: 'products', icon: <Package className="w-6 h-6" /> },
-  { to: '/reports', label: 'Rapports', module: 'reports', icon: <BarChart3 className="w-6 h-6" /> },
-  { to: '/settings', label: 'Paramètres', module: '', icon: <Settings className="w-6 h-6" /> },
+  { to: '/more', label: 'Plus', module: '', icon: <MoreHorizontal className="w-6 h-6" /> },
 ]
 
 export default function MobileBottomNav() {

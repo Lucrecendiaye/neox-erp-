@@ -32,6 +32,9 @@ const TABLES: { name: TableName; supabaseName: string }[] = [
   { name: 'accounts', supabaseName: 'accounts' },
   { name: 'creditPayments', supabaseName: 'credit_payments' },
   { name: 'bonSorties', supabaseName: 'bon_sorties' },
+  { name: 'cashOps', supabaseName: 'cash_operations' },
+  { name: 'cashCategories', supabaseName: 'cash_categories' },
+  { name: 'deliveries', supabaseName: 'deliveries' },
   { name: 'businessCards', supabaseName: 'business_cards' },
   { name: 'settings', supabaseName: 'settings' },
   { name: 'businesses', supabaseName: 'businesses' },
@@ -44,12 +47,13 @@ const TENANT_TABLES: Set<string> = new Set([
   'notifications', 'audit_logs', 'locations', 'product_stocks', 'product_history',
   'supplier_invoices', 'supplier_payments', 'compensations', 'transfers',
   'stock_movements', 'invoices', 'accounts', 'credit_payments', 'bon_sorties',
-  'business_cards', 'settings', 'profiles',
+  'cash_operations', 'cash_categories',
+  'deliveries', 'business_cards', 'settings', 'profiles',
 ])
 
 const SMALL_TABLES = new Set([
   'categories', 'locations', 'employees', 'attendance', 'payrolls', 'leads',
-  'notifications', 'audit_logs', 'settings', 'profiles',
+  'notifications', 'audit_logs', 'settings', 'profiles', 'cash_categories',
 ])
 
 const PULL_ONLY_TABLES = new Set([
@@ -69,7 +73,37 @@ const PROFILE_CLOUD_COLUMNS = new Set([
   'createdAt', 'updatedAt', 'authUserId', 'is_active', 'last_login',
 ])
 
+const PRODUCT_CLOUD_COLUMNS = new Set([
+  'id', 'businessId', 'name', 'description', 'photos', 'barcode', 'qrCode',
+  'reference', 'categoryId', 'brand', 'unit', 'purchasePrice', 'sellingPrice',
+  'wholesalePrice', 'priceDozen', 'pricePack', 'packSize', 'margin', 'taxRate',
+  'stockAlert', 'stockMin', 'stockMax', 'location', 'supplierId', 'status',
+  'createdAt', 'updatedAt',
+])
+
+const SALES_CLOUD_COLUMNS = new Set([
+  'id', 'businessId', 'invoiceNumber', 'createdAt', 'customerId', 'customerName',
+  'items', 'subtotal', 'discountTotal', 'taxTotal', 'total', 'paid', 'change',
+  'paymentMethod', 'splitPayments', 'status', 'userId', 'locationId',
+])
+
+const CASH_BOOK_CLOUD_COLUMNS = new Set([
+  'id', 'businessId', 'date', 'type', 'category', 'amount', 'description',
+  'partyName', 'paymentMethod', 'reference', 'createdAt', 'userId',
+])
+
+const NOTIFICATION_CLOUD_COLUMNS = new Set([
+  'id', 'businessId', 'type', 'title', 'message', 'read', 'link', 'createdAt',
+])
+
 export function sanitizeForCloud(supabaseName: string, payload: Record<string, unknown>): Record<string, unknown> {
+  if (supabaseName === 'products') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(payload)) {
+      if (PRODUCT_CLOUD_COLUMNS.has(key)) out[key] = payload[key]
+    }
+    return out
+  }
   if (supabaseName === 'audit_logs') {
     const out: Record<string, unknown> = {}
     for (const key of Object.keys(payload)) {
@@ -81,6 +115,27 @@ export function sanitizeForCloud(supabaseName: string, payload: Record<string, u
     const out: Record<string, unknown> = {}
     for (const key of Object.keys(payload)) {
       if (CREDIT_DB_COLUMNS.has(key)) out[key] = payload[key]
+    }
+    return out
+  }
+  if (supabaseName === 'sales') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(payload)) {
+      if (SALES_CLOUD_COLUMNS.has(key)) out[key] = payload[key]
+    }
+    return out
+  }
+  if (supabaseName === 'cash_book') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(payload)) {
+      if (CASH_BOOK_CLOUD_COLUMNS.has(key)) out[key] = payload[key]
+    }
+    return out
+  }
+  if (supabaseName === 'notifications') {
+    const out: Record<string, unknown> = {}
+    for (const key of Object.keys(payload)) {
+      if (NOTIFICATION_CLOUD_COLUMNS.has(key)) out[key] = payload[key]
     }
     return out
   }
@@ -232,15 +287,32 @@ function mapCloudToLocal(
   row: any,
   existing?: any
 ): any {
+  if (supabaseName === 'settings') {
+    return { ...row, id: 'default', businessId: row.businessId || row.business_id || '' }
+  }
+  if (supabaseName === 'sales') {
+    const paid = Number(row.paid) || 0
+    const total = Number(row.total) || 0
+    return {
+      ...row,
+      paymentStatus: row.paymentStatus || (paid >= total ? 'paid' : paid > 0 ? 'partial' : 'unpaid'),
+      supplierId: existing?.supplierId || row.supplierId || undefined,
+      discountTotal: row.discountTotal ?? 0,
+      taxTotal: row.taxTotal ?? 0,
+      change: row.change ?? 0,
+      businessId: row.businessId || existing?.businessId || '',
+    }
+  }
   if (supabaseName !== 'profiles') return row
   const status = row.status || (row.is_active === false ? 'blocked' : 'active')
   return {
     id: row.id,
+    authUserId: row.auth_user_id || row.authUserId || '',
     businessId: row.businessId || row.business_id || '',
     name: row.name || '',
     email: row.email || '',
     phone: row.phone || undefined,
-    loginId: row.loginId || row.email || '',
+    loginId: row.login_id || row.loginId || row.email || '',
     passwordHash: existing?.passwordHash || '',
     role: row.role || 'staff',
     permissions: row.permissions?.length ? row.permissions : ['*'],

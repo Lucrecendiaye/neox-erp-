@@ -3,12 +3,11 @@ import { useNavigate } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, Button, Input, Select, Modal } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
-import { Save, LogOut, Bell, Shield, Globe, Printer, Plus, Trash2, CheckCircle, Database, KeyRound, Lock, Camera, Image, X, Palette } from 'lucide-react'
+import { Save, LogOut, Bell, Shield, Globe, Printer, Plus, Trash2, CheckCircle, Database, KeyRound, Lock, Image, X, Palette } from 'lucide-react'
 import { useAppStore } from '@/stores/appStore'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { cn } from '@/lib/utils'
 import { toast } from '@/lib/toast'
-import { printBarcodeLabels } from '@/lib/barcodePrint'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import { supabase } from '@/lib/supabase'
 import { setPin as setSecurityPin, resetPinToDefault, verifyPin, getStoredPinHash } from '@/lib/security'
@@ -22,7 +21,6 @@ import type { CurrencyRate } from '@/types'
 export default function SettingsPage() {
   const settings = useLiveQuery(() => db.settings.get('default'), [])
   const businessId = useBusinessId()
-  const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const { theme, setTheme } = useTheme()
   const logoRef = useRef<HTMLInputElement>(null)
   const [form, setForm] = useState({
@@ -71,11 +69,27 @@ export default function SettingsPage() {
         locale: settings?.locale || 'fr-FR',
         timezone: settings?.timezone || 'Africa/Douala',
         invoiceNextNumber: settings?.invoiceNextNumber || 1,
+        deliveryPrefix: settings?.deliveryPrefix || 'VL-',
+        deliveryNextNumber: settings?.deliveryNextNumber || 1,
         id: 'default',
       } as any
       await db.settings.put(updated)
       useAppStore.getState().setSettings(updated)
       if (logo) await syncBusinessLogo(logo)
+      if (isSupabaseConfigured() && businessId) {
+        const { syncWriteObject } = await import('@/lib/realtime')
+        const { id: _drop, ...rest } = updated
+        await syncWriteObject('settings', { ...rest, id: businessId, businessId, updatedAt: new Date().toISOString() }).catch(() => {})
+        const { error: bizErr } = await supabase.from('businesses').update({
+          name: form.name || undefined,
+          phone: form.phone || undefined,
+          email: form.email || undefined,
+          address: form.address || undefined,
+          currency: form.currency || undefined,
+          updatedAt: new Date().toISOString(),
+        }).eq('id', businessId)
+        if (bizErr) console.error('Business sync error', bizErr)
+      }
       toast('Paramètres enregistrés', 'success')
     } catch { toast('Erreur lors de l\'enregistrement', 'error') }
   }
@@ -85,6 +99,10 @@ export default function SettingsPage() {
     try {
       const compressed = await compressImage(file, { maxDim: 512 })
       const url = await uploadImage(compressed, 'logos')
+      if (!url) {
+        toast('Stockage image indisponible', 'error')
+        return
+      }
       setLogo(url)
       await syncBusinessLogo(url)
       toast('Logo mis à jour', 'success')
@@ -110,15 +128,6 @@ export default function SettingsPage() {
   function removeCurrency(code: string) {
     if (currencies.find(c => c.code === code)?.isDefault) return
     setCurrencies(currencies.filter(c => c.code !== code))
-  }
-
-  async function handlePrintLabels() {
-    if (!products || products.length === 0) {
-      toast('Aucun produit à imprimer', 'warning')
-      return
-    }
-    const n = products.slice(0, 24)
-    printBarcodeLabels(n)
   }
 
   async function handleChangePin() {
@@ -203,7 +212,7 @@ export default function SettingsPage() {
                 ) : (
                   <div onClick={() => logoRef.current?.click()}
                     className="w-24 h-24 rounded-xl border-2 border-dashed border-surface-300 flex flex-col items-center justify-center gap-1 cursor-pointer hover:border-primary-400 hover:bg-surface-50 transition-colors">
-                    <Camera className="w-6 h-6 text-surface-400" />
+                    <Image className="w-6 h-6 text-surface-400" />
                     <span className="text-[10px] text-surface-400">Logo</span>
                   </div>
                 )}
@@ -243,7 +252,7 @@ export default function SettingsPage() {
         <Card>
           <CardTitle className="flex items-center gap-2">
             <Printer className="w-5 h-5 text-primary-500" />
-            Facturation & Taxes
+            Facturation
           </CardTitle>
           <div className="mt-4 space-y-4">
             <Select label="Devise par défaut" value={form.currency} onChange={(e) => {
@@ -252,7 +261,6 @@ export default function SettingsPage() {
             }}
               options={currencies.map(c => ({ value: c.code, label: `${c.code} (${c.symbol})${c.isDefault ? ' — Par défaut' : ''}` }))} />
             <Input label="Symbole devise" value={form.currencySymbol} onChange={(e) => setForm({ ...form, currencySymbol: e.target.value })} />
-            <Input label="TVA par défaut (%)" type="number" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: +e.target.value })} />
             <Input label="Préfixe facture" value={form.invoicePrefix} onChange={(e) => setForm({ ...form, invoicePrefix: e.target.value })} />
             <div>
               <label className="block text-sm font-medium text-surface-700 mb-1.5">Notes sur la facture</label>
@@ -329,18 +337,6 @@ export default function SettingsPage() {
             ))}
             <Button variant="outline" className="w-full" onClick={() => setCurrencyModal(true)}>
               <Plus className="w-4 h-4" /> Ajouter une devise
-            </Button>
-          </div>
-        </Card>
-
-        <Card>
-          <CardTitle className="flex items-center gap-2">
-            <Printer className="w-5 h-5 text-primary-500" />
-            Impression
-          </CardTitle>
-          <div className="mt-4 space-y-3">
-            <Button variant="outline" className="w-full justify-start" onClick={handlePrintLabels}>
-              <Printer className="w-4 h-4" /> Imprimer étiquettes produits
             </Button>
           </div>
         </Card>

@@ -20,18 +20,18 @@ export default function PWAInstallPrompt() {
 
   return (
     <div className="fixed bottom-20 left-4 right-4 z-50 lg:bottom-6 lg:left-auto lg:right-6 lg:w-80 animate-slide-up">
-      <div className="glass-dark rounded-2xl p-4 shadow-2xl border border-white/10">
+      <div className="glass-dark rounded-2xl p-4 shadow-2xl border border-surface-200">
         <div className="flex items-start gap-3">
           <div className="w-10 h-10 bg-primary-500 rounded-xl flex items-center justify-center shrink-0">
             <Download className="w-5 h-5 text-on-accent" />
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-white">Installer NeoX ERP</p>
-            <p className="text-xs text-white/60 mt-0.5">Installez l'application pour un accès rapide</p>
+            <p className="text-sm font-semibold text-surface-900">Installer NeoX ERP</p>
+            <p className="text-xs text-surface-500 mt-0.5">Installez l'application pour un accès rapide</p>
           </div>
           <button
             onClick={() => { setDismissed(true); localStorage.setItem('pwa-install-dismissed', 'true') }}
-            className="p-1 rounded-lg hover:bg-surface-100/10 text-white/40 hover:text-white/70 transition-colors"
+            className="p-1 rounded-lg hover:bg-surface-200 text-surface-400 hover:text-surface-700 transition-colors"
           >
             <X className="w-4 h-4" />
           </button>

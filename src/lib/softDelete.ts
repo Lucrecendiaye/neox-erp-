@@ -7,7 +7,8 @@ export type DeletableEntity =
   | 'sales' | 'purchases' | 'invoices' | 'credits'
   | 'employees' | 'attendance' | 'payrolls' | 'leads'
   | 'locations' | 'cashBook' | 'notifications' | 'businesses'
-  | 'users' | 'creditPayments'
+  | 'users' | 'creditPayments' | 'cashOps' | 'cashCategories'
+  | 'deliveries' | 'loans' | 'loanPayments' | 'reminders'
 
 export interface DeletedRecord {
   id: string
@@ -55,9 +56,12 @@ function entityLabel(entity: DeletableEntity): string {
     leads: 'Lead',
     locations: 'Emplacement',
     cashBook: 'Caisse',
+    cashOps: 'Opération cash',
+    cashCategories: 'Catégorie cash',
     notifications: 'Notification',
     businesses: 'Boutique',
     users: 'Utilisateur',
+    deliveries: 'Livraison',
   }
   return labels[entity] || entity
 }
@@ -112,7 +116,8 @@ export async function restore(entity: DeletableEntity, entityId: string): Promis
     if (saleData.items && saleData.locationId) {
       for (const item of saleData.items) {
         const mainQty = item.unitQuantity ? item.quantity * item.unitQuantity : item.quantity
-        const stockRecords = await db.productStocks.where({ productId: item.productId, locationId: saleData.locationId }).toArray()
+        const locationId = item.locationId || saleData.locationId
+        const stockRecords = await db.productStocks.where({ productId: item.productId, locationId }).toArray()
         if (stockRecords.length > 0) {
           const sr = stockRecords[0]
           const before = sr.quantity
@@ -122,7 +127,7 @@ export async function restore(entity: DeletableEntity, entityId: string): Promis
             id: generateId(),
             businessId: currentBizId(),
             productId: item.productId,
-            locationId: saleData.locationId,
+            locationId,
             action: 'sold',
             quantityBefore: before,
             quantityAfter: after,
@@ -161,12 +166,18 @@ export async function restore(entity: DeletableEntity, entityId: string): Promis
     await db.locations.add(data as any)
   } else if (entity === 'cashBook') {
     await db.cashBook.add(data as any)
+  } else if (entity === 'cashOps') {
+    await db.cashOps.add(data as any)
+  } else if (entity === 'cashCategories') {
+    await db.cashCategories.add(data as any)
   } else if (entity === 'notifications') {
     await db.notifications.add(data as any)
   } else if (entity === 'businesses') {
     await db.businesses.add(data as any)
   } else if (entity === 'users') {
     await db.users.add(data as any)
+  } else if (entity === 'deliveries') {
+    await db.deliveries.add(data as any)
   }
 
   await db.deletedRecords.where({ businessId: bizId, entity, entityId }).delete()

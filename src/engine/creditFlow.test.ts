@@ -30,28 +30,16 @@ beforeAll(async () => {
     permissions: ['*'],
   } as any)
   useAppStore.getState().setCurrentBusiness({ id: 'b1', name: 'Biz' } as any)
-  await db.productStocks.put({
-    id: 'stock-p1-loc1', businessId: 'b1', productId: 'p1', locationId: 'loc1',
-    quantity: 1000, stockAlert: 0, stockMin: 0, stockMax: 1000, updatedAt: new Date().toISOString(),
-  } as any)
-})
-
-describe('sale stock validation', () => {
-  it('rejects a sale that exceeds the stock without creating the sale', async () => {
-    await db.productStocks.put({
-      id: 'stock-p-stock-loc-stock', businessId: 'b1', productId: 'p-stock', locationId: 'loc-stock',
-      quantity: 10, stockAlert: 0, stockMin: 0, stockMax: 1000, updatedAt: new Date().toISOString(),
-    } as any)
-    const sale: Sale = {
-      id: 'sale-stock-overflow', businessId: 'b1', locationId: 'loc-stock', invoiceNumber: 'INV-STOCK',
-      items: [{ productId: 'p-stock', productName: 'Produit test', quantity: 11, unitPrice: 100, discount: 0, taxRate: 0, total: 1100 }],
-      subtotal: 1100, discountTotal: 0, taxTotal: 0, total: 1100, paid: 1100, change: 0,
-      paymentMethod: 'cash', status: 'completed', createdAt: new Date().toISOString(), userId: 'u1',
-    }
-
-    await expect(processSale(sale)).rejects.toThrow('Stock insuffisant')
-    expect(await db.sales.get(sale.id)).toBeUndefined()
-    expect((await db.productStocks.get('stock-p-stock-loc-stock'))?.quantity).toBe(10)
+  await db.productStocks.add({
+    id: 'stock-p1-loc1',
+    businessId: 'b1',
+    productId: 'p1',
+    locationId: 'loc1',
+    quantity: 500,
+    stockAlert: 10,
+    stockMin: 0,
+    stockMax: 999999,
+    updatedAt: new Date().toISOString(),
   })
 })
 

@@ -1,25 +1,25 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, CardHeader, CardTitle, Button, Modal, Badge, Input, Select } from '@/components/ui'
+import { Card, CardHeader, CardTitle, Button, Modal, Badge, Input, Select, NumericInput } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useSupabaseQuery, sb } from '@/lib/supabase-db'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { useAppStore } from '@/stores/appStore'
 import { isSupabaseConfigured } from '@/lib/supabase'
 import db from '@/db'
-import { cn, formatCurrency, generateId, calculateMargin, getProductUnits, convertToMainUnit } from '@/lib/utils'
+import { cn, formatCurrency, generateId, getProductUnits, convertToMainUnit, formatDateLong } from '@/lib/utils'
 import { toast } from '@/lib/toast'
-import { processStockAdjustment, processTransfer, getLocationStockValue, getLocationStats, confirmTransferReception } from '@/engine/operations'
+import { processStockAdjustment, processTransfer, getLocationStockValue, getLocationStats } from '@/engine/operations'
 import { exportBonSortiePDF } from '@/lib/pdf'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import { usePermission } from '@/hooks/usePermission'
 import { softDelete } from '@/lib/softDelete'
-import { syncDeleteObject } from '@/lib/realtime'
+import { syncDeleteObject, syncWriteObject } from '@/lib/realtime'
 import type { Product } from '@/types'
 import PhotoUpload from '@/components/ui/PhotoUpload'
 import {
   Package, Search, ArrowLeft, ArrowRightLeft, Plus, Edit2, Eye, Trash2, History,
-  TrendingUp, AlertTriangle, DollarSign, Layers, Filter, Printer, CheckCircle2
+   AlertTriangle, DollarSign, Layers, Filter, Printer, CheckCircle2
 } from 'lucide-react'
 
 export default function DepotStockPage() {
@@ -49,7 +49,6 @@ export default function DepotStockPage() {
   const [transferItems, setTransferItems] = useState<{ productId: string; qty: number; unitName?: string; unitQuantity?: number }[]>([])
   const [bonModal, setBonModal] = useState(false)
   const [bonInfo, setBonInfo] = useState<{ id: string; bonNumber: string; from: string; to: string; date: string; items: { name: string; qty: number }[] } | null>(null)
-  const [receptName, setReceptName] = useState('')
   const [pinModalOpen, setPinModalOpen] = useState(false)
   const [pinAction, setPinAction] = useState<{ type: string; payload?: any } | null>(null)
 
@@ -57,14 +56,21 @@ export default function DepotStockPage() {
   const [editing, setEditing] = useState<Product | null>(null)
   const [editPhotos, setEditPhotos] = useState<string[]>([])
   const [editForm, setEditForm] = useState({
-    name: '', description: '', barcode: '', reference: '', categoryId: '', brand: '',
-    unit: 'piece' as 'piece' | 'dozen' | 'pack', purchasePrice: 0, sellingPrice: 0,
-    wholesalePrice: 0, priceDozen: 0, pricePack: 0, packSize: 0,
-    packCost: 0, dozenCost: 0,
-    taxRate: 0, stockAlert: 0, location: '',
+    name: '', categoryId: '', unit: 'piece' as 'piece' | 'dozen' | 'pack', purchaseCost: 0, packSize: 0,
+    taxRate: 0,
   })
   const [editPackUnit, setEditPackUnit] = useState<'piece' | 'dozen'>('piece')
   const [editPackQty, setEditPackQty] = useState(0)
+
+  const [createModal, setCreateModal] = useState(false)
+  const [createForm, setCreateForm] = useState({
+    name: '', categoryId: '', unit: 'piece' as 'piece' | 'dozen' | 'pack', purchaseCost: 0, packSize: 0,
+    taxRate: 0,
+  })
+  const [createPhotos, setCreatePhotos] = useState<string[]>([])
+  const [createInitialStock, setCreateInitialStock] = useState(0)
+  const [createPackUnit, setCreatePackUnit] = useState<'piece' | 'dozen'>('piece')
+  const [createPackQty, setCreatePackQty] = useState(0)
   const isCloud = isSupabaseConfigured()
 
   const productMap = useMemo(() => new Map(allProducts?.map(p => [p.id, p])), [allProducts])
@@ -86,11 +92,10 @@ export default function DepotStockPage() {
   }, [allProducts, categoryMap])
 
   const stats = useMemo(() => {
-    let totalValue = 0, totalCost = 0, lowStockCount = 0, outOfStockCount = 0
+    let totalCost = 0, lowStockCount = 0, outOfStockCount = 0
     stocks?.forEach(s => {
       const p = productMap.get(s.productId)
       if (p) {
-        totalValue += s.quantity * p.sellingPrice
         totalCost += s.quantity * p.purchasePrice
       }
       if (s.quantity <= s.stockAlert && s.quantity > 0) lowStockCount++
@@ -102,9 +107,8 @@ export default function DepotStockPage() {
       if (p?.categoryId) catSet.add(p.categoryId)
     })
     return {
-      totalValue, totalCost, totalProducts: stocks?.length || 0,
+      totalCost, totalProducts: stocks?.length || 0,
       categoryCount: catSet.size, lowStockCount, outOfStockCount,
-      potentialProfit: totalValue - totalCost,
     }
   }, [stocks, productMap])
 
@@ -114,7 +118,7 @@ export default function DepotStockPage() {
       if (!productIds.has(p.id)) return false
       if (search) {
         const q = search.toLowerCase()
-        if (!p.name.toLowerCase().includes(q) && !p.barcode?.includes(q) && !p.reference?.toLowerCase().includes(q) && !p.brand?.toLowerCase().includes(q)) return false
+        if (!p.name.toLowerCase().includes(q)) return false
       }
       if (categoryId !== 'all' && p.categoryId !== categoryId) return false
       const stock = stockMap.get(p.id)
@@ -171,9 +175,9 @@ export default function DepotStockPage() {
       id: transfer.id, bonNumber: transfer.bonNumber || '', from: fromName, to: toName, date: transfer.createdAt,
       items: items.map(i => ({ name: i.productName, qty: i.quantity })),
     })
-    setReceptName(currentUser?.name || '')
     setBonModal(true)
     setTransferModal(false); setTransferTarget(''); setTransferItems([])
+    toast('Transfert effectué automatiquement', 'success')
   }
 
   const otherLocations = allLocations?.filter(l => l.id !== locationId) || []
@@ -182,16 +186,10 @@ export default function DepotStockPage() {
     return (allProducts || []).filter(p => {
       const available = stockMap.get(p.id)?.quantity || 0
       if (available <= 0) return false
-      if (q && !p.name.toLowerCase().includes(q) && !p.barcode?.includes(q) && !p.reference?.toLowerCase().includes(q) && !p.brand?.toLowerCase().includes(q)) return false
+      if (q && !p.name.toLowerCase().includes(q)) return false
       return true
     })
   }, [allProducts, stockMap, transferSearch])
-  function marginColor(m: number) {
-    if (m >= 20) return 'text-success'
-    if (m >= 10) return 'text-warning'
-    return 'text-danger'
-  }
-
   const allCategoriesNames = useMemo(() => {
     const allCats = new Map(dexieCategories?.map((c: any) => [c.id, c.name]) || [])
     categories.forEach(c => { if (!allCats.has(c.id)) allCats.set(c.id, c.name) })
@@ -202,17 +200,12 @@ export default function DepotStockPage() {
     setEditing(product)
     setEditPhotos(product.photos || [])
     setEditForm({
-      name: product.name, description: product.description || '',
-      barcode: product.barcode || '', reference: product.reference || '',
-      categoryId: product.categoryId || '', brand: product.brand || '',
-      unit: product.unit, purchasePrice: product.purchasePrice,
-      sellingPrice: product.sellingPrice, wholesalePrice: product.wholesalePrice || 0,
-      priceDozen: product.priceDozen || 0, pricePack: product.pricePack || 0,
-      packSize: product.packSize || 0,
-      packCost: product.packSize ? Math.round((product.purchasePrice * product.packSize) * 100) / 100 : 0,
-      dozenCost: Math.round(product.purchasePrice * 12 * 100) / 100,
-      taxRate: product.taxRate, stockAlert: product.stockAlert || 0,
-      location: product.location || '',
+      name: product.name,
+      categoryId: product.categoryId || '',
+      unit: product.unit,
+      purchaseCost: product.purchasePrice * (product.unit === 'dozen' ? 12 : product.unit === 'pack' ? (product.packSize || 1) : 1),
+      packSize: 0,
+      taxRate: product.taxRate,
     })
     if (product.packSize) {
       setEditPackUnit(product.packSize % 12 === 0 ? 'dozen' : 'piece')
@@ -229,10 +222,70 @@ export default function DepotStockPage() {
     if (!editing) return
     try {
       const packSize = editForm.unit === 'pack' ? (editForm.packSize || (editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty)) : undefined
-      const data = { ...editForm, photos: editPhotos, packSize, margin: calculateMargin(editForm.purchasePrice, editForm.sellingPrice), updatedAt: now }
+      if (!editForm.name.trim()) { toast('Nom du produit requis', 'warning'); return }
+      if (editForm.purchaseCost <= 0) { toast('Prix de revient requis', 'warning'); return }
+      if (editForm.unit === 'pack' && (!packSize || packSize <= 0)) { toast('Indiquez la composition du paquet', 'warning'); return }
+      const purchasePrice = Math.round((editForm.purchaseCost / (editForm.unit === 'dozen' ? 12 : editForm.unit === 'pack' ? packSize! : 1)) * 100) / 100
+      const data = {
+        name: editForm.name.trim(), categoryId: editForm.categoryId || undefined, unit: editForm.unit,
+        purchasePrice, sellingPrice: 0, wholesalePrice: 0, priceDozen: 0, pricePack: 0,
+        photos: editPhotos, packSize, margin: 0, taxRate: editForm.taxRate, updatedAt: now,
+      }
       if (isCloud) { await sb.update('products', editing.id, data) } else { await db.products.update(editing.id, data) }
       toast('Produit mis à jour', 'success')
       setEditModal(false)
+    } catch { toast('Erreur', 'error') }
+  }
+
+  function openCreateProduct() {
+    setCreateForm({ name: '', categoryId: '', unit: 'piece', purchaseCost: 0, packSize: 0, taxRate: 0 })
+    setCreatePhotos([])
+    setCreateInitialStock(0)
+    setCreatePackUnit('piece')
+    setCreatePackQty(0)
+    setCreateModal(true)
+  }
+
+  async function handleCreateProduct() {
+    const now = new Date().toISOString()
+    try {
+      const computedPackSize = createPackUnit === 'dozen' ? createPackQty * 12 : createPackQty
+      const packSize = createForm.unit === 'pack' ? (createForm.packSize || computedPackSize) : undefined
+      if (!createForm.name.trim()) { toast('Nom du produit requis', 'warning'); return }
+      if (createForm.purchaseCost <= 0) { toast('Prix de revient requis', 'warning'); return }
+      if (createForm.unit === 'pack' && (!packSize || packSize <= 0)) { toast('Indiquez la composition du paquet', 'warning'); return }
+      const purchasePrice = Math.round((createForm.purchaseCost / (createForm.unit === 'dozen' ? 12 : createForm.unit === 'pack' ? packSize! : 1)) * 100) / 100
+      const id = generateId()
+      const product = {
+        id, businessId, name: createForm.name.trim(), categoryId: createForm.categoryId || undefined,
+        unit: createForm.unit, purchasePrice, sellingPrice: 0, wholesalePrice: 0, priceDozen: 0, pricePack: 0,
+        photos: createPhotos, packSize, margin: 0, taxRate: createForm.taxRate,
+        status: 'active' as const, createdAt: now, updatedAt: now,
+      }
+      await db.products.add(product as any)
+      try { await syncWriteObject('products', product) } catch {}
+
+      const qty = createInitialStock || 0
+      if (qty > 0) {
+        const movement = {
+          id: generateId(), businessId, locationId: locationId!,
+          productId: id, type: 'in' as const, quantity: qty,
+          unitPrice: purchasePrice, reference: 'INIT',
+          note: 'Stock initial', createdAt: now, userId: currentUser?.id || '',
+        }
+        await db.stockMovements.add(movement as any)
+        try { await syncWriteObject('stockMovements', movement) } catch {}
+      }
+      const newStock = {
+        id: generateId(), businessId, productId: id,
+        locationId: locationId!, quantity: qty, stockAlert: 0,
+        stockMin: 0, stockMax: 0, updatedAt: now,
+      }
+      await db.productStocks.add(newStock as any)
+      try { await syncWriteObject('productStocks', newStock) } catch {}
+
+      toast('Produit créé', 'success')
+      setCreateModal(false)
     } catch { toast('Erreur', 'error') }
   }
 
@@ -247,17 +300,17 @@ export default function DepotStockPage() {
           <h1 className="text-2xl font-bold text-surface-900">{location?.name || 'Stock'}</h1>
           <p className="text-surface-500 text-sm">{stats.totalProducts} produits · {stats.categoryCount} catégories</p>
         </div>
+        {can('products', 'create') && <Button onClick={openCreateProduct}><Plus className="w-4 h-4" /> Nouveau produit</Button>}
         {can('depots', 'transfer') && <Button onClick={() => setTransferModal(true)}><ArrowRightLeft className="w-4 h-4" /> Transférer</Button>}
         <Button onClick={() => navigate(`/depots/history/${locationId}`)}><History className="w-4 h-4" /> Mouvement</Button>
       </div>
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><DollarSign className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur stock</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
+       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><DollarSign className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur stock</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalCost)}</p></div></div></div></Card>
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Produits</p><p className="text-lg font-bold text-surface-900">{stats.totalProducts}</p></div></div></div></Card>
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-blue-500/15 flex items-center justify-center text-blue-400"><Layers className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Catégories</p><p className="text-lg font-bold text-surface-900">{stats.categoryCount}</p></div></div></div></Card>
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400"><AlertTriangle className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Stock faible</p><p className={cn('text-lg font-bold', stats.lowStockCount > 0 ? 'text-amber-400' : 'text-surface-900')}>{stats.lowStockCount}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><TrendingUp className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Bénéfice potentiel</p><p className="text-lg font-bold text-surface-900">{formatCurrency(stats.potentialProfit)}</p></div></div></div></Card>
       </div>
 
       {/* Filters */}
@@ -265,7 +318,7 @@ export default function DepotStockPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Nom, code-barres, SKU, marque..."
+            placeholder="Rechercher un produit..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={filter} onChange={e => setFilter(e.target.value)}
@@ -293,7 +346,6 @@ export default function DepotStockPage() {
           const stock = stockMap.get(p.id)
           const qty = stock?.quantity || 0
           const totalCost = qty * p.purchasePrice
-          const margin = p.purchasePrice > 0 ? ((p.sellingPrice - p.purchasePrice) / p.purchasePrice) * 100 : 0
           const soldQty = productSales.get(p.id) || 0
           const isLow = qty > 0 && qty <= (p.stockAlert || 5)
           const isOut = qty <= 0
@@ -315,9 +367,7 @@ export default function DepotStockPage() {
               <div className="p-4 space-y-2">
                 <h3 className="text-sm font-semibold text-surface-900 truncate">{p.name}</h3>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
-                  <span className="text-surface-400">Prix vente</span>
-                  <span className="text-right font-medium text-surface-900">{formatCurrency(p.sellingPrice)}</span>
-                  <span className="text-surface-400">Stock</span>
+                   <span className="text-surface-400">Stock</span>
                   <span className={cn('text-right font-medium', isOut ? 'text-red-400' : isLow ? 'text-amber-400' : 'text-surface-900')}>
                     {qty} pièces
                   </span>
@@ -325,8 +375,6 @@ export default function DepotStockPage() {
                   <span className="text-right font-medium text-surface-900">{p.stockAlert || '-'}</span>
                   <span className="text-surface-400">Coût stock</span>
                   <span className="text-right font-medium text-surface-900">{formatCurrency(totalCost)}</span>
-                  <span className="text-surface-400">Marge</span>
-                  <span className={cn('text-right font-medium', marginColor(margin))}>{margin.toFixed(1)}%</span>
                   <span className="text-surface-400">Vendus</span>
                   <span className="text-right font-medium text-surface-900">{soldQty}</span>
                 </div>
@@ -386,7 +434,7 @@ export default function DepotStockPage() {
             <option value="">Sélectionner un produit</option>
             {allProducts?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-          <input type="number" placeholder="Nouvelle quantité" value={adjQty} onChange={e => setAdjQty(Number(e.target.value))}
+          <NumericInput placeholder="Nouvelle quantité" value={adjQty} onChange={e => setAdjQty(Number(e.target.value))}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
           <input placeholder="Note (optionnel)" value={adjNote} onChange={e => setAdjNote(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
@@ -416,12 +464,14 @@ export default function DepotStockPage() {
               const item = transferItems.find(i => i.productId === p.id)
               const available = stockMap.get(p.id)?.quantity || 0
               return (
-                <div key={p.id} className="flex items-center gap-2 bg-surface-50 rounded-lg px-3 py-2">
-                  <div className="text-sm flex-1 min-w-0">
-                    <p className="truncate font-medium text-surface-900">{p.name}</p>
-                    <p className="text-[11px] text-surface-400">Disponible : {available}</p>
-                  </div>
-                  <select value={item?.unitName || 'Pièce'}
+                <div key={p.id} className="bg-surface-50 rounded-lg px-3 py-2">
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-2">
+                    <div className="text-sm flex-1 min-w-0">
+                      <p className="font-medium text-surface-900 leading-snug break-words">{p.name}</p>
+                      <p className="text-[11px] text-surface-400">Disponible : {available}</p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <select value={item?.unitName || 'Pièce'}
                     onChange={e => {
                       const unit = units.find(u => u.name === e.target.value) || units[0]
                       setTransferItems(prev => {
@@ -433,7 +483,7 @@ export default function DepotStockPage() {
                     className="text-xs px-2 py-1.5 rounded-lg border border-surface-300 bg-surface-100">
                     {units.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
                   </select>
-                  <input type="number" min="0" placeholder="Qté" value={item?.qty ?? ''}
+                  <NumericInput min="0" placeholder="Qté" value={item?.qty ?? ''}
                     onChange={e => {
                       const qty = Number(e.target.value)
                       setTransferItems(prev => {
@@ -442,7 +492,9 @@ export default function DepotStockPage() {
                         return [...prev, { productId: p.id, qty, unitName: 'Pièce', unitQuantity: 1 }]
                       })
                     }}
-                    className="w-20 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
+                    className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
+                    </div>
+                  </div>
                 </div>
               )
             })}
@@ -451,30 +503,100 @@ export default function DepotStockPage() {
         </div>
       </Modal>
 
+      {/* Nouveau produit */}
+      <Modal
+        open={createModal}
+        onClose={() => setCreateModal(false)}
+        title="Nouveau produit"
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setCreateModal(false)}>Annuler</Button>
+            <Button onClick={handleCreateProduct}>Créer</Button>
+          </>
+        }
+      >
+        <div className="p-6 space-y-5">
+          <div>
+            <h3 className="modal-section-title">Informations principales</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input label="Nom du produit" value={createForm.name} onChange={(e) => setCreateForm({ ...createForm, name: e.target.value })} />
+              <Select label="Catégorie" value={createForm.categoryId} onChange={(e) => setCreateForm({ ...createForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
+              <Select label="Unité" value={createForm.unit} onChange={(e) => {
+                const unit = e.target.value as 'piece' | 'dozen' | 'pack'
+                setCreateForm(prev => ({ ...prev, unit, purchaseCost: 0, packSize: 0 }))
+              }} options={[{ value: 'piece', label: 'Pièce' }, { value: 'dozen', label: 'Douzaine' }, { value: 'pack', label: 'Paquet' }]} />
+            </div>
+            {createForm.unit === 'pack' && (
+              <div className="bg-surface-50 rounded-xl p-4 space-y-3 mt-4">
+                <p className="text-sm font-medium text-surface-700">Composition du paquet</p>
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2">
+                    <input type="radio" id="create-comp-piece" name="createPackComp" checked={createPackUnit === 'piece'} onChange={() => { setCreatePackUnit('piece'); setCreateForm(f => ({ ...f, packSize: 0 })) }} className="w-4 h-4 text-primary-500" />
+                    <label htmlFor="create-comp-piece" className="text-sm text-surface-700">Pièces</label>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <input type="radio" id="create-comp-dozen" name="createPackComp" checked={createPackUnit === 'dozen'} onChange={() => { setCreatePackUnit('dozen'); setCreateForm(f => ({ ...f, packSize: 0 })) }} className="w-4 h-4 text-primary-500" />
+                    <label htmlFor="create-comp-dozen" className="text-sm text-surface-700">Douzaines</label>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm text-surface-500">1 paquet =</span>
+                  <NumericInput min="1" value={createPackQty || ''} onChange={(e) => { setCreatePackQty(+e.target.value); setCreateForm(f => ({ ...f, packSize: 0 })) }} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
+                  <span className="text-sm text-surface-500">{createPackUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
+                  {createPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {createPackUnit === 'dozen' ? createPackQty * 12 : createPackQty} pièces</span>}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <h3 className="modal-section-title">Image du produit</h3>
+            <PhotoUpload photos={createPhotos} onChange={setCreatePhotos} />
+          </div>
+
+          <div>
+            <h3 className="modal-section-title">Prix de revient</h3>
+            <Input
+              label={`Prix de revient (${createForm.unit === 'piece' ? 'pièce' : createForm.unit === 'dozen' ? 'douzaine' : `paquet de ${createPackUnit === 'dozen' ? createPackQty * 12 : createPackQty || '—'} pièces`})`}
+              type="number"
+              value={createForm.purchaseCost || ''}
+              onChange={(e) => setCreateForm({ ...createForm, purchaseCost: +e.target.value || 0 })}
+            />
+            <p className="text-xs text-surface-400 mt-2">Le prix de vente sera saisi au moment de chaque vente.</p>
+          </div>
+
+          <div>
+            <h3 className="modal-section-title">Stock</h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <Input label="Stock initial dans ce dépôt" type="number" value={createInitialStock} onChange={(e) => setCreateInitialStock(+e.target.value)} />
+            </div>
+          </div>
+        </div>
+      </Modal>
+
       {/* Edit Product */}
-      <Modal open={editModal} onClose={() => setEditModal(false)} title="Modifier le produit" size="lg">
+      <Modal
+        open={editModal}
+        onClose={() => setEditModal(false)}
+        title="Modifier le produit"
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setEditModal(false)}>Annuler</Button>
+            <Button onClick={handleSaveEdit}>Mettre à jour</Button>
+          </>
+        }
+      >
         <div className="p-6 space-y-5">
           <div>
             <h3 className="modal-section-title">Informations principales</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Nom du produit" value={editForm.name} onChange={(e) => setEditForm({ ...editForm, name: e.target.value })} />
-              <Input label="Code-barres" value={editForm.barcode} onChange={(e) => setEditForm({ ...editForm, barcode: e.target.value })} />
               <Select label="Catégorie" value={editForm.categoryId} onChange={(e) => setEditForm({ ...editForm, categoryId: e.target.value })} options={allCategoriesNames.map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
-              <Input label="Marque" value={editForm.brand} onChange={(e) => setEditForm({ ...editForm, brand: e.target.value })} />
-              <Input label="Référence" value={editForm.reference} onChange={(e) => setEditForm({ ...editForm, reference: e.target.value })} />
               <Select label="Unité" value={editForm.unit} onChange={(e) => {
                 const unit = e.target.value as 'piece' | 'dozen' | 'pack'
-                setEditForm(prev => {
-                  const next = { ...prev, unit }
-                  if (unit === 'pack' && prev.purchasePrice > 0) {
-                    const size = prev.packSize || (editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty)
-                    if (size > 0) next.packCost = Math.round(prev.purchasePrice * size * 100) / 100
-                  }
-                  if (unit === 'dozen' && prev.purchasePrice > 0) {
-                    next.dozenCost = Math.round(prev.purchasePrice * 12 * 100) / 100
-                  }
-                  return next
-                })
+                setEditForm(prev => ({ ...prev, unit, purchaseCost: 0, packSize: 0 }))
               }} options={[{ value: 'piece', label: 'Pièce' }, { value: 'dozen', label: 'Douzaine' }, { value: 'pack', label: 'Paquet' }]} />
             </div>
             {editForm.unit === 'pack' && (
@@ -482,29 +604,17 @@ export default function DepotStockPage() {
                 <p className="text-sm font-medium text-surface-700">Composition du paquet</p>
                 <div className="flex items-center gap-3">
                   <div className="flex items-center gap-2">
-                    <input type="radio" id="edit-comp-piece" name="editPackComp" checked={editPackUnit === 'piece'} onChange={() => {
-                      setEditPackUnit('piece')
-                      if (editForm.packCost > 0 && editPackQty > 0) setEditForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / editPackQty) * 100) / 100 }))
-                    }} className="w-4 h-4 text-primary-500" />
+                    <input type="radio" id="edit-comp-piece" name="editPackComp" checked={editPackUnit === 'piece'} onChange={() => { setEditPackUnit('piece'); setEditForm(f => ({ ...f, packSize: 0 })) }} className="w-4 h-4 text-primary-500" />
                     <label htmlFor="edit-comp-piece" className="text-sm text-surface-700">Pièces</label>
                   </div>
                   <div className="flex items-center gap-2">
-                    <input type="radio" id="edit-comp-dozen" name="editPackComp" checked={editPackUnit === 'dozen'} onChange={() => {
-                      setEditPackUnit('dozen')
-                      if (editForm.packCost > 0 && editPackQty > 0) setEditForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / (editPackQty * 12)) * 100) / 100 }))
-                    }} className="w-4 h-4 text-primary-500" />
+                    <input type="radio" id="edit-comp-dozen" name="editPackComp" checked={editPackUnit === 'dozen'} onChange={() => { setEditPackUnit('dozen'); setEditForm(f => ({ ...f, packSize: 0 })) }} className="w-4 h-4 text-primary-500" />
                     <label htmlFor="edit-comp-dozen" className="text-sm text-surface-700">Douzaines</label>
                   </div>
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-surface-500">1 paquet =</span>
-                  <input type="number" min="1" value={editPackQty || ''} onChange={(e) => {
-                    setEditPackQty(+e.target.value)
-                    if (editForm.packCost > 0) {
-                      const size = editPackUnit === 'dozen' ? +e.target.value * 12 : +e.target.value
-                      if (size > 0) setEditForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / size) * 100) / 100 }))
-                    }
-                  }} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
+                   <NumericInput min="1" value={editPackQty || ''} onChange={(e) => { setEditPackQty(+e.target.value); setEditForm(f => ({ ...f, packSize: 0 })) }} className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right" />
                   <span className="text-sm text-surface-500">{editPackUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
                   {editPackQty > 0 && <span className="text-xs text-surface-400 ml-1">= {editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty} pièces</span>}
                 </div>
@@ -518,56 +628,16 @@ export default function DepotStockPage() {
           </div>
 
           <div>
-            <h3 className="modal-section-title">Description</h3>
-            <Input label="Description" value={editForm.description} onChange={(e) => setEditForm({ ...editForm, description: e.target.value })} />
+            <h3 className="modal-section-title">Prix de revient</h3>
+            <Input
+              label={`Prix de revient (${editForm.unit === 'piece' ? 'pièce' : editForm.unit === 'dozen' ? 'douzaine' : `paquet de ${editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty || '—'} pièces`})`}
+              type="number"
+              value={editForm.purchaseCost || ''}
+              onChange={(e) => setEditForm({ ...editForm, purchaseCost: +e.target.value || 0 })}
+            />
+            <p className="text-xs text-surface-400 mt-2">Le prix de vente sera saisi au moment de chaque vente.</p>
           </div>
 
-          <div>
-            <h3 className="modal-section-title">Prix</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {editForm.unit === 'piece' && (
-                <Input label="Prix de revient (pièce)" type="number" value={editForm.purchasePrice} onChange={(e) => setEditForm({ ...editForm, purchasePrice: +e.target.value })} />
-              )}
-              {editForm.unit === 'pack' && (
-                <Input label={`Prix de revient (paquet de ${(editForm.packSize || (editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty) || 0)} pcs)`} type="number" value={editForm.packCost} onChange={(e) => {
-                  const packCost = +e.target.value
-                  const size = editForm.packSize || (editPackUnit === 'dozen' ? editPackQty * 12 : editPackQty)
-                  setEditForm(f => ({ ...f, packCost, purchasePrice: size > 0 && packCost > 0 ? Math.round((packCost / size) * 100) / 100 : 0 }))
-                }} />
-              )}
-              {editForm.unit === 'dozen' && (
-                <Input label="Prix de revient (douzaine)" type="number" value={editForm.dozenCost} onChange={(e) => {
-                  const dozenCost = +e.target.value
-                  setEditForm(f => ({ ...f, dozenCost, purchasePrice: dozenCost > 0 ? Math.round((dozenCost / 12) * 100) / 100 : 0 }))
-                }} />
-              )}
-              <Input label="Prix de vente (pièce)" type="number" value={editForm.sellingPrice} onChange={(e) => setEditForm({ ...editForm, sellingPrice: +e.target.value })} />
-              <Input label="Prix de gros" type="number" value={editForm.wholesalePrice} onChange={(e) => setEditForm({ ...editForm, wholesalePrice: +e.target.value })} />
-            </div>
-            {editForm.unit !== 'piece' && editForm.purchasePrice > 0 && (
-              <p className="text-sm text-surface-500 mt-3">Coût unitaire : <span className="font-semibold text-surface-700">{formatCurrency(editForm.purchasePrice)} / pièce</span></p>
-            )}
-            {editForm.purchasePrice > 0 && (
-              <p className="text-sm text-surface-500 mt-3">Marge : <span className="font-semibold text-success">{calculateMargin(editForm.purchasePrice, editForm.sellingPrice).toFixed(1)}%</span></p>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <Input label="Prix par douzaine" type="number" value={editForm.priceDozen} onChange={(e) => setEditForm({ ...editForm, priceDozen: +e.target.value })} />
-              <Input label="Prix par paquet" type="number" value={editForm.pricePack} onChange={(e) => setEditForm({ ...editForm, pricePack: +e.target.value })} />
-            </div>
-          </div>
-
-          <div>
-            <h3 className="modal-section-title">Stock</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="TVA (%)" type="number" value={editForm.taxRate} onChange={(e) => setEditForm({ ...editForm, taxRate: +e.target.value })} />
-              <Input label="Alerte stock" type="number" value={editForm.stockAlert} onChange={(e) => setEditForm({ ...editForm, stockAlert: +e.target.value })} />
-              <Input label="Emplacement" value={editForm.location} onChange={(e) => setEditForm({ ...editForm, location: e.target.value })} />
-            </div>
-          </div>
-        </div>
-        <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
-          <Button variant="ghost" onClick={() => setEditModal(false)}>Annuler</Button>
-          <Button onClick={handleSaveEdit}>Mettre à jour</Button>
         </div>
       </Modal>
 
@@ -587,7 +657,7 @@ export default function DepotStockPage() {
                 </div>
                 <div className="col-span-2">
                   <p className="text-surface-400 text-xs">Date</p>
-                  <p className="font-medium text-surface-900">{new Date(bonInfo.date).toLocaleDateString('fr-FR', { dateStyle: 'long' })}</p>
+                  <p className="font-medium text-surface-900">{formatDateLong(bonInfo.date)}</p>
                 </div>
               </div>
               <div className="overflow-x-auto responsive-table">
@@ -601,36 +671,25 @@ export default function DepotStockPage() {
                 <tbody>
                   {bonInfo.items.map((item, idx) => (
                     <tr key={idx} className="border-b border-surface-100">
-                      <td className="py-2 text-surface-900">{item.name}</td>
-                      <td className="py-2 text-right text-surface-900 font-medium">{item.qty}</td>
+                      <td data-label="Produit" className="py-2 text-surface-900">{item.name}</td>
+                      <td data-label="Quantité" className="py-2 text-right text-surface-900 font-medium">{item.qty}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
               </div>
-              <p className="text-xs text-amber-400 bg-amber-500/15 border border-amber-500/30 rounded-lg px-3 py-2">
-                La transaction est considérée effectuée après confirmation de la réception. Elle peut être annulée uniquement depuis l'onglet Bon de sortie.
+              <p className="text-xs text-success bg-success/10 border border-success/20 rounded-lg px-3 py-2 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 shrink-0" />
+                Transfert effectué automatiquement : le stock a été déduit de l'origine et ajouté à la destination. Il peut être annulé depuis l'onglet Bon de sortie.
               </p>
-              <div>
-                <label className="text-xs font-medium text-surface-500 mb-1 block">Nom du destinataire</label>
-                <input value={receptName} onChange={e => setReceptName(e.target.value)}
-                  placeholder="Nom du destinataire"
-                  className="w-full px-3 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
-              </div>
-              <Button className="w-full" onClick={async () => {
-                try {
-                  await confirmTransferReception(bonInfo.id, receptName || currentUser?.name || '')
-                  toast('Réception confirmée, transaction effectuée', 'success')
-                  setBonModal(false)
-                } catch (e: any) { toast(e.message || 'Erreur', 'error') }
-              }}>
-                <CheckCircle2 className="w-4 h-4" /> Confirmer la réception â€” transaction effectuée
+              <Button className="w-full" variant="outline" onClick={() => setBonModal(false)}>
+                Fermer
               </Button>
               <div className="flex gap-2 pt-2">
                 <Button onClick={() => {
                   const w = window.open('', '_blank')
                   if (!w) return
-                  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bon de sortie ${bonInfo.bonNumber}</title><style>body{font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto}h1{font-size:18px;margin-bottom:4px}p{margin:2px 0;color:#555;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px 4px;text-align:left;border-bottom:1px solid #ddd}th{color:#888;font-size:11px;text-transform:uppercase}td{font-size:14px}.total{margin-top:12px;text-align:right;font-size:14px;font-weight:bold}.footer{margin-top:40px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#aaa;text-align:center}</style></head><body><h1>Bon de sortie n°${bonInfo.bonNumber}</h1><p>Origine : ${bonInfo.from}</p><p>Destination : ${bonInfo.to}</p><p>Date : ${new Date(bonInfo.date).toLocaleDateString('fr-FR', { dateStyle: 'long' })}</p><p>Utilisateur : ${currentUser?.name || ''}</p><table><thead><tr><th>Produit</th><th style="text-align:right">Quantité</th></tr></thead><tbody>${bonInfo.items.map(i => `<tr><td>${i.name}</td><td style="text-align:right">${i.qty}</td></tr>`).join('')}</tbody></table><p class="total">Total articles : ${bonInfo.items.reduce((s, i) => s + i.qty, 0)}</p><div style="margin-top:30px;font-size:11px;color:#888"><p>Signature expéditeur : ___________________________</p><p>Signature destinataire : ________________________</p></div><div class="footer"><p>Document généré automatiquement - Neox ERP</p></div></body></html>`)
+                  w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bon de sortie ${bonInfo.bonNumber}</title><style>body{font-family:sans-serif;padding:40px;max-width:600px;margin:0 auto}h1{font-size:18px;margin-bottom:4px}p{margin:2px 0;color:#555;font-size:13px}table{width:100%;border-collapse:collapse;margin-top:16px}th,td{padding:8px 4px;text-align:left;border-bottom:1px solid #ddd}th{color:#888;font-size:11px;text-transform:uppercase}td{font-size:14px}.total{margin-top:12px;text-align:right;font-size:14px;font-weight:bold}.footer{margin-top:40px;border-top:1px solid #ddd;padding-top:12px;font-size:11px;color:#aaa;text-align:center}</style></head><body><h1>Bon de sortie n°${bonInfo.bonNumber}</h1><p>Origine : ${bonInfo.from}</p><p>Destination : ${bonInfo.to}</p><p>Date : ${formatDateLong(bonInfo.date)}</p><p>Utilisateur : ${currentUser?.name || ''}</p><table><thead><tr><th>Produit</th><th style="text-align:right">Quantité</th></tr></thead><tbody>${bonInfo.items.map(i => `<tr><td>${i.name}</td><td style="text-align:right">${i.qty}</td></tr>`).join('')}</tbody></table><p class="total">Total articles : ${bonInfo.items.reduce((s, i) => s + i.qty, 0)}</p><div style="margin-top:30px;font-size:11px;color:#888"><p>Signature expéditeur : ___________________________</p><p>Signature destinataire : ________________________</p></div><div class="footer"><p>Document généré automatiquement - Neox ERP</p></div></body></html>`)
                   w.document.close()
                   setTimeout(() => { w.print() }, 500)
                 }} className="flex-1">

@@ -1,16 +1,17 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import db from '@/db'
-import { generateId, formatCurrency, generateInvoiceNumber, cn, getProductUnits, getProductUnitInfo, getUnitPrice, convertToMainUnit, getUnitStep, getUnitMinQty, pickContact, calculateMargin } from '@/lib/utils'
+import { usePosStore, emptyCart, type CartState } from '@/stores/posStore'
+import { generateId, formatCurrency, generateInvoiceNumber, cn, getProductUnits, getProductUnitInfo, convertToMainUnit, getUnitStep, getUnitMinQty, pickContact } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import {
-  Search, ScanLine, ShoppingCart, Minus, Plus, X, Trash2,
-  CreditCard, Printer, Download, Camera, Package, AlertTriangle,
+  Search, ShoppingCart, Minus, Plus, X, Trash2,
+  CreditCard, Printer, Download, Package, AlertTriangle,
   ChevronDown, User, Phone, MapPin, Calendar, Tag, Percent,
-  Check, Send, SplitSquareVertical as SplitIcon, Banknote, Boxes, Contact as ContactIcon, MessageCircle, Edit2
+  Check, Send, SplitSquareVertical as SplitIcon, Banknote, Boxes, Contact as ContactIcon, MessageCircle, Edit2, Pause
 } from 'lucide-react'
-import BarcodeScanner from '@/components/ui/BarcodeScanner'
 import { exportSalePDF, shareSalePDF, buildProductPhotos } from '@/lib/pdf'
 import { shareViaWeChat } from '@/lib/share'
 import { thermalPrinter, printReceiptHTML } from '@/lib/thermalPrinter'
@@ -19,7 +20,7 @@ import type { ProductStock } from '@/engine/types'
 import { useAppStore } from '@/stores/appStore'
 import { usePermission } from '@/hooks/usePermission'
 import { processSale } from '@/engine/operations'
-import { syncWriteObject } from '@/lib/realtime'
+import { nextInvoiceNumber } from '@/engine/invoiceNumbers'
 import { useSalePayment, ensureCustomer } from './salePayment'
 import { SalePaymentPanel } from './SalePaymentPanel'
 import UnitPriceModal from '@/components/pos/UnitPriceModal'
@@ -27,12 +28,38 @@ import { CreditSaleEditModal } from '@/components/credit/CreditSaleModals'
 import MobileCartSheet from '@/components/pos/MobileCartSheet'
 import PaymentScreen from '@/components/pos/PaymentScreen'
 import SyncIndicator from '@/components/ui/SyncIndicator'
-import QuickProductModal, { type QuickProductValues } from '@/components/pos/QuickProductModal'
+import { Modal, NumericInput } from '@/components/ui'
+import { syncWriteObject } from '@/lib/realtime'
+import { StockAllocationRequiredError, type StockSourceOption } from '@/engine/stockAllocation'
 
-type PriceMode = 'detail' | 'gros'
+type CartStatus = 'nouveau' | 'encours' | 'attente' | 'pret'
+
+interface SourceModalState {
+  product: Product
+  unitName: string
+  unitPrice: number
+  quantity: number
+  shopAvailable: number
+  sources: StockSourceOption[]
+}
+
+function cartStatusLabel(c: CartState, isActive: boolean): CartStatus {
+  if (c.items.length === 0 && !c.onHold) return 'nouveau'
+  if (c.onHold) return 'attente'
+  return isActive ? 'pret' : 'encours'
+}
+
+const CART_STATUS_LABELS: Record<CartStatus, string> = {
+  nouveau: 'Nouveau',
+  encours: 'En cours',
+  attente: 'En attente',
+  pret: 'Prêt à payer',
+}
 
 export default function POSPage() {
   const businessId = useBusinessId()
+  const location = useLocation()
+  const navigate = useNavigate()
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const allCustomers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const categories = useLiveQuery(() => db.categories.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
@@ -40,6 +67,7 @@ export default function POSPage() {
   const settings = useLiveQuery(() => db.settings.get('default'), [])
 
   const shopLocation = useLiveQuery(() => db.locations.where('businessId').equals(businessId).filter(l => l.type === 'shop').first(), [businessId])
+  const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const shopId = shopLocation?.id || ''
 
   const userId = useAppStore(s => s.user?.id || '')
@@ -55,26 +83,52 @@ export default function POSPage() {
 
   const [search, setSearch] = useState('')
   const [categoryId, setCategoryId] = useState('all')
-  const [priceMode, setPriceMode] = useState<PriceMode>('gros')
-  const [scannerOpen, setScannerOpen] = useState(false)
   const [cartSheetOpen, setCartSheetOpen] = useState(false)
   const [paymentOpen, setPaymentOpen] = useState(false)
 
-  const [cart, setCart] = useState<SaleItem[]>([])
-  const [customerName, setCustomerName] = useState('')
-  const [customerAddress, setCustomerAddress] = useState('')
-  const [customerPhone, setCustomerPhone] = useState('')
-  const [customerId, setCustomerId] = useState('')
+  const carts = usePosStore(s => s.carts)
+  const setCarts = usePosStore(s => s.setCarts)
+  const activeCartIndex = usePosStore(s => s.activeCartIndex)
+  const setActiveCartIndex = usePosStore(s => s.setActiveCartIndex)
+  const clearCarts = usePosStore(s => s.clearCarts)
+  const saleCustomer = location.state?.saleCustomer as { id?: string; name?: string; phone?: string; address?: string } | undefined
+  const appliedCustomerId = useRef<string | null>(null)
+
+  const prevBusinessId = useRef(businessId)
+  useEffect(() => {
+    if (prevBusinessId.current !== businessId) {
+      prevBusinessId.current = businessId
+      clearCarts()
+    }
+  }, [businessId, clearCarts])
+
+  useEffect(() => {
+    if (!saleCustomer?.id || !businessId || appliedCustomerId.current === saleCustomer.id) return
+    const targetIndex = carts.findIndex(c => c.items.length === 0 && !c.onHold)
+    const idx = targetIndex >= 0 ? targetIndex : activeCartIndex
+    appliedCustomerId.current = saleCustomer.id
+    setActiveCartIndex(idx)
+    setCarts(prev => prev.map((c, i) => i === idx
+      ? { ...c, customerId: saleCustomer.id!, customerName: saleCustomer.name || '', customerPhone: saleCustomer.phone || '', customerAddress: saleCustomer.address || '' }
+      : c
+    ))
+    navigate(location.pathname, { replace: true, state: null })
+  }, [saleCustomer, businessId, carts, activeCartIndex, setActiveCartIndex, setCarts, navigate, location.pathname])
+
   const [customerOpen, setCustomerOpen] = useState(false)
-  const [discount, setDiscount] = useState(0)
+  const [pendingCustomerModal, setPendingCustomerModal] = useState(false)
   const [saleDate, setSaleDate] = useState(new Date().toISOString().slice(0, 16))
 
   const [saleSuccess, setSaleSuccess] = useState(false)
   const [lastSale, setLastSale] = useState<Sale | null>(null)
   const [editSaleId, setEditSaleId] = useState<string | null>(null)
+  const [saleSubmitting, setSaleSubmitting] = useState(false)
+  const saleSubmittingRef = useRef(false)
 
-  const [unitPriceModal, setUnitPriceModal] = useState<{ product: Product; unitName: string; itemKey?: string } | null>(null)
+  const [unitPriceModal, setUnitPriceModal] = useState<{ product: Product; unitName: string; itemKey?: string; stockOverride?: number; initialQuantity?: number } | null>(null)
   const [quickProductOpen, setQuickProductOpen] = useState(false)
+  const [quickProductForm, setQuickProductForm] = useState({ name: '', unit: 'piece' as Product['unit'], purchaseCost: 0, packQty: 0, packUnit: 'piece' as 'piece' | 'dozen', stock: 1 })
+  const [sourceModal, setSourceModal] = useState<SourceModalState | null>(null)
 
 
   const filteredCategories = useMemo(() => {
@@ -86,16 +140,102 @@ export default function POSPage() {
     return products.filter(p => {
       if (search) {
         const q = search.toLowerCase()
-        if (!p.name.toLowerCase().includes(q) && !p.barcode?.includes(q) && !p.reference?.toLowerCase().includes(q)) return false
+        if (!p.name.toLowerCase().includes(q)) return false
       }
       if (categoryId !== 'all' && p.categoryId !== categoryId) return false
       return true
     })
   }, [products, search, categoryId])
 
-  const subtotal = useMemo(() => cart.reduce((s, i) => s + i.quantity * i.unitPrice, 0), [cart])
-  const total = useMemo(() => Math.max(0, subtotal - discount), [subtotal, discount])
-  const pay = useSalePayment(total)
+  const cartTotals = useMemo(() =>
+    carts.map(c => {
+      const subtotal = c.items.reduce((s, i) => s + i.quantity * i.unitPrice, 0)
+      return { subtotal, total: Math.max(0, subtotal - c.discount) }
+    }),
+    [carts]
+  )
+
+  const pays = [
+    useSalePayment(cartTotals[0].total),
+    useSalePayment(cartTotals[1].total),
+    useSalePayment(cartTotals[2].total),
+    useSalePayment(cartTotals[3].total),
+  ]
+
+  const activeCart = carts[activeCartIndex]
+  const cart = activeCart.items
+  const subtotal = cartTotals[activeCartIndex].subtotal
+  const total = cartTotals[activeCartIndex].total
+  const discount = activeCart.discount
+  const customerId = activeCart.customerId
+  const customerName = activeCart.customerName
+  const customerPhone = activeCart.customerPhone
+  const customerAddress = activeCart.customerAddress
+  const pay = pays[activeCartIndex]
+
+  const desktopMatches = useMemo(() => {
+    const q = customerName.trim().toLowerCase()
+    if (!q) return []
+    return allCustomers.filter(c => (c.name || '').toLowerCase().includes(q) || (c.phone || '').includes(q)).slice(0, 5)
+  }, [customerName, allCustomers])
+
+  function updateCart(idx: number, fn: (c: CartState) => CartState) {
+    setCarts(prev => prev.map((c, i) => (i === idx ? fn(c) : c)))
+  }
+
+  function setActiveCartItems(fn: (items: SaleItem[]) => SaleItem[]) {
+    setCarts(prev => prev.map((c, i) => (i === activeCartIndex ? { ...c, items: fn(c.items), onHold: false } : c)))
+  }
+
+  function setActiveCartDiscount(v: number) {
+    setCarts(prev => prev.map((c, i) => (i === activeCartIndex ? { ...c, discount: Math.max(0, v) } : c)))
+  }
+
+  function setActiveCartCustomer(patch: Partial<Pick<CartState, 'customerId' | 'customerName' | 'customerPhone' | 'customerAddress'>>) {
+    setCarts(prev => prev.map((c, i) => (i === activeCartIndex ? { ...c, ...patch } : c)))
+  }
+
+  function resetCart(idx: number) {
+    setCarts(prev => prev.map((c, i) => (i === idx ? emptyCart() : c)))
+    pays[idx].reset()
+  }
+
+  function resetActiveCart() {
+    resetCart(activeCartIndex)
+    setCartSheetOpen(false)
+    setPaymentOpen(false)
+  }
+
+  function selectCart(idx: number) {
+    setActiveCartIndex(idx)
+    if (carts[idx].onHold) updateCart(idx, c => ({ ...c, onHold: false }))
+  }
+
+  function holdActiveCart() {
+    if (activeCart.items.length === 0) {
+      toast('Panier vide — rien à mettre en attente', 'error')
+      return
+    }
+    if (activeCart.onHold) return
+    updateCart(activeCartIndex, c => ({ ...c, onHold: true }))
+    let next = carts.findIndex((c, i) => i !== activeCartIndex && c.items.length > 0 && !c.onHold)
+    if (next === -1) next = carts.findIndex((c, i) => i !== activeCartIndex && c.items.length === 0 && !c.onHold)
+    setActiveCartIndex(next >= 0 ? next : (activeCartIndex + 1) % 4)
+    toast(`Panier P${activeCartIndex + 1} mis en attente`, 'success')
+  }
+
+  function newCart() {
+    const idx = carts.findIndex(c => c.items.length === 0 && !c.onHold)
+    if (idx === -1) {
+      toast('4 paniers maximum — mettez un panier en attente ou videz-en un', 'error')
+      return
+    }
+    resetCart(idx)
+    setActiveCartIndex(idx)
+    setCartSheetOpen(false)
+    setPaymentOpen(false)
+    toast(`Nouveau panier P${idx + 1}`, 'success')
+  }
   const margin = useMemo(() => {
     if (subtotal === 0) return 0
     const cost = cart.reduce((s, i) => {
@@ -110,136 +250,186 @@ export default function POSPage() {
     return shopStocks.get(productId)?.quantity ?? 0
   }
 
+  function availableStockFor(productId: string) {
+    return availableStockAt(productId, shopId)
+  }
+
+  function stockAt(productId: string, locationId: string) {
+    return allStocks.find(s => s.productId === productId && s.locationId === locationId)?.quantity ?? 0
+  }
+
+  function availableStockAt(productId: string, locationId: string) {
+    if (!locationId) return 0
+    let reserved = 0
+    carts.forEach((c, i) => {
+      if (i === activeCartIndex) return
+      c.items.forEach(it => {
+        const itemLocationId = it.locationId || shopId
+        if (it.productId === productId && itemLocationId === locationId) reserved += it.quantity * (it.unitQuantity || 1)
+      })
+    })
+    return Math.max(0, stockAt(productId, locationId) - reserved)
+  }
+
   function cartItemKey(i: SaleItem) {
-    return `${i.productId}::${i.unitName || 'Pièce'}`
+    return `${i.productId}::${i.unitName || 'Pièce'}::${i.locationId || shopId}`
   }
 
-  function needsUnitPrice(product: Product, unitName: string) {
-    if ((unitName === 'Douzaine' || unitName === 'Demi-douzaine') && !product.priceDozen) return true
-    if ((unitName === 'Paquet' || unitName === 'Demi-paquet') && !product.pricePack) return true
-    return false
-  }
-
-  async function handleUnitPriceConfirm(price: number) {
+  async function handleUnitPriceConfirm(price: number, quantity: number) {
     if (!unitPriceModal) return
-    const { product, unitName, itemKey } = unitPriceModal
-    const dozen = (unitName === 'Douzaine' || unitName === 'Demi-douzaine')
-    const storedPrice = (unitName === 'Demi-douzaine' || unitName === 'Demi-paquet') ? price * 2 : price
-    await db.products.update(product.id, dozen ? { priceDozen: storedPrice } : { pricePack: storedPrice })
+    const { product, unitName, itemKey, stockOverride } = unitPriceModal
     setUnitPriceModal(null)
     if (itemKey) {
       const unit = getProductUnits(product).find(u => u.name === unitName)
       if (!unit) return
-      setCart(prev => prev.map(i =>
+      setActiveCartItems(prev => prev.map(i =>
         cartItemKey(i) === itemKey
-          ? { ...i, unitName, unitQuantity: unit.quantity, unitPrice: price, total: i.quantity * price - i.discount }
+           ? { ...i, unitName, unitQuantity: unit.quantity, quantity, unitPrice: price, total: quantity * price - i.discount }
           : i
       ))
     } else {
-      addToCart(product, unitName, price)
+      addToCart(product, unitName, price, stockOverride, quantity)
     }
   }
 
-  function addToCart(product: Product, unitName?: string, priceOverride?: number) {
+  function openSourceModal(product: Product, unitName: string, unitPrice: number, quantity: number, shopAvailable: number, excludeLocationId?: string) {
+    const sources: StockSourceOption[] = locations
+      .filter(l => l.type === 'warehouse' && l.isActive !== false && l.id !== excludeLocationId)
+      .map(l => ({ locationId: l.id, locationName: l.name, type: 'warehouse' as const, quantity: stockAt(product.id, l.id) }))
+    setSourceModal({ product, unitName, unitPrice, quantity, shopAvailable, sources })
+  }
+
+  function addFromSource(source: StockSourceOption) {
+    if (!sourceModal) return
+    const unit = getProductUnits(sourceModal.product).find(u => u.name === sourceModal.unitName)
+    if (!unit) return
+    const available = availableStockAt(sourceModal.product.id, source.locationId)
+    if (sourceModal.quantity * unit.quantity > available) {
+      toast(`Stock insuffisant dans ${source.locationName}`, 'error')
+      return
+    }
+    const item: SaleItem = {
+      productId: sourceModal.product.id,
+      productName: sourceModal.product.name,
+      quantity: sourceModal.quantity,
+      unitPrice: sourceModal.unitPrice,
+      discount: 0,
+      taxRate: 0,
+      total: sourceModal.quantity * sourceModal.unitPrice,
+      unitName: unit.name,
+      unitQuantity: unit.quantity,
+      locationId: source.locationId,
+      locationName: source.locationName,
+    }
+    setActiveCartItems(prev => {
+      const key = cartItemKey(item)
+      const existing = prev.find(i => cartItemKey(i) === key)
+      if (!existing) return [item, ...prev]
+      return prev.map(i => cartItemKey(i) === key
+        ? { ...i, quantity: i.quantity + item.quantity, total: (i.quantity + item.quantity) * i.unitPrice - i.discount }
+        : i
+      )
+    })
+    setSourceModal(null)
+  }
+
+  function addToCart(product: Product, unitName?: string, priceOverride?: number, stockOverride?: number, quantityOverride = 1) {
     const units = getProductUnits(product)
     const unit = units.find(u => u.name === unitName) || units[0]
-    if (priceOverride === undefined && needsUnitPrice(product, unit.name)) {
-      setUnitPriceModal({ product, unitName: unit.name })
+    if (priceOverride === undefined) {
+      setUnitPriceModal({ product, unitName: unit.name, initialQuantity: quantityOverride })
       return
     }
     const unitQty = unit.quantity
-    const effectivePrice = priceOverride ?? (priceMode === 'gros'
-      ? (product.wholesalePrice || getUnitPrice(product, unit.name))
-      : getUnitPrice(product, unit.name))
+    const effectivePrice = priceOverride
 
-    setCart(prev => {
-      const key = `${product.id}::${unit.name}`
-      const stock = getProductStock(product.id)
-      const existing = prev.find(i => cartItemKey(i) === key)
-      if (existing) {
-        const step = getUnitStep(unit.name)
-        const newQty = +(existing.quantity + step).toFixed(1)
-        const neededPieces = newQty * unitQty
-        if (neededPieces > stock) { toast('Stock insuffisant', 'error'); return prev }
-        return prev.map(i =>
-          cartItemKey(i) === key
+    const requestedQuantity = Math.max(0.1, Number(quantityOverride) || 1)
+    const shopAvailable = stockOverride ?? availableStockFor(product.id)
+    const shopCapacity = Math.floor(shopAvailable / unitQty)
+    const shopKey = `${product.id}::${unit.name}::${shopId}`
+    const existingShop = cart.find(i => cartItemKey(i) === shopKey)
+    const existingQuantity = existingShop?.quantity || 0
+    const shopQuantity = Math.min(requestedQuantity, Math.max(0, shopCapacity - existingQuantity))
+
+    if (shopQuantity > 0 && shopId) {
+      setActiveCartItems(prev => {
+        const existing = prev.find(i => cartItemKey(i) === shopKey)
+        if (existing) {
+          const newQty = +(existing.quantity + shopQuantity).toFixed(1)
+          return prev.map(i => cartItemKey(i) === shopKey
             ? { ...i, quantity: newQty, total: newQty * effectivePrice - i.discount }
             : i
-        )
-      }
-      const neededPieces = 1 * unitQty
-      if (neededPieces > stock) { toast('Stock insuffisant', 'error'); return prev }
-      return [{
-        productId: product.id, productName: product.name,
-        quantity: 1, unitPrice: effectivePrice, discount: 0, taxRate: product.taxRate,
-        total: effectivePrice, unitName: unit.name, unitQuantity: unitQty,
-      }, ...prev]
-    })
-  }
-
-  function addToCartWithUnit(product: Product, e: React.ChangeEvent<HTMLSelectElement>) {
-    const val = e.target.value
-    addToCart(product, val)
-    e.target.value = '__main__'
-  }
-
-function updateQuantity(itemKey: string, delta: number) {
-  setCart(prev => prev.map(i => {
-    if (cartItemKey(i) !== itemKey) return i
-    const step = getUnitStep(i.unitName || 'Pièce')
-    const minQty = getUnitMinQty(i.unitName || 'Pièce')
-    const newQty = Math.max(minQty, +(i.quantity + delta).toFixed(1))
-    const stock = getProductStock(i.productId)
-    if (newQty * (i.unitQuantity || 1) > stock) {
-      toast(`Stock insuffisant: maximum ${Math.floor(stock / (i.unitQuantity || 1))}`, 'warning')
-      return i
+          )
+        }
+        return [{
+          productId: product.id, productName: product.name,
+          quantity: shopQuantity, unitPrice: effectivePrice, discount: 0, taxRate: 0,
+          total: shopQuantity * effectivePrice, unitName: unit.name, unitQuantity: unitQty,
+          locationId: shopId,
+          locationName: 'Boutique',
+        }, ...prev]
+      })
     }
-    return { ...i, quantity: newQty, total: newQty * i.unitPrice - i.discount }
-  }))
-}
 
-function setQuantity(itemKey: string, value: number) {
-  setCart(prev => prev.map(i => {
-    if (cartItemKey(i) !== itemKey) return i
-    const minQty = getUnitMinQty(i.unitName || 'Pièce')
+    const missingQuantity = +(requestedQuantity - shopQuantity).toFixed(3)
+    if (missingQuantity > 0) openSourceModal(product, unit.name, effectivePrice, missingQuantity, shopAvailable)
+  }
+
+  function requestAdditionalSource(item: SaleItem, targetQuantity: number) {
+    const product = products.find(p => p.id === item.productId)
+    if (!product) return
+    const unitQty = item.unitQuantity || 1
+    const sourceId = item.locationId || shopId
+    const maxQuantity = Math.floor((availableStockAt(item.productId, sourceId) + item.quantity * unitQty) / unitQty)
+    const allowedQuantity = Math.max(0, Math.min(targetQuantity, maxQuantity))
+    setActiveCartItems(prev => prev.flatMap(i => {
+      if (cartItemKey(i) !== cartItemKey(item)) return [i]
+      if (allowedQuantity < getUnitMinQty(i.unitName || 'Pièce')) return []
+      return [{ ...i, quantity: allowedQuantity, total: allowedQuantity * i.unitPrice - i.discount }]
+    }))
+    openSourceModal(product, item.unitName || 'Pièce', item.unitPrice, targetQuantity - allowedQuantity, availableStockFor(item.productId), sourceId)
+  }
+
+  function updateQuantity(itemKey: string, delta: number) {
+    const item = cart.find(i => cartItemKey(i) === itemKey)
+    if (!item) return
+    const minQty = getUnitMinQty(item.unitName || 'Pièce')
+    const newQty = +(item.quantity + delta).toFixed(1)
+    if (newQty < minQty) {
+      removeFromCart(itemKey)
+      return
+    }
+    setQuantity(itemKey, newQty)
+  }
+
+  function setQuantity(itemKey: string, value: number) {
+    const item = cart.find(i => cartItemKey(i) === itemKey)
+    if (!item) return
+    const minQty = getUnitMinQty(item.unitName || 'Pièce')
     const newQty = Math.max(minQty, +(value || minQty).toFixed(1))
-    const stock = getProductStock(i.productId)
-    if (newQty * (i.unitQuantity || 1) > stock) {
-      toast(`Stock insuffisant: maximum ${Math.floor(stock / (i.unitQuantity || 1))}`, 'warning')
-      return i
+    const unitQty = item.unitQuantity || 1
+    const sourceId = item.locationId || shopId
+    const maxQuantity = Math.floor((availableStockAt(item.productId, sourceId) + item.quantity * unitQty) / unitQty)
+    if (newQty > maxQuantity) {
+      requestAdditionalSource(item, newQty)
+      return
     }
-    return { ...i, quantity: newQty, total: newQty * i.unitPrice - i.discount }
-  }))
-}
+    setActiveCartItems(prev => prev.map(i => cartItemKey(i) === itemKey
+      ? { ...i, quantity: newQty, total: newQty * i.unitPrice - i.discount }
+      : i
+    ))
+  }
 
   function updateCartUnit(itemKey: string, newUnitName: string) {
     const item = cart.find(i => cartItemKey(i) === itemKey)
     const product = item ? products.find(p => p.id === item.productId) : undefined
-    if (product && needsUnitPrice(product, newUnitName)) {
-      setUnitPriceModal({ product, unitName: newUnitName, itemKey })
-      return
+    if (product && item) {
+      setUnitPriceModal({ product, unitName: newUnitName, itemKey, initialQuantity: item.quantity })
     }
-    setCart(prev => prev.map(i => {
-      if (cartItemKey(i) !== itemKey) return i
-      if (!product) return i
-      const units = getProductUnits(product)
-      const unit = units.find(u => u.name === newUnitName)
-      if (!unit) return i
-      const newUnitPrice = priceMode === 'gros'
-        ? (product.wholesalePrice || getUnitPrice(product, newUnitName))
-        : getUnitPrice(product, newUnitName)
-      return {
-        ...i,
-        unitName: newUnitName,
-        unitQuantity: unit.quantity,
-        unitPrice: newUnitPrice,
-        total: i.quantity * newUnitPrice - i.discount,
-      }
-    }))
   }
 
   function updateCartPrice(itemKey: string, newPrice: number) {
-    setCart(prev => prev.map(i => {
+    setActiveCartItems(prev => prev.map(i => {
       if (cartItemKey(i) !== itemKey) return i
       return {
         ...i,
@@ -250,33 +440,79 @@ function setQuantity(itemKey: string, value: number) {
   }
 
   function removeFromCart(itemKey: string) {
-    setCart(prev => prev.filter(i => cartItemKey(i) !== itemKey))
+    setActiveCartItems(prev => prev.filter(i => cartItemKey(i) !== itemKey))
   }
 
-  function clearCart() {
-    setCart([])
-    setCustomerName('')
-    setCustomerPhone('')
-    setCustomerAddress('')
-    setCustomerId('')
-    setDiscount(0)
-    pay.reset()
-    setCartSheetOpen(false)
-    setPaymentOpen(false)
+  function openQuickProduct() {
+    setQuickProductForm({ name: search.trim(), unit: 'piece', purchaseCost: 0, packQty: 0, packUnit: 'piece', stock: 1 })
+    setQuickProductOpen(true)
   }
 
-  function handleBarcodeScan(code: string) {
-    const product = products.find(p => p.barcode === code)
-    if (product) {
-      addToCart(product)
-      setSearch('')
-      toast('Produit scanné : ' + product.name, 'success')
-    } else {
-      setSearch(code)
+  async function createQuickProduct() {
+    const name = quickProductForm.name.trim()
+    const purchaseCost = Math.max(0, Number(quickProductForm.purchaseCost) || 0)
+    const packSize = quickProductForm.unit === 'pack' ? (quickProductForm.packUnit === 'dozen' ? quickProductForm.packQty * 12 : quickProductForm.packQty) : undefined
+    const purchasePrice = Math.round((purchaseCost / (quickProductForm.unit === 'dozen' ? 12 : quickProductForm.unit === 'pack' ? (packSize || 1) : 1)) * 100) / 100
+    const stock = Math.max(1, Math.floor(Number(quickProductForm.stock) || 0))
+
+    if (!name) { toast('Nom du produit requis', 'warning'); return }
+    if (!purchaseCost || purchaseCost <= 0) { toast('Prix de revient requis', 'warning'); return }
+    if (quickProductForm.unit === 'pack' && (!packSize || packSize <= 0)) { toast('Indiquez la composition du paquet', 'warning'); return }
+    if (!shopId) { toast('Boutique indisponible, réessayez dans un instant', 'error'); return }
+
+    const now = new Date().toISOString()
+    const product: Product = {
+      id: generateId(), businessId, name, photos: [], unit: quickProductForm.unit,
+      purchasePrice, sellingPrice: 0, wholesalePrice: 0, packSize,
+      margin: 0, taxRate: 0,
+      stockAlert: 0, location: '', status: 'active', createdAt: now, updatedAt: now,
+    }
+    const movement = {
+      id: generateId(), businessId, locationId: shopId, productId: product.id,
+      type: 'in' as const, quantity: stock, unitPrice: purchasePrice,
+      reference: 'INIT', note: 'Produit créé rapidement depuis la vente', createdAt: now, userId,
+    }
+    const productStock = {
+      id: generateId(), businessId, productId: product.id, locationId: shopId,
+      quantity: stock, stockAlert: 0, stockMin: 0, stockMax: 0, updatedAt: now,
+    }
+
+    try {
+      await db.transaction('rw', db.products, db.stockMovements, db.productStocks, async () => {
+        await db.products.add(product)
+        await db.stockMovements.add(movement)
+        await db.productStocks.add(productStock)
+      })
+      try {
+        await syncWriteObject('products', product)
+        await syncWriteObject('stockMovements', movement)
+        await syncWriteObject('productStocks', productStock)
+      } catch { /* local creation remains valid while offline */ }
+    } catch {
+      toast('Impossible de créer le produit', 'error')
+      return
+    }
+
+    setSearch('')
+    setQuickProductOpen(false)
+    const unit = getProductUnitInfo(product)
+    setUnitPriceModal({ product, unitName: unit.name, stockOverride: stock })
+    toast(`${name} créé, indiquez son prix de vente`, 'success')
+  }
+
+  async function handleSale(createCustomer?: boolean) {
+    if (saleSubmittingRef.current) return
+    saleSubmittingRef.current = true
+    setSaleSubmitting(true)
+    try {
+      await handleSaleOnce(createCustomer)
+    } finally {
+      saleSubmittingRef.current = false
+      setSaleSubmitting(false)
     }
   }
 
-  async function handleSale(createCustomer: boolean = true) {
+  async function handleSaleOnce(createCustomer?: boolean) {
     if (cart.length === 0) return
     if (pay.isCredit && !customerId && !customerName.trim()) {
       toast('Client requis pour une vente à crédit', 'error')
@@ -286,8 +522,23 @@ function setQuantity(itemKey: string, value: number) {
       toast('Montant reçu insuffisant', 'error')
       return
     }
+    if (pay.isSplit && pay.splitPaid <= 0) {
+      toast('Saisissez au moins un montant de paiement', 'error')
+      return
+    }
 
-    const resolved = createCustomer
+    const name = customerName.trim()
+    let shouldCreate = createCustomer
+    if (!customerId && name) {
+      const exact = allCustomers.some(c => (c.name || '').toLowerCase() === name.toLowerCase())
+      if (exact) shouldCreate = true
+      else if (shouldCreate === undefined) {
+        setPendingCustomerModal(true)
+        return
+      }
+    }
+
+    const resolved = shouldCreate
       ? await ensureCustomer({
           businessId,
           name: customerName,
@@ -298,7 +549,7 @@ function setQuantity(itemKey: string, value: number) {
         })
       : { id: customerId || undefined, name: customerName }
     const customer = allCustomers.find(c => c.id === resolved.id)
-    const invNum = generateInvoiceNumber(settings?.invoicePrefix || 'INV-', settings?.invoiceNextNumber || 1)
+    const invNum = await nextInvoiceNumber()
 
     const sale: Sale = {
       id: generateId(),
@@ -307,90 +558,102 @@ function setQuantity(itemKey: string, value: number) {
       invoiceNumber: invNum,
       customerId: resolved.id,
       customerName: customer?.name || resolved.name || customerName,
+      customerPhone: customer?.phone || customerPhone,
+      saleType: 'shop',
       items: cart,
       subtotal,
       discountTotal: discount,
       taxTotal: 0,
       total,
       paid: pay.paid,
-      change: pay.change,
-      paymentMethod: pay.creditAmount > 0 ? 'credit' : pay.payMethod,
+      change: pay.isSplit ? Math.max(0, pay.splitPaid - total) : pay.change,
+      paymentMethod: pay.isSplit ? 'split' : (pay.creditAmount > 0 ? 'credit' : pay.payMethod),
+      splitPayments: pay.isSplit
+        ? pay.splitPayments.filter(p => p.amount > 0).map(p => ({ method: p.method, amount: p.amount }))
+        : undefined,
       status: 'completed',
-      saleChannel: 'shop',
-      deliveryStatus: 'delivered',
       createdAt: saleDate,
       userId,
     }
 
     try {
-      await processSale(sale, { downPaymentMethod: pay.payMethod, dueDate: pay.dueDate || undefined })
-    } catch (error: any) {
-      toast(error?.message || 'Impossible de valider la vente', 'error')
+      await processSale(sale, { downPaymentMethod: pay.isSplit ? (pay.splitPayments.find(p => p.amount > 0)?.method || 'cash') : pay.payMethod, dueDate: pay.dueDate || undefined })
+    } catch (e: any) {
+      if (e instanceof StockAllocationRequiredError) {
+        const item = cart.find(i => i.productId === e.productId)
+        const product = products.find(p => p.id === e.productId)
+        if (item && product) {
+          openSourceModal(product, item.unitName || 'Pièce', item.unitPrice, e.missingQuantity, e.shopQuantity)
+          return
+        }
+      }
+      toast(e?.message || 'Erreur lors de la vente', 'error')
       return
-    }
-
-    if (settings) {
-      const nextNum = (settings.invoiceNextNumber || 1) + 1
-      await db.settings.update('default', { invoiceNextNumber: nextNum })
     }
 
     setLastSale(sale)
     setSaleSuccess(true)
     setPaymentOpen(false)
     setCartSheetOpen(false)
-  }
-
-  async function handleQuickProductCreate(values: QuickProductValues) {
-    if (!shopId) {
-      toast('Boutique introuvable', 'error')
-      return
-    }
-    const now = new Date().toISOString()
-    const product: Product = {
-      id: generateId(),
-      businessId,
-      name: values.name,
-      photos: [],
-      unit: values.unit,
-      purchasePrice: values.purchasePrice,
-      sellingPrice: values.sellingPrice,
-      wholesalePrice: values.wholesalePrice || undefined,
-      packSize: values.unit === 'pack' ? values.packSize || undefined : undefined,
-      margin: calculateMargin(values.purchasePrice, values.sellingPrice),
-      taxRate: 0,
-      stockAlert: 0,
-      status: 'active',
-      createdAt: now,
-      updatedAt: now,
-    }
-    await db.products.add(product)
-    await syncWriteObject('products', product).catch(() => {})
-    if (values.stock > 0) {
-      const stock = {
-        id: generateId(), businessId, productId: product.id, locationId: shopId,
-        quantity: values.stock, stockAlert: 0, stockMin: 0, stockMax: 999999, updatedAt: now,
-      }
-      await db.productStocks.add(stock)
-      await syncWriteObject('productStocks', stock).catch(() => {})
-      const primaryUnit = getProductUnitInfo(product)
-      const unit = values.stock >= primaryUnit.quantity ? primaryUnit : getProductUnits(product)[0]
-      if (unit && values.stock >= unit.quantity) {
-        const price = priceMode === 'gros' ? (product.wholesalePrice || getUnitPrice(product, unit.name)) : getUnitPrice(product, unit.name)
-        setCart(prev => [...prev, {
-          productId: product.id, productName: product.name, quantity: 1,
-          unitPrice: price, discount: 0, taxRate: product.taxRate,
-          total: price, unitName: unit.name, unitQuantity: unit.quantity,
-        }])
-      }
-    }
-    setQuickProductOpen(false)
-    toast(values.stock > 0 ? 'Produit créé et ajouté au panier' : 'Produit créé', 'success')
+    resetCart(activeCartIndex)
   }
 
   const currency = formatCurrency
 
   return (
     <div className="w-full h-full flex flex-col gap-0">
+      {/* Selecteur de paniers (4 max, independants) */}
+      <div className="hidden lg:flex shrink-0 bg-surface-100 border-b border-surface-200 px-3 lg:px-4 py-2 items-center gap-2 overflow-x-auto scrollbar-none">
+        {carts.map((c, idx) => {
+          const isActive = idx === activeCartIndex
+          const t = cartTotals[idx].total
+          const status = cartStatusLabel(c, isActive)
+          return (
+            <button
+              key={idx}
+              data-testid={`cart-tab-${idx}`}
+              onClick={() => selectCart(idx)}
+              className={cn(
+                'shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border transition-colors min-w-[165px]',
+                isActive ? 'bg-primary-500 border-primary-500 text-on-accent shadow' : 'bg-surface-100 border-surface-300 hover:border-primary-300 text-surface-700'
+              )}
+            >
+              <span className={cn('w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0', isActive ? 'bg-white/20 text-on-accent' : 'bg-surface-200 text-surface-700')}>
+                {idx + 1}
+              </span>
+              <span className="flex flex-col min-w-0">
+                <span className={cn('text-xs font-bold truncate leading-tight', isActive ? 'text-on-accent' : 'text-surface-900')}>{c.customerName || 'Client divers'}</span>
+                <span className={cn('text-[11px] truncate', isActive ? 'text-on-accent/85' : 'text-surface-500')}>
+                  {CART_STATUS_LABELS[status]} · {c.items.length} art. · {formatCurrency(t)}
+                </span>
+              </span>
+            </button>
+          )
+        })}
+        <div className="shrink-0 flex items-center gap-2 lg:ml-auto">
+          <button
+            onClick={holdActiveCart}
+            data-testid="cart-hold"
+            disabled={activeCart.items.length === 0 || activeCart.onHold}
+            className={cn(
+              'px-3 py-2 rounded-xl border text-xs font-semibold transition-colors min-h-[40px] whitespace-nowrap',
+              activeCart.items.length > 0 && !activeCart.onHold
+                ? 'bg-amber-500/15 border-amber-500/40 text-amber-500 hover:bg-amber-500/25'
+                : 'bg-surface-50 border-surface-200 text-surface-400 cursor-not-allowed'
+            )}
+          >
+            <Pause className="w-4 h-4 inline mr-1" /> Mettre en attente
+          </button>
+          <button
+            onClick={newCart}
+            data-testid="cart-new"
+            className="px-3 py-2 rounded-xl bg-primary-500 text-on-accent text-xs font-semibold hover:bg-primary-600 transition-colors min-h-[40px] whitespace-nowrap shadow shadow-primary-200"
+          >
+            <Plus className="w-4 h-4 inline mr-1" /> Nouveau panier
+          </button>
+        </div>
+      </div>
+
       <div className="flex-1 flex gap-0 overflow-hidden bg-surface-100">
         {/* â”€â”€ LEFT: Catalogue â”€â”€ */}
         <div className="flex-[2] flex flex-col min-w-0 lg:border-r border-surface-200">
@@ -399,6 +662,14 @@ function setQuantity(itemKey: string, value: number) {
             {/* Mobile: vendeur + sync */}
             <div className="flex items-center justify-between lg:hidden">
               <div className="flex items-center gap-2">
+                <button
+                  onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/treasury')}
+                  className="w-10 h-10 rounded-xl bg-surface-100 border border-surface-200 flex items-center justify-center text-surface-500"
+                  title="Retour"
+                  aria-label="Retour"
+                >
+                  <ChevronDown className="w-5 h-5 rotate-90" />
+                </button>
                 <div className="w-8 h-8 rounded-full bg-primary-100 text-primary-400 flex items-center justify-center text-sm font-bold">
                   {userName.charAt(0).toUpperCase()}
                 </div>
@@ -407,24 +678,17 @@ function setQuantity(itemKey: string, value: number) {
               <SyncIndicator />
             </div>
 
-            {/* Recherche + scan (toujours visibles) */}
+            {/* Recherche produit */}
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-surface-400" />
                 <input
                   autoFocus
-                  type="text" placeholder="Rechercher (nom, réf., code-barres, catégorie)..."
+                  type="text" placeholder="Rechercher un produit..."
                   value={search} onChange={(e) => setSearch(e.target.value)}
                   className="w-full pl-11 pr-4 py-3 rounded-2xl bg-surface-100 border border-surface-300 text-base text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500 min-h-[48px]"
                 />
               </div>
-              <button
-                onClick={() => setScannerOpen(true)}
-                className="w-12 h-12 shrink-0 rounded-2xl bg-surface-100 border border-surface-300 text-surface-400 hover:text-primary-400 hover:border-primary-300 transition-colors flex items-center justify-center"
-                title="Scanner"
-              >
-                <Camera className="w-6 h-6" />
-              </button>
             </div>
 
             {/* Mobile: catégories en chips */}
@@ -452,29 +716,7 @@ function setQuantity(itemKey: string, value: number) {
               ))}
             </div>
 
-            {/* Mobile: mode prix */}
-            <div className="flex rounded-xl bg-surface-100 border border-surface-200 overflow-hidden lg:hidden w-fit">
-              <button
-                onClick={() => setPriceMode('detail')}
-                className={cn(
-                  'px-4 py-2.5 text-sm font-medium transition-colors',
-                  priceMode === 'detail' ? 'bg-primary-500 text-on-accent' : 'text-surface-500 hover:text-surface-700'
-                )}
-              >
-                Détail
-              </button>
-              <button
-                onClick={() => setPriceMode('gros')}
-                className={cn(
-                  'px-4 py-2.5 text-sm font-medium transition-colors',
-                  priceMode === 'gros' ? 'bg-primary-500 text-on-accent' : 'text-surface-500 hover:text-surface-700'
-                )}
-              >
-                Gros
-              </button>
-            </div>
-
-            {/* Desktop: catégories + mode prix */}
+            {/* Desktop: catégories */}
             <div className="hidden lg:flex items-center gap-2">
               <select
                 value={categoryId}
@@ -485,27 +727,7 @@ function setQuantity(itemKey: string, value: number) {
                 {filteredCategories.map((c: any) => (
                   <option key={c.id} value={c.id}>{c.name}</option>
                 ))}
-              </select>
-              <div className="flex rounded-xl bg-surface-100 border border-surface-200 overflow-hidden">
-                <button
-                  onClick={() => setPriceMode('detail')}
-                  className={cn(
-                    'px-3 py-2 text-xs font-medium transition-colors',
-                    priceMode === 'detail' ? 'bg-primary-500 text-on-accent' : 'text-surface-500 hover:text-surface-700'
-                  )}
-                >
-                  Détail
-                </button>
-                <button
-                  onClick={() => setPriceMode('gros')}
-                  className={cn(
-                    'px-3 py-2 text-xs font-medium transition-colors',
-                    priceMode === 'gros' ? 'bg-primary-500 text-on-accent' : 'text-surface-500 hover:text-surface-700'
-                  )}
-                >
-                  Gros
-                </button>
-              </div>
+               </select>
             </div>
           </div>
 
@@ -514,9 +736,11 @@ function setQuantity(itemKey: string, value: number) {
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-3">
               {filteredProducts.map((p) => {
                 const stock = getProductStock(p.id)
-                const isOut = stock <= 0
                 const units = getProductUnits(p)
-                const displayPrice = priceMode === 'gros' ? (p.wholesalePrice || p.sellingPrice) : p.sellingPrice
+                const sourceStocks = locations
+                  .filter(l => l.type === 'shop' || l.type === 'warehouse')
+                  .map(l => ({ name: l.type === 'shop' ? 'Boutique' : l.name, quantity: stockAt(p.id, l.id), type: l.type }))
+                const isOut = sourceStocks.length > 0 ? sourceStocks.every(s => s.quantity <= 0) : stock <= 0
                 return (
                   <div
                     key={p.id}
@@ -528,31 +752,34 @@ function setQuantity(itemKey: string, value: number) {
                     )}
                   >
                     <div className="relative">
-                      <button onClick={() => !isOut && addToCart(p)} className="w-full text-left block">
-                        <div className="w-full aspect-square bg-surface-50 rounded-xl flex items-center justify-center overflow-hidden">
-                          {p.photos?.[0] ? (
-                            <img loading="lazy" src={p.photos[0]} alt="" className="w-full h-full object-contain" />
-                          ) : (
-                            <Package className="w-10 h-10 text-surface-500" />
-                          )}
-                        </div>
-                        {isOut && (
-                          <span className="absolute top-2 left-2 px-2 py-1 rounded-lg bg-red-500/90 text-[11px] font-semibold text-white shadow">
-                            Rupture
-                          </span>
+                      <div className="w-full aspect-square bg-surface-50 rounded-xl flex items-center justify-center overflow-hidden">
+                        {p.photos?.[0] ? (
+                          <img loading="lazy" src={p.photos[0]} alt="" className="w-full h-full object-contain" />
+                        ) : (
+                          <Package className="w-10 h-10 text-surface-500" />
                         )}
-                      </button>
+                      </div>
+                      {isOut && (
+                        <span className="absolute top-2 left-2 px-2 py-1 rounded-lg bg-red-500/90 text-[11px] font-semibold text-white shadow">
+                          Rupture
+                        </span>
+                      )}
                     </div>
-                    <button onClick={() => !isOut && addToCart(p)} className="w-full text-left flex-1">
+                    <div className="flex-1">
                       <p className="text-sm font-semibold text-surface-900 leading-snug mt-2 line-clamp-2 min-h-[2.5em]">{p.name}</p>
-                      <p className="text-lg font-extrabold text-primary-500 mt-0.5">{currency(displayPrice)}</p>
+                      <p className="text-sm font-semibold text-primary-500 mt-0.5">Prix à définir</p>
                       <p className={cn(
                         'text-xs font-medium mt-0.5',
                         isOut ? 'text-red-500' : stock <= (p.stockAlert || 5) ? 'text-amber-500' : 'text-surface-600'
                       )}>
                         {isOut ? 'En rupture' : `Stock: ${stock} pièces`}
                       </p>
-                    </button>
+                      <div className="mt-1 space-y-0.5">
+                        {sourceStocks.filter(s => s.type === 'shop' || s.quantity > 0).slice(0, 3).map(s => (
+                          <p key={s.name} className="text-[10px] text-surface-400">{s.name} : {s.quantity}</p>
+                        ))}
+                      </div>
+                    </div>
                     {!isOut && (
                       <button
                         onClick={() => addToCart(p)}
@@ -564,13 +791,12 @@ function setQuantity(itemKey: string, value: number) {
                     {!isOut && units.length > 0 && (
                       <div className="mt-2 flex gap-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
                         {units.map(u => {
-                          const unitPrice = getUnitPrice(p, u.name)
                           return (
                             <button
                               key={u.name}
                               onClick={() => addToCart(p, u.name)}
                               className="px-2 py-1 rounded-lg text-[11px] font-medium bg-surface-50 text-surface-500 hover:bg-primary-100 hover:text-primary-400 transition-colors min-h-[32px]"
-                              title={needsUnitPrice(p, u.name) ? `1 ${u.name} = ${u.quantity} pièces (prix non défini)` : `1 ${u.name} = ${u.quantity} pièces (${currency(unitPrice)})`}
+                              title={`1 ${u.name} = ${u.quantity} pièces`}
                             >
                               1 {u.name}
                             </button>
@@ -585,9 +811,14 @@ function setQuantity(itemKey: string, value: number) {
                 <div className="col-span-full flex flex-col items-center justify-center py-16 text-surface-400">
                   <Package className="w-12 h-12 mb-3 text-surface-500" />
                   <p className="text-sm">Aucun produit trouvé</p>
-                  <button onClick={() => setQuickProductOpen(true)} className="mt-4 px-4 py-2.5 rounded-xl bg-primary-500 text-on-accent text-sm font-semibold min-h-[44px]">
-                    Créer ce produit
-                  </button>
+                  {search.trim() && (
+                    <button
+                      onClick={openQuickProduct}
+                      className="mt-4 inline-flex items-center gap-2 rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-on-accent shadow-lg shadow-primary-200 transition-colors hover:bg-primary-600"
+                    >
+                      <Plus className="w-4 h-4" /> Créer « {search.trim()} » rapidement
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -599,15 +830,11 @@ function setQuantity(itemKey: string, value: number) {
           {/* Fixed header */}
           <div className="shrink-0 px-4 py-3 bg-surface-100 border-b border-surface-200 flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <h2 className="text-base font-bold text-surface-900">Panier <span className="text-surface-400 font-normal">({cart.length})</span></h2>
+              <h2 className="text-base font-bold text-surface-900">Panier P{activeCartIndex + 1} <span className="text-surface-400 font-normal">({cart.length})</span></h2>
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex rounded-lg bg-surface-100 border border-surface-200 overflow-hidden">
-                <button onClick={() => setPriceMode('detail')} className={cn('px-3 py-1.5 text-xs font-medium transition-colors', priceMode === 'detail' ? 'bg-primary-500 text-on-accent' : 'text-surface-500 hover:text-surface-700')}>Détail</button>
-                <button onClick={() => setPriceMode('gros')} className={cn('px-3 py-1.5 text-xs font-medium transition-colors', priceMode === 'gros' ? 'bg-primary-500 text-on-accent' : 'text-surface-500 hover:text-surface-700')}>Gros</button>
-              </div>
-              {cart.length > 0 && (
-                <button onClick={clearCart} className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-500 transition-colors" title="Vider le panier">
+              <div className="flex items-center gap-2">
+               {cart.length > 0 && (
+                <button onClick={resetActiveCart} className="p-1.5 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-500 transition-colors" title="Vider le panier">
                   <Trash2 className="w-4 h-4" />
                 </button>
               )}
@@ -628,23 +855,35 @@ function setQuantity(itemKey: string, value: number) {
               <div className="mt-2 space-y-2 pb-2">
                 <div className="relative">
                   <User className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
-                  <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} placeholder="Nom du client"
+                  <input value={customerName} onChange={(e) => setActiveCartCustomer({ customerName: e.target.value, customerId: '' })} placeholder="Nom du client"
                     className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
+                {desktopMatches.length > 0 && (
+                  <div className="rounded-xl border border-surface-200 bg-surface-50 overflow-hidden">
+                    {desktopMatches.map(c => (
+                      <button key={c.id} type="button" onClick={() => setActiveCartCustomer({ customerId: c.id, customerName: c.name || '', customerPhone: c.phone || '', customerAddress: c.address || '' })}
+                        className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-surface-100 transition-colors border-b border-surface-100 last:border-b-0">
+                        <User className="w-3.5 h-3.5 text-primary-400 shrink-0" />
+                        <span className="text-sm text-surface-800 truncate">{c.name}</span>
+                        {c.phone && <span className="text-xs text-surface-400 ml-auto">{c.phone}</span>}
+                      </button>
+                    ))}
+                  </div>
+                )}
                 <div className="flex gap-2">
                   <div className="relative flex-1">
                     <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
-                    <input value={customerPhone} onChange={(e) => setCustomerPhone(e.target.value)} placeholder="Téléphone"
+                    <input value={customerPhone} onChange={(e) => setActiveCartCustomer({ customerPhone: e.target.value })} placeholder="Téléphone"
                       className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500" />
                   </div>
-                  <button type="button" onClick={async () => { const c = await pickContact(); if (c) { setCustomerName(c.name); setCustomerPhone(c.tel); toast('Contact importé', 'success') } }}
+                  <button type="button" onClick={async () => { const c = await pickContact(); if (c) { setActiveCartCustomer({ customerName: c.name, customerPhone: c.tel }); toast('Contact importé', 'success') } }}
                     className="p-2 rounded-lg bg-surface-50 border border-surface-300 text-surface-500 hover:text-primary-400" title="Importer">
                     <ContactIcon className="w-4 h-4" />
                   </button>
                 </div>
                 <div className="relative">
                   <MapPin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
-                  <input value={customerAddress} onChange={(e) => setCustomerAddress(e.target.value)} placeholder="Adresse"
+                  <input value={customerAddress} onChange={(e) => setActiveCartCustomer({ customerAddress: e.target.value })} placeholder="Adresse"
                     className="w-full pl-9 pr-3 py-2 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
               </div>
@@ -657,6 +896,7 @@ function setQuantity(itemKey: string, value: number) {
               const key = cartItemKey(item)
               const product = products.find(p => p.id === item.productId)
               const units = product ? getProductUnits(product) : []
+              const sourceName = item.locationId === shopId ? 'Boutique' : locations.find(l => l.id === item.locationId)?.name || 'Dépôt'
               return (
                 <div key={key} className="bg-surface-100 border border-surface-200 rounded-2xl p-4 shadow-sm relative">
                   <button onClick={() => removeFromCart(key)}
@@ -672,25 +912,29 @@ function setQuantity(itemKey: string, value: number) {
                       )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-bold text-surface-900 leading-tight">{item.productName}</p>
+                       <p className="text-sm font-bold text-surface-900 leading-tight">{item.productName}</p>
+                       <span className="inline-block mt-1 rounded-md bg-primary-50 px-1.5 py-0.5 text-[10px] font-medium text-primary-500">Source : {sourceName}</span>
                       <div className="flex items-center gap-2 mt-1.5">
                         <select value={item.unitName || 'Pièce'} onChange={(e) => updateCartUnit(key, e.target.value)}
                           className="text-[11px] rounded-md border border-surface-200 bg-surface-50 px-1.5 py-0.5 text-surface-600 focus:outline-none">
                           {units.map(u => (<option key={u.name} value={u.name}>{u.name}</option>))}
                         </select>
                         <span className="text-xs text-surface-500">×</span>
-                        <input type="number" min={getUnitMinQty(item.unitName || 'Pièce')} step={getUnitStep(item.unitName || 'Pièce')}
+                        <NumericInput min={getUnitMinQty(item.unitName || 'Pièce')} step={getUnitStep(item.unitName || 'Pièce')}
                           value={item.quantity}
                           onChange={(e) => {
                             const minQty = getUnitMinQty(item.unitName || 'Pièce')
                             const q = Math.max(minQty, Number(e.target.value) || minQty)
-                            setCart(prev => prev.map(i => cartItemKey(i) === key ? { ...i, quantity: q, total: q * i.unitPrice - i.discount } : i))
+                            const unitQty = item.unitQuantity || 1
+                            const maxUnit = Math.floor(availableStockFor(item.productId) / unitQty)
+                            const capped = Math.min(q, Math.max(maxUnit, minQty))
+                            setActiveCartItems(prev => prev.map(i => cartItemKey(i) === key ? { ...i, quantity: capped, total: capped * i.unitPrice - i.discount } : i))
                           }}
                           className="w-14 text-[11px] rounded-md border border-surface-200 bg-surface-50 px-1 py-0.5 text-surface-700 text-center focus:outline-none" />
                       </div>
                       <div className="flex items-center gap-1 mt-1">
-                        <span className="text-[11px] text-surface-400">PU:</span>
-                        <input type="number" min="0" step="1" value={item.unitPrice}
+                        <span className="text-[11px] text-surface-400">Prix vente:</span>
+                        <NumericInput min="0" step="1" value={item.unitPrice}
                           onChange={(e) => updateCartPrice(key, Math.max(0, Number(e.target.value) || 0))}
                           className="w-16 text-[11px] rounded-md border border-surface-200 bg-surface-50 px-1 py-0.5 text-surface-700 text-right focus:outline-none" />
                       </div>
@@ -700,8 +944,7 @@ function setQuantity(itemKey: string, value: number) {
                     <button onClick={() => updateQuantity(key, -1)} className="w-9 h-9 rounded-xl bg-surface-100 flex items-center justify-center text-surface-500 hover:bg-surface-200 active:bg-surface-300 transition-colors">
                       <Minus className="w-4 h-4" />
                     </button>
-                    <input
-                      type="number"
+                    <NumericInput
                       min={getUnitMinQty(item.unitName || 'Pièce')}
                       step={getUnitStep(item.unitName || 'Pièce')}
                       value={item.quantity}
@@ -752,8 +995,8 @@ function setQuantity(itemKey: string, value: number) {
               <div className="flex items-center gap-2">
                 <div className="relative flex-1">
                   <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-surface-400" />
-                  <input type="number" min="0" value={discount || ''}
-                    onChange={(e) => setDiscount(Math.max(0, Number(e.target.value) || 0))}
+                  <NumericInput min="0" value={discount || ''}
+                    onChange={(e) => setActiveCartDiscount(Math.max(0, Number(e.target.value) || 0))}
                     placeholder="Remise (FCFA)"
                     className="w-full pl-8 pr-3 py-1.5 rounded-lg bg-surface-50 border border-surface-300 text-sm text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500" />
                 </div>
@@ -771,7 +1014,7 @@ function setQuantity(itemKey: string, value: number) {
 
           {/* Fixed bottom bar */}
           <div className="shrink-0 bg-surface-100 border-t border-surface-200 px-4 pt-3 pb-3 space-y-2" style={{ paddingBottom: 'calc(12px + env(safe-area-inset-bottom, 16px))' }}>
-            <button onClick={() => handleSale()} disabled={cart.length === 0 || pay.isShort}
+            <button onClick={() => handleSale()} disabled={cart.length === 0 || pay.isShort || saleSubmitting}
               className={cn(
                 'w-full py-3.5 rounded-xl text-sm font-bold transition-all flex items-center justify-center gap-2',
                 cart.length > 0
@@ -779,21 +1022,42 @@ function setQuantity(itemKey: string, value: number) {
                   : 'bg-surface-100 text-surface-400 cursor-not-allowed'
               )}>
               <CreditCard className="w-5 h-5" />
-              Valider ({currency(total)})
+              {saleSubmitting ? 'Enregistrement...' : `Valider (${currency(total)})`}
             </button>
             <div className="flex gap-2">
               <button onClick={async () => {
                 const customer = allCustomers.find(c => c.id === customerId)
-                const saleData = { invoiceNumber: generateInvoiceNumber(settings?.invoicePrefix || 'INV-', settings?.invoiceNextNumber || 1), items: cart.map(i => ({ productName: i.productName, quantity: i.quantity, unitName: i.unitName, unitPrice: i.unitPrice, total: i.total })), total, paid: pay.paid, change: pay.change, customerName: customer?.name || customerName, createdAt: saleDate, paymentMethod: pay.creditAmount > 0 ? 'credit' : pay.payMethod }
+                const saleData = { invoiceNumber: generateInvoiceNumber(settings?.invoicePrefix || 'INV-', settings?.invoiceNextNumber || 1), items: cart.map(i => ({ productName: i.productName, quantity: i.quantity, unitName: i.unitName, unitPrice: i.unitPrice, total: i.total })), total, paid: pay.paid, change: pay.isSplit ? Math.max(0, pay.splitPaid - total) : pay.change, customerName: customer?.name || customerName, createdAt: saleDate, paymentMethod: pay.isSplit ? 'split' : (pay.creditAmount > 0 ? 'credit' : pay.payMethod), splitPayments: pay.isSplit ? pay.splitPayments.filter(p => p.amount > 0) : undefined }
                 try { const connected = thermalPrinter.isConnected() || await thermalPrinter.connect()
-                  if (connected) { await thermalPrinter.printReceipt([{ text: 'NEOX ERP', bold: true, doubleWidth: true, align: 'center' }, { text: 'Facture de vente', align: 'center' }, { text: '---' }, ...cart.map(i => ({ text: `${i.productName} x${i.quantity}  ${currency(i.total)}` })), { text: '---' }, { text: `Total: ${currency(total)}`, bold: true, align: 'right' }, { text: '', align: 'center' }, { text: 'Merci de votre visite !', align: 'center' }]); await thermalPrinter.cut(); toast('Ticket imprimé', 'success'); return }
+                  if (connected) {
+                    const payNames: Record<string, string> = { cash: 'Espèces', wave: 'Wave', orange: 'Orange', mobile: 'Mobile', card: 'Carte', bank: 'Virement' }
+                    const ticketLines: { text: string; bold?: boolean; doubleWidth?: boolean; align?: 'left' | 'center' | 'right' }[] = [
+                      { text: 'NEOX ERP', bold: true, doubleWidth: true, align: 'center' },
+                      { text: 'Facture de vente', align: 'center' },
+                      { text: '---' },
+                      ...cart.map(i => ({ text: `${i.productName} x${i.quantity}  ${currency(i.total)}` })),
+                      { text: '---' },
+                      { text: `Total: ${currency(total)}`, bold: true, align: 'right' },
+                      { text: `Paye: ${currency(pay.paid)}`, align: 'right' },
+                    ]
+                    if (pay.isSplit) {
+                      for (const p of pay.splitPayments.filter(p => p.amount > 0)) {
+                        ticketLines.push({ text: `  ${payNames[p.method]}: ${currency(p.amount)}` })
+                      }
+                    } else {
+                      ticketLines.push({ text: `Mode: ${payNames[pay.payMethod] || pay.payMethod}` })
+                    }
+                    if (pay.paid < total) ticketLines.push({ text: `Reste: ${currency(total - pay.paid)}`, bold: true, align: 'right' })
+                    ticketLines.push({ text: '', align: 'center' }, { text: 'Merci de votre visite !', align: 'center' })
+                    await thermalPrinter.printReceipt(ticketLines); await thermalPrinter.cut(); toast('Ticket imprimé', 'success'); return
+                  }
                 } catch {}
                 printReceiptHTML(saleData, settings?.name)
               }} disabled={cart.length === 0}
                 className={cn('flex-1 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 border border-surface-200', cart.length > 0 ? 'bg-surface-100 text-surface-700 hover:bg-surface-50' : 'bg-surface-50 text-surface-500 cursor-not-allowed')}>
                 <Printer className="w-3.5 h-3.5" /> Ticket
               </button>
-              <button onClick={async () => { if (lastSale) exportSalePDF(lastSale, settings, await buildProductPhotos(products)) }} disabled={cart.length === 0}
+              <button onClick={async () => { if (lastSale) exportSalePDF(lastSale, settings, await buildProductPhotos(products), userName) }} disabled={cart.length === 0}
                 className={cn('flex-1 py-2.5 rounded-lg text-xs font-medium transition-all flex items-center justify-center gap-1.5 border border-surface-200', cart.length > 0 ? 'bg-surface-100 text-surface-700 hover:bg-surface-50' : 'bg-surface-50 text-surface-500 cursor-not-allowed')}>
                 <Download className="w-3.5 h-3.5" /> PDF
               </button>
@@ -819,7 +1083,7 @@ function setQuantity(itemKey: string, value: number) {
           >
             <span className="flex items-center gap-2 text-base">
               <ShoppingCart className="w-6 h-6" />
-              Panier ({cart.length})
+              Panier P{activeCartIndex + 1} ({cart.length})
             </span>
             <span className="text-sm opacity-90">Qté {cart.reduce((s, i) => s + i.quantity, 0)}</span>
             <span className="text-lg font-extrabold">{currency(total)}</span>
@@ -831,18 +1095,19 @@ function setQuantity(itemKey: string, value: number) {
       <MobileCartSheet
         open={cartSheetOpen}
         onClose={() => setCartSheetOpen(false)}
+        title={`Panier P${activeCartIndex + 1}`}
         cart={cart}
         products={products}
         subtotal={subtotal}
         discount={discount}
-        setDiscount={setDiscount}
+        setDiscount={setActiveCartDiscount}
         total={total}
         updateQuantity={updateQuantity}
         setQuantity={setQuantity}
         updateCartUnit={updateCartUnit}
         updateCartPrice={updateCartPrice}
         removeFromCart={removeFromCart}
-        clearCart={clearCart}
+        clearCart={resetActiveCart}
         canEditPrice={can('products', 'edit')}
         onCheckout={() => { setCartSheetOpen(false); setPaymentOpen(true) }}
       />
@@ -857,40 +1122,132 @@ function setQuantity(itemKey: string, value: number) {
         pay={pay}
         customers={allCustomers}
         customerId={customerId}
-        setCustomerId={setCustomerId}
+        setCustomerId={(id) => setActiveCartCustomer({ customerId: id })}
         customerName={customerName}
-        setCustomerName={setCustomerName}
+        setCustomerName={(v) => setActiveCartCustomer({ customerName: v })}
         customerPhone={customerPhone}
-        setCustomerPhone={setCustomerPhone}
+        setCustomerPhone={(v) => setActiveCartCustomer({ customerPhone: v })}
         customerAddress={customerAddress}
-        setCustomerAddress={setCustomerAddress}
+        setCustomerAddress={(v) => setActiveCartCustomer({ customerAddress: v })}
         customerOpen={customerOpen}
         setCustomerOpen={setCustomerOpen}
+        submitting={saleSubmitting}
         onConfirm={handleSale}
       />
 
-      <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleBarcodeScan} />
-
-      <QuickProductModal
-        open={quickProductOpen}
-        locations={shopLocation ? [{ id: shopLocation.id, name: shopLocation.name }] : []}
-        defaultLocationId={shopId}
-        onClose={() => setQuickProductOpen(false)}
-        onCreate={handleQuickProductCreate}
-      />
-
       <UnitPriceModal
+        key={unitPriceModal ? `${unitPriceModal.product.id}:${unitPriceModal.unitName}:${unitPriceModal.itemKey || 'new'}` : 'closed'}
         open={!!unitPriceModal}
         productName={unitPriceModal?.product.name || ''}
         unitName={unitPriceModal?.unitName || ''}
-        suggestedPrice={unitPriceModal ? Math.round(unitPriceModal.product.sellingPrice * (unitPriceModal.unitName === 'Douzaine' || unitPriceModal.unitName === 'Demi-douzaine' ? (unitPriceModal.unitName === 'Demi-douzaine' ? 6 : 12) : (unitPriceModal.unitName === 'Demi-paquet' ? (unitPriceModal.product.packSize || 2) / 2 : (unitPriceModal.product.packSize || 1)))) : 0}
+        initialQuantity={unitPriceModal?.initialQuantity}
         onConfirm={handleUnitPriceConfirm}
         onClose={() => setUnitPriceModal(null)}
       />
 
+      <Modal open={sourceModal !== null} onClose={() => setSourceModal(null)} title="Compléter avec un dépôt" size="md">
+        {sourceModal && (
+          <div className="space-y-4 p-5">
+            <div className="rounded-2xl bg-primary-50 border border-primary-200 p-4 space-y-1">
+              <p className="font-bold text-surface-900">{sourceModal.product.name}</p>
+              <p className="text-sm text-surface-600">Quantité à ajouter : <strong>{sourceModal.quantity}</strong> {sourceModal.unitName}</p>
+              <p className="text-sm text-surface-600">Boutique disponible : <strong>{sourceModal.shopAvailable}</strong></p>
+              <p className="text-sm font-semibold text-amber-600">Il manque {sourceModal.quantity} unité(s) dans la boutique.</p>
+            </div>
+            <p className="text-sm font-semibold text-surface-700">Sélectionnez la source complémentaire :</p>
+            <div className="space-y-2">
+              {sourceModal.sources.map(source => {
+                const unitQty = getProductUnits(sourceModal.product).find(u => u.name === sourceModal.unitName)?.quantity || 1
+                const available = availableStockAt(sourceModal.product.id, source.locationId)
+                const canCover = sourceModal.quantity * unitQty <= available
+                return (
+                  <button
+                    key={source.locationId}
+                    type="button"
+                    disabled={!canCover}
+                    onClick={() => addFromSource({ ...source, quantity: available })}
+                    className={cn('w-full flex items-center justify-between rounded-xl border px-4 py-3 text-left transition-colors', canCover ? 'border-surface-200 bg-surface-100 hover:border-primary-300 hover:bg-primary-50' : 'border-surface-100 bg-surface-50 text-surface-400 cursor-not-allowed')}
+                  >
+                    <span className="text-sm font-semibold">{source.locationName}</span>
+                    <span className="text-sm font-bold">{available} disponibles</span>
+                  </button>
+                )
+              })}
+              {sourceModal.sources.length === 0 && <p className="text-sm text-danger">Aucun dépôt disponible.</p>}
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {quickProductOpen && (
+        <div className="fixed inset-0 z-[65] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm animate-fade-in">
+          <div className="w-full max-w-md rounded-3xl bg-surface-100 shadow-2xl animate-scale-in">
+            <div className="flex items-center justify-between border-b border-surface-200 px-5 py-4">
+              <div>
+                <h2 className="text-lg font-bold text-surface-900">Produit rapide</h2>
+                <p className="mt-0.5 text-xs text-surface-500">Créez-le sans quitter la vente</p>
+              </div>
+              <button onClick={() => setQuickProductOpen(false)} className="rounded-xl p-2 text-surface-400 hover:bg-surface-50 hover:text-surface-700" aria-label="Fermer">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="space-y-4 p-5">
+              <label className="block text-sm font-medium text-surface-700">
+                Nom du produit
+                <input
+                  autoFocus value={quickProductForm.name}
+                  onChange={(e) => setQuickProductForm({ ...quickProductForm, name: e.target.value })}
+                  className="mt-1.5 w-full rounded-xl border border-surface-300 bg-surface-50 px-4 py-3 text-base text-surface-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                />
+              </label>
+              <label className="block text-sm font-medium text-surface-700">
+                Unité
+                <select
+                  value={quickProductForm.unit}
+                  onChange={(e) => setQuickProductForm({ ...quickProductForm, unit: e.target.value as Product['unit'] })}
+                  className="mt-1.5 w-full rounded-xl border border-surface-300 bg-surface-50 px-4 py-3 text-base text-surface-900 outline-none focus:border-primary-500 focus:ring-2 focus:ring-primary-500/20"
+                >
+                  <option value="piece">Pièce</option>
+                  <option value="dozen">Douzaine</option>
+                  <option value="pack">Paquet</option>
+                </select>
+              </label>
+              {quickProductForm.unit === 'pack' && (
+                <div className="grid grid-cols-2 gap-3">
+                  <label className="block text-sm font-medium text-surface-700">
+                    Composition
+                    <select value={quickProductForm.packUnit} onChange={(e) => setQuickProductForm({ ...quickProductForm, packUnit: e.target.value as 'piece' | 'dozen' })} className="mt-1.5 w-full rounded-xl border border-surface-300 bg-surface-50 px-3 py-3 text-sm text-surface-900">
+                      <option value="piece">Pièces</option>
+                      <option value="dozen">Douzaines</option>
+                    </select>
+                  </label>
+                  <label className="block text-sm font-medium text-surface-700">
+                    Nombre
+                    <NumericInput min="1" value={quickProductForm.packQty || ''} onChange={(e) => setQuickProductForm({ ...quickProductForm, packQty: Number(e.target.value) || 0 })} className="mt-1.5" />
+                  </label>
+                </div>
+              )}
+              <label className="block text-sm font-medium text-surface-700">
+                Prix de revient ({quickProductForm.unit === 'piece' ? 'pièce' : quickProductForm.unit === 'dozen' ? 'douzaine' : 'paquet'})
+                <NumericInput min="0" value={quickProductForm.purchaseCost || ''} onChange={(e) => setQuickProductForm({ ...quickProductForm, purchaseCost: Number(e.target.value) || 0 })} className="mt-1.5" />
+              </label>
+              <label className="block text-sm font-medium text-surface-700">
+                Stock initial (pièces)
+                <NumericInput min="1" value={quickProductForm.stock} onChange={(e) => setQuickProductForm({ ...quickProductForm, stock: Number(e.target.value) || 0 })} className="mt-1.5" />
+              </label>
+              <p className="rounded-xl bg-primary-50 px-3 py-2 text-xs text-primary-700">Le produit sera ajouté au catalogue et au stock. Le prix de vente sera demandé ensuite.</p>
+            </div>
+            <div className="flex gap-3 border-t border-surface-200 px-5 py-4">
+              <button onClick={() => setQuickProductOpen(false)} className="flex-1 rounded-xl border border-surface-200 bg-surface-100 px-4 py-3 text-sm font-semibold text-surface-700 hover:bg-surface-50">Annuler</button>
+              <button onClick={createQuickProduct} className="flex-1 rounded-xl bg-primary-500 px-4 py-3 text-sm font-bold text-on-accent shadow-lg shadow-primary-200 hover:bg-primary-600">Créer et vendre</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {saleSuccess && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-md animate-fade-in p-4">          <div className="relative text-center py-8 px-6 bg-surface-100 rounded-[20px] border border-surface-200 shadow-2xl animate-slide-up w-[95%] sm:w-[90%] md:w-[640px] max-w-[640px] max-h-[95vh] md:max-h-[820px] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-            <button onClick={() => { setSaleSuccess(false); clearCart() }} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-100 text-surface-400">
+            <button onClick={() => setSaleSuccess(false)} className="absolute top-3 right-3 w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-100 text-surface-400">
               <X className="w-5 h-5" />
             </button>
             <div className="w-14 h-14 bg-success/10 rounded-full flex items-center justify-center mx-auto mb-3">
@@ -901,7 +1258,7 @@ function setQuantity(itemKey: string, value: number) {
             <div className="flex flex-col gap-3 mt-5">
               <div className="grid grid-cols-2 gap-2">
                 <button
-                  onClick={async () => { if (lastSale) { exportSalePDF(lastSale, settings, await buildProductPhotos(products)); toast('PDF téléchargé', 'success') } }}
+                  onClick={async () => { if (lastSale) { exportSalePDF(lastSale, settings, await buildProductPhotos(products), userName); toast('PDF téléchargé', 'success') } }}
                   className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
                 >
                   <Download className="w-5 h-5" /> PDF
@@ -934,7 +1291,7 @@ function setQuantity(itemKey: string, value: number) {
                   <Printer className="w-5 h-5" /> Imprimer
                 </button>
                 <button
-                  onClick={async () => { if (lastSale) { shareSalePDF(lastSale, settings, await buildProductPhotos(products)); toast('Partage en cours...', 'success') } }}
+                  onClick={async () => { if (lastSale) { shareSalePDF(lastSale, settings, await buildProductPhotos(products), userName); toast('Partage en cours...', 'success') } }}
                   className="flex flex-col items-center gap-1 py-3 rounded-xl border border-surface-200 text-surface-700 text-xs font-medium hover:bg-surface-50 transition-colors"
                 >
                   <Send className="w-5 h-5" /> WhatsApp
@@ -953,7 +1310,7 @@ function setQuantity(itemKey: string, value: number) {
                 </button>
               </div>
               <button
-                onClick={() => { setSaleSuccess(false); clearCart() }}
+                onClick={() => setSaleSuccess(false)}
                 className="w-full py-3 rounded-xl bg-primary-500 text-on-accent text-sm font-bold hover:bg-primary-500 transition-colors"
               >
                 Nouvelle vente
@@ -967,8 +1324,36 @@ function setQuantity(itemKey: string, value: number) {
         open={editSaleId !== null}
         onClose={() => setEditSaleId(null)}
         saleId={editSaleId || undefined}
-        onSaved={() => { setEditSaleId(null); setSaleSuccess(false); clearCart() }}
+        onSaved={() => { setEditSaleId(null); setSaleSuccess(false) }}
       />
+
+      {pendingCustomerModal && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 animate-fade-in">
+          <div className="fixed inset-0 bg-black/60 backdrop-blur-md" onClick={() => setPendingCustomerModal(false)} />
+          <div className="relative w-[95%] sm:w-[400px] bg-surface-100 rounded-[20px] shadow-2xl p-5 animate-scale-in">
+            <div className="w-12 h-12 bg-primary-500/10 rounded-full flex items-center justify-center mx-auto mb-3">
+              <User className="w-6 h-6 text-primary-500" />
+            </div>
+            <h3 className="text-center text-base font-bold text-surface-900">Nouveau client</h3>
+            <p className="text-center text-sm text-surface-500 mt-2 leading-relaxed">
+              « <span className="font-semibold text-surface-900">{customerName.trim()}</span> » n'est pas un client enregistré.
+              <br />Voulez-vous l'ajouter comme nouveau client ?
+            </p>
+            <div className="flex flex-col gap-2 mt-5">
+              <button
+                onClick={() => { setPendingCustomerModal(false); handleSale(true) }}
+                className="w-full py-3.5 rounded-xl bg-primary-500 text-on-accent font-bold text-sm transition-all active:scale-[0.98]">
+                Oui, ajouter ce client
+              </button>
+              <button
+                onClick={() => { setPendingCustomerModal(false); handleSale(false) }}
+                className="w-full py-3.5 rounded-xl bg-surface-100 border border-surface-200 text-surface-700 font-semibold text-sm transition-all active:scale-[0.98]">
+                Non, sans enregistrer le client
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

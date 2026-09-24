@@ -161,12 +161,15 @@ export class ThermalPrinter {
 
 export const thermalPrinter = new ThermalPrinter()
 
-export function printReceiptHTML(sale: { invoiceNumber: string; customerName?: string; items: { productName: string; quantity: number; unitName?: string; unitPrice: number; total: number }[]; total: number; paid: number; change?: number; createdAt: string; paymentMethod: string }, businessName?: string) {
+export function printReceiptHTML(sale: { invoiceNumber: string; customerName?: string; items: { productName: string; quantity: number; unitName?: string; unitPrice: number; total: number }[]; total: number; paid: number; change?: number; createdAt: string; paymentMethod: string; splitPayments?: { method: string; amount: number }[] }, businessName?: string) {
   const w = window.open('', '', 'width=400,height=600')
   if (!w) return
   const fmt = (n: number) => Math.round(n).toString().replace(/\B(?=(\d{3})+(?!\d))/g, '.') + ' FCFA'
   const date = new Date(sale.createdAt).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-  const payLabels: Record<string, string> = { cash: 'Espèces', mobile: 'Mobile Money', card: 'Carte', bank: 'Banque' }
+  const payLabels: Record<string, string> = { cash: 'Espèces', mobile: 'Mobile Money', card: 'Carte', bank: 'Banque', wave: 'Wave', orange: 'Orange Money', credit: 'Crédit', split: 'Mixte' }
+  const split = sale.splitPayments?.filter(p => p.amount > 0) || []
+  const isSplit = split.length > 0
+  const remaining = Math.max(0, sale.total - sale.paid)
   w.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Facture ${sale.invoiceNumber}</title><style>
     body { font-family: 'Courier New', monospace; font-size: 12px; width: 280px; margin: 0 auto; padding: 10px; }
     h2 { text-align: center; font-size: 16px; margin: 5px 0; }
@@ -192,8 +195,12 @@ export function printReceiptHTML(sale: { invoiceNumber: string; customerName?: s
       <tr><td><strong>Total</strong></td><td class="right"><strong>${fmt(sale.total)}</strong></td></tr>
       <tr><td>Payé</td><td class="right">${fmt(sale.paid)}</td></tr>
       ${sale.change ? `<tr><td>Monnaie</td><td class="right">${fmt(sale.change)}</td></tr>` : ''}
+      ${remaining > 0 ? `<tr><td><strong>Reste</strong></td><td class="right"><strong>${fmt(remaining)}</strong></td></tr>` : ''}
     </table>
-    <p class="center">Paiement: ${payLabels[sale.paymentMethod] || sale.paymentMethod}</p>
+    ${isSplit
+      ? `<p class="center">Paiements :</p>` + split.map(s => `<p class="center">${payLabels[s.method] || s.method} : ${fmt(s.amount)}</p>`).join('')
+      : `<p class="center">Paiement: ${payLabels[sale.paymentMethod] || sale.paymentMethod}</p>`}
+    ${remaining > 0 ? `<p class="center" style="font-weight:bold;">PAIEMENT PARTIEL - CREDIT CLIENT</p>` : ''}
     <div class="line"></div>
     <p class="footer">Merci de votre visite !</p>
     <script>window.onload = function() { window.print(); window.close(); }<\\/script>

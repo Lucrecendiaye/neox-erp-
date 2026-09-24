@@ -1,5 +1,6 @@
 import { supabase, isSupabaseConfigured } from './supabase'
 import db from '@/db'
+import { sanitizePayloadForSync } from './imageStorage'
 
 type SyncTable = {
   name: string
@@ -65,7 +66,15 @@ export async function syncDexieToSupabase(): Promise<{ table: string; count: num
         return out
       })
     }
-    const { error } = await supabase.from(name).upsert(data, { onConflict: 'id' })
+    let clean: any[]
+    try {
+      clean = await Promise.all(data.map(record => sanitizePayloadForSync(record)))
+    } catch (error) {
+      console.error(`Image storage error [${name}]:`, error)
+      results.push({ table: name, count: -1 })
+      continue
+    }
+    const { error } = await supabase.from(name).upsert(clean, { onConflict: 'id' })
     if (error) {
       console.error(`Sync error [${name}]:`, error)
       results.push({ table: name, count: -1 })

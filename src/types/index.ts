@@ -82,8 +82,6 @@ export interface Supplier {
 }
 
 export type SaleStatus = 'pending' | 'completed' | 'cancelled' | 'returned'
-export type SaleChannel = 'shop' | 'delivery'
-export type SaleDeliveryStatus = 'pending' | 'delivered'
 export type PaymentMethod = 'cash' | 'card' | 'mobile' | 'credit' | 'bank' | 'split' | 'wave' | 'orange'
 
 export interface SaleItem {
@@ -97,6 +95,7 @@ export interface SaleItem {
   unitName?: string
   unitQuantity?: number
   locationId?: string
+  locationName?: string
 }
 
 export interface SplitPaymentItem {
@@ -111,8 +110,10 @@ export interface Sale {
   invoiceNumber: string
   customerId?: string
   customerName?: string
+  customerPhone?: string
   supplierId?: string
   supplierName?: string
+  saleType?: 'shop' | 'delivery'
   items: SaleItem[]
   subtotal: number
   discountTotal: number
@@ -124,13 +125,83 @@ export interface Sale {
   splitPayments?: SplitPaymentItem[]
   status: SaleStatus
   paymentStatus?: 'unpaid' | 'partial' | 'paid'
-  saleChannel?: SaleChannel
-  deliveryStatus?: SaleDeliveryStatus
-  deliveryAddress?: string
-  deliveredAt?: string
   note?: string
   createdAt: string
   userId: string
+}
+
+export type DeliveryStatus = 'draft' | 'validated' | 'prepared' | 'in_transit' | 'delivered' | 'cancelled' | 'failed'
+
+export type DeliveryPaymentStatus = 'prepaid' | 'pending' | 'partial' | 'full'
+
+export interface DeliveryItem {
+  id: string
+  productId: string
+  productName: string
+  quantity: number
+  unitPrice: number
+  unitName?: string
+  unitQuantity?: number
+  total: number
+  locationId?: string
+}
+
+export interface DeliveryPayment {
+  id: string
+  kind: 'advance' | 'cod'
+  method: PaymentMethod
+  amount: number
+  date: string
+  userId: string
+  userName: string
+  note?: string
+}
+
+export interface Delivery {
+  id: string
+  businessId: string
+  number: string
+  saleId?: string
+  locationId: string
+  status: DeliveryStatus
+  paymentStatus: DeliveryPaymentStatus
+  paymentMethod: PaymentMethod | ''
+  customerId?: string
+  customerName: string
+  customerPhone?: string
+  customerAddress?: string
+  quarter?: string
+  deliveryNote?: string
+  items: DeliveryItem[]
+  subtotal: number
+  discount: number
+  deliveryFee: number
+  deliveryFeeClient: number
+  deliveryFeeShop: number
+  total: number
+  paid: number
+  courierId?: string
+  courierName?: string
+  plannedDate?: string
+  createdById: string
+  createdByName: string
+  createdAt: string
+  updatedAt: string
+  deliveredAt?: string
+  cancelledAt?: string
+  returnedAt?: string
+  cancelReason?: string
+  stockReturned?: boolean
+  refund?: number
+  payments: DeliveryPayment[]
+  courierPayDecision?: {
+    decided: boolean
+    payCourier: boolean
+    amount: number
+    decidedAt: string
+    decidedBy: string
+    decidedByName: string
+  }
 }
 
 export interface Purchase {
@@ -158,6 +229,7 @@ export interface Invoice {
   number: string
   partyId?: string
   partyName?: string
+  partyPhone?: string
   items: SaleItem[]
   subtotal: number
   taxTotal: number
@@ -257,6 +329,7 @@ export interface AuditLog {
 
 export interface User {
   id: string
+  authUserId?: string
   businessId: string
   name: string
   email: string
@@ -309,6 +382,8 @@ export interface CompanySettings {
   taxRate: number
   invoicePrefix: string
   invoiceNextNumber: number
+  deliveryPrefix: string
+  deliveryNextNumber: number
   email?: string
   phone?: string
   address?: string
@@ -319,6 +394,7 @@ export interface CompanySettings {
   accountNumber?: string
   bankName?: string
   invoiceNotes?: string
+  alertSettings?: AlertSettings
 }
 
 export interface Business {
@@ -405,6 +481,49 @@ export interface CashBookEntry {
   userId: string
 }
 
+export type CashOperationType = 'in' | 'out'
+export type CashOperationStatus = 'pending' | 'completed' | 'cancelled'
+export type CashOutNature = 'charge' | 'dépense' | 'retrait' | 'transfert' | 'autre'
+
+export interface CashOperation {
+  id: string
+  businessId: string
+  number: string
+  type: CashOperationType
+  amount: number
+  categoryId?: string
+  categoryName?: string
+  description?: string
+  partyName?: string
+  paymentMethod: PaymentMethod
+  locationId?: string
+  locationName?: string
+  status: CashOperationStatus
+  nature?: CashOutNature
+  date: string
+  reference?: string
+  receiptPhoto?: string
+  balanceAfter?: number
+  userId: string
+  userName?: string
+  createdAt: string
+  updatedAt?: string
+  cancelledAt?: string
+  cancelledBy?: string
+  cancelReason?: string
+}
+
+export interface CashCategory {
+  id: string
+  businessId: string
+  name: string
+  type: 'in' | 'out' | 'both'
+  isDefault?: boolean
+  color?: string
+  active?: boolean
+  createdAt: string
+}
+
 export interface Lead {
   id: string
   businessId: string
@@ -425,11 +544,88 @@ export interface Notification {
   id: string
   businessId: string
   type: 'stock_alert' | 'credit_due' | 'new_sale' | 'payment_received' | 'invoice_overdue' | 'payroll' | 'lead'
+    | 'delivery_assigned' | 'delivery_reassigned' | 'delivery_return' | 'stock_transfer'
+    | 'sensitive_delete' | 'sensitive_edit' | 'reminder_due' | 'loan_alert'
   title: string
   message: string
   read: boolean
   link?: string
+  recipientId?: string
+  senderId?: string
+  transferId?: string
+  shopId?: string
   createdAt: string
+}
+
+export type LoanStatus = 'active' | 'partial' | 'paid' | 'cancelled'
+
+export interface Loan {
+  id: string
+  businessId: string
+  number: string
+  partyKind: 'customer' | 'supplier'
+  partyId: string
+  partyName: string
+  amount: number
+  paid: number
+  balance: number
+  dueDate?: string
+  rate?: number
+  note?: string
+  status: LoanStatus
+  createdAt: string
+  userId: string
+  userName?: string
+}
+
+export interface LoanPayment {
+  id: string
+  businessId: string
+  loanIds: string[]
+  partyKind: 'customer' | 'supplier'
+  partyId: string
+  amount: number
+  method: PaymentMethod
+  note?: string
+  date: string
+  userId: string
+  createdAt: string
+}
+
+export type ReminderStatus = 'upcoming' | 'today' | 'overdue' | 'done' | 'postponed'
+
+export interface DebtReminder {
+  id: string
+  businessId: string
+  creditId?: string
+  saleId?: string
+  customerId: string
+  customerName: string
+  customerPhone?: string
+  debtAmount: number
+  paidAmount: number
+  dueDate?: string
+  remindDate: string
+  status: ReminderStatus
+  note?: string
+  notified?: boolean
+  createdAt: string
+  updatedAt: string
+  userId: string
+}
+
+export interface AlertSettings {
+  saleDelete: boolean
+  saleEdit: boolean
+  paymentEdit: boolean
+  loanDelete: boolean
+  stockManual: boolean
+  cashEdit: boolean
+  thresholdSaleEdit: number
+  thresholdExpense: number
+  thresholdLoan: number
+  thresholdDebt: number
+  thresholdStock: number
 }
 
 export interface BusinessCard {

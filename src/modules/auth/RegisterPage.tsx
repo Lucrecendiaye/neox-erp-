@@ -53,18 +53,18 @@ export default function RegisterPage() {
   const inputClass = 'w-full pl-10 pr-4 py-3 rounded-xl border border-surface-300 bg-surface-100 text-base focus:outline-none focus:ring-2 focus:ring-primary-500'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-600 via-primary-700 to-surface-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-surface-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-surface-100/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <div className="w-16 h-16 bg-primary-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             {logoUrl ? (
               <img src={logoUrl} alt="" className="w-10 h-10 object-contain" />
             ) : (
-              <span className="text-3xl font-bold text-white">{(settings?.name || 'C')[0]}</span>
+              <span className="text-3xl font-bold text-on-accent">{(settings?.name || 'C')[0]}</span>
             )}
           </div>
-          <h1 className="text-2xl font-bold text-white">Créer un compte</h1>
-          <p className="text-primary-200 text-sm mt-1">{settings?.name || 'NeoX ERP'}</p>
+          <h1 className="text-2xl font-bold text-surface-900">Créer un compte</h1>
+          <p className="text-surface-500 text-sm mt-1">{settings?.name || 'NeoX ERP'}</p>
         </div>
 
         <form onSubmit={handleRegister} className="bg-surface-100 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-4">

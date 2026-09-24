@@ -116,30 +116,43 @@ async function uploadToSupabaseStorage(dataUrl: string, folder: string): Promise
 
 /**
  * Envoie une image (data URL) vers un stockage externe.
- * Retourne l'URL externe, ou la data URL compressée en fallback si aucun stockage n'est configuré.
+ * Retourne null si aucun stockage n'est disponible: une data URL ne doit jamais
+ * être persistée dans Supabase.
  */
-export async function uploadImage(dataUrl: string, folder: string = 'products'): Promise<string> {
+export async function uploadImage(dataUrl: string, folder: string = 'products'): Promise<string | null> {
   if (!isDataUrl(dataUrl)) return dataUrl
-  const url = await uploadToCloudinary(dataUrl, folder) || await uploadToSupabaseStorage(dataUrl, folder)
-  return url || dataUrl
+  return await uploadToCloudinary(dataUrl, folder) || await uploadToSupabaseStorage(dataUrl, folder)
+}
+
+function containsDataUrl(value: unknown): boolean {
+  if (typeof value === 'string') return isDataUrl(value)
+  if (Array.isArray(value)) return value.some(containsDataUrl)
+  if (value && typeof value === 'object') return Object.values(value).some(containsDataUrl)
+  return false
 }
 
 /**
  * Prépare un objet avant envoi à Supabase :
  * toute photo encore en data URL est téléversée vers un stockage externe.
- * Si le téléversement échoue, la photo est conservée telle quelle pour ne jamais la perdre.
+ * Si un téléversement échoue, la synchronisation est annulée pour éviter de
+ * remplir la base avec une data URL.
  */
 export async function sanitizePayloadForSync(data: Record<string, any>): Promise<Record<string, any>> {
-  if (!data || !Array.isArray(data.photos)) return data
-  const sanitized = { ...data, photos: [] as string[] }
-  for (const photo of data.photos) {
-    if (isExternalPhoto(photo)) {
-      sanitized.photos.push(photo)
-    } else if (isDataUrl(photo)) {
-      const url = await uploadToCloudinary(photo, 'products') || await uploadToSupabaseStorage(photo, 'products')
-      sanitized.photos.push(url || photo)
+  if (!data) return data
+  const sanitized = { ...data }
+  if (Array.isArray(data.photos)) {
+    sanitized.photos = []
+    for (const photo of data.photos) {
+      if (isExternalPhoto(photo)) {
+        sanitized.photos.push(photo)
+      } else if (isDataUrl(photo)) {
+        const url = await uploadImage(photo, 'products')
+        if (!url) throw new Error('Stockage image indisponible: synchronisation annulée')
+        sanitized.photos.push(url)
+      }
     }
   }
+  if (containsDataUrl(sanitized)) throw new Error('Une data URL a été bloquée avant synchronisation')
   return sanitized
 }
 
@@ -155,6 +168,10 @@ export async function sanitizePayloadForSync(data: Record<string, any>): Promise
  */
 export async function syncBusinessLogo(logo: string): Promise<void> {
   try {
+    if (isDataUrl(logo)) {
+      console.error('[logo] data URL bloquée: aucun stockage externe disponible')
+      return
+    }
     const { useAppStore } = await import('@/stores/appStore')
     const { isSupabaseConfigured, supabase } = await import('./supabase')
     const db = (await import('@/db')).default

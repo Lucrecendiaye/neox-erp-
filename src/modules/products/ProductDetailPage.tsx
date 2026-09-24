@@ -1,10 +1,10 @@
 import { useState, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
-import { Card, CardHeader, CardTitle, Button, Badge, Select } from '@/components/ui'
+import { Card, CardHeader, CardTitle } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import db from '@/db'
 import { formatCurrency, formatDateTime } from '@/lib/utils'
-import { ArrowLeft, Package, Truck, ShoppingCart, RefreshCw, ArrowRightLeft, AlertTriangle, Edit2 } from 'lucide-react'
+import { ArrowLeft, Package, Truck, ShoppingCart, RefreshCw, ArrowRightLeft } from 'lucide-react'
 import { useBusinessId } from '@/hooks/useBusinessId'
 
 const actionLabels: Record<string, string> = {
@@ -78,26 +78,19 @@ export default function ProductDetailPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-surface-900">{product?.name || 'Produit'}</h1>
-            <p className="text-xs text-surface-400">{product?.barcode || product?.reference || ''} {categoryName && `• ${categoryName}`}</p>
+            <p className="text-xs text-surface-400">{categoryName}</p>
           </div>
         </div>
         <div className="text-right">
-          <p className="text-sm text-surface-500">{formatCurrency(product?.purchasePrice || 0)} → {formatCurrency(product?.sellingPrice || 0)}</p>
-          {product && <Badge variant={product.margin >= 20 ? 'success' : product.margin >= 10 ? 'warning' : 'danger'}>{product.margin.toFixed(0)}% marge</Badge>}
+          <p className="text-sm text-surface-500">Coût unitaire : {formatCurrency(product?.purchasePrice || 0)}</p>
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         <Card>
           <div className="p-4 text-center">
-            <p className="text-sm text-surface-500">Prix achat</p>
+            <p className="text-sm text-surface-500">Coût unitaire</p>
             <p className="text-xl font-bold text-surface-900">{formatCurrency(product?.purchasePrice || 0)}</p>
-          </div>
-        </Card>
-        <Card>
-          <div className="p-4 text-center">
-            <p className="text-sm text-surface-500">Prix vente</p>
-            <p className="text-xl font-bold text-surface-900">{formatCurrency(product?.sellingPrice || 0)}</p>
           </div>
         </Card>
         <Card>

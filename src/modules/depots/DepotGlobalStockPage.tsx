@@ -41,8 +41,7 @@ export default function DepotGlobalStockPage() {
   }, [allStocks, allProducts])
 
   const filteredProducts = allProducts?.filter(p =>
-    p.name.toLowerCase().includes(search.toLowerCase()) ||
-    p.barcode?.includes(search)
+    p.name.toLowerCase().includes(search.toLowerCase())
   ) || []
 
   return (
@@ -78,7 +77,7 @@ export default function DepotGlobalStockPage() {
             <Card key={p.id} className="overflow-hidden p-0">
               <div className="p-4">
                 <h3 className="text-sm font-semibold text-surface-900 truncate">{p.name}</h3>
-                <p className="text-sm font-bold text-primary-400 mt-1">{formatCurrency(p.sellingPrice)}</p>
+                <p className="text-sm font-bold text-primary-400 mt-1">Prix à définir à la vente</p>
                 <p className="text-sm text-surface-500 mt-1">Total: <strong>{totalQty}</strong> pièces</p>
                 <div className="mt-2 space-y-1">
                   {productStocks.filter(s => s.quantity > 0).map(s => (

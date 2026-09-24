@@ -1,6 +1,6 @@
--- ============================================================
--- NeoX ERP — Schéma Supabase Complet
--- Exécuter dans Supabase Dashboard > SQL Editor
+﻿-- ============================================================
+-- NeoX ERP â€” SchÃ©ma Supabase Complet
+-- ExÃ©cuter dans Supabase Dashboard > SQL Editor
 -- ============================================================
 
 -- Extensions
@@ -45,7 +45,7 @@ create table businesses (
   created_at timestamptz not null default now()
 );
 
--- Profiles (lié à auth.users)
+-- Profiles (liÃ© Ã  auth.users)
 create table profiles (
   id uuid primary key default gen_random_uuid(),
   auth_user_id uuid unique references auth.users on delete cascade,
@@ -71,7 +71,7 @@ create table categories (
   created_at timestamptz not null default now()
 );
 
--- Suppliers (doit être avant Products à cause de la FK)
+-- Suppliers (doit Ãªtre avant Products Ã  cause de la FK)
 create table suppliers (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references businesses on delete cascade,
@@ -101,7 +101,7 @@ create table products (
   photos text[] not null default '{}',
   barcode text, qr_code text, reference text, brand text,
   category_id uuid references categories on delete set null,
-  unit text not null default 'pièce',
+  unit text not null default 'piÃ¨ce',
   purchase_price numeric not null default 0,
   selling_price numeric not null default 0,
   wholesale_price numeric default 0,
@@ -349,7 +349,7 @@ create table business_cards (
   created_at timestamptz not null default now()
 );
 
--- Locations (multi-boutique/dépôt)
+-- Locations (multi-boutique/dÃ©pÃ´t)
 create table locations (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references businesses on delete cascade,
@@ -375,7 +375,7 @@ create table product_stocks (
   unique(product_id, location_id)
 );
 
--- Product History (traçabilité complète)
+-- Product History (traÃ§abilitÃ© complÃ¨te)
 create table product_history (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references businesses on delete cascade,
@@ -421,7 +421,7 @@ create table supplier_payments (
   user_id uuid references profiles on delete set null
 );
 
--- Compensations (dette ↔ marchandises)
+-- Compensations (dette â†” marchandises)
 create table compensations (
   id uuid primary key default gen_random_uuid(),
   business_id uuid not null references businesses on delete cascade,
@@ -505,7 +505,7 @@ alter table supplier_payments enable row level security;
 alter table compensations enable row level security;
 alter table transfers enable row level security;
 
--- Policies : chaque utilisateur ne voit que les données de son entreprise
+-- Policies : chaque utilisateur ne voit que les donnÃ©es de son entreprise
 create policy "business_access" on businesses
   for all using (id in (
     select business_id from profiles where auth_user_id = auth.uid()
@@ -524,7 +524,7 @@ create policy "profile_access" on profiles
     )
   );
 
--- Politique générique pour toutes les tables métier
+-- Politique gÃ©nÃ©rique pour toutes les tables mÃ©tier
 do $$
 declare
   tables text[] := array['categories','products','customers','suppliers','stock_movements','sales','purchases','invoices','accounts','accounting_entries','credits','audit_logs','notifications','employees','attendance','payrolls','cash_book','leads','business_cards','locations','product_stocks','product_history','supplier_invoices','supplier_payments','compensations','transfers'];
@@ -552,7 +552,7 @@ begin
   insert into public.locations (id, business_id, name, type, address, phone, is_active, created_at, updated_at)
   values
     (gen_random_uuid(), biz_id, 'Boutique Principale', 'shop', '', new.raw_user_meta_data->>'phone', true, now(), now()),
-    (gen_random_uuid(), biz_id, 'Dépôt Principal', 'warehouse', '', '', true, now(), now());
+    (gen_random_uuid(), biz_id, 'DÃ©pÃ´t Principal', 'warehouse', '', '', true, now(), now());
 
   insert into public.accounts (id, business_id, code, name, type, balance, created_at)
   values
@@ -563,7 +563,7 @@ begin
     (gen_random_uuid(), biz_id, '201', 'Fournisseurs', 'liability', 0, now()),
     (gen_random_uuid(), biz_id, '301', 'Capital', 'equity', 0, now()),
     (gen_random_uuid(), biz_id, '401', 'Ventes', 'revenue', 0, now()),
-    (gen_random_uuid(), biz_id, '501', 'Dépenses', 'expense', 0, now());
+    (gen_random_uuid(), biz_id, '501', 'DÃ©penses', 'expense', 0, now());
 
   return new;
 end;
@@ -573,7 +573,7 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute procedure handle_new_user();
 
--- Fonction de vérification des permissions côté serveur
+-- Fonction de vÃ©rification des permissions cÃ´tÃ© serveur
 create or replace function check_user_permission(p_user_id uuid, p_required_permission text)
 returns boolean as $$
 declare
@@ -592,10 +592,15 @@ begin
 end;
 $$ language plpgsql security definer;
 
--- Fonction publique pour chercher un email par téléphone (sans auth)
 create or replace function public_lookup_email_by_phone(phone text)
 returns table(email text) as $$
+-- NB: $1 (paramètre positionnel) évite l'ambiguïté plpgsql avec la colonne "phone"
 begin
-  return query select p.email from profiles p where p.phone = phone limit 1;
+  return query
+    select p.email
+    from profiles p
+    where $1 ~ '[0-9]'
+      and regexp_replace(p."phone", '[^0-9]', '', 'g') = regexp_replace($1, '[^0-9]', '', 'g')
+    limit 1;
 end;
 $$ language plpgsql security definer;

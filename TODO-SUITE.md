@@ -5,6 +5,8 @@
 
 ## ✅ Fait et déployé (dernière session)
 - [x] Photos produits → **Cloudinary** (compression 900px/JPEG 0.72) au lieu du base64 — `src/lib/imageStorage.ts`, `PhotoUpload.tsx`, `SettingsPage.tsx`, garde-fous dans `syncEngine.ts`/`realtime.ts`.
+- [x] Depuis la fiche client, démarrer une nouvelle vente avec le client prérempli dans le POS.
+- [x] Tableau de bord retiré de l’application ; la trésorerie devient le point d’entrée et les fonctions avancées sont repliées sur mobile.
 - [x] Purge auto `product_history` (>6 mois) et `audit_logs` (>90 jours) — `src/lib/purgeData.ts` + `App.tsx` (1×/jour).
 - [x] Bug corrigé : `user.businessId` était vide (`profile?.business_id` → `profile?.businessId`).
 - [x] Bug corrigé : erreurs 400 sur `audit_logs` (`userName`/`userRole` camelCase inexistants en Supabase) — `sanitizeForTable` dans `syncEngine.ts` + `seed-supabase.ts`.

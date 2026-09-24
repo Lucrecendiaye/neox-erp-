@@ -1,14 +1,19 @@
+import { useEffect, useState } from 'react'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
-import { Card, Button, Badge, Pagination } from '@/components/ui'
+import { Card, Button, Badge, Pagination, Input } from '@/components/ui'
 import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
 import { formatDateTime } from '@/lib/utils'
-import { Bell, BellRing, CheckCheck, Trash2, AlertTriangle, CreditCard, ShoppingCart, DollarSign, Clock, UserCheck, Target } from 'lucide-react'
+import { Bell, BellRing, CheckCheck, Trash2, AlertTriangle, CreditCard, ShoppingCart, DollarSign, Clock, UserCheck, Target, Truck, Package, ArrowLeftRight, ShieldAlert, PencilLine, CalendarClock, HandCoins } from 'lucide-react'
 import type { Notification } from '@/types'
 
 
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { softDelete } from '@/lib/softDelete'
+import { getAlertSettings, setAlertSettings } from '@/engine/sensitiveNotifications'
+import { toast } from '@/lib/toast'
+import { Settings2 } from 'lucide-react'
+import type { AlertSettings } from '@/types'
 
 const typeIcons = {
   stock_alert: AlertTriangle,
@@ -18,6 +23,14 @@ const typeIcons = {
   invoice_overdue: Clock,
   payroll: UserCheck,
   lead: Target,
+  delivery_assigned: Truck,
+  delivery_reassigned: Truck,
+  delivery_return: Package,
+  stock_transfer: ArrowLeftRight,
+  sensitive_delete: ShieldAlert,
+  sensitive_edit: PencilLine,
+  reminder_due: CalendarClock,
+  loan_alert: HandCoins,
 }
 
 const typeColors = {
@@ -28,6 +41,14 @@ const typeColors = {
   invoice_overdue: 'danger',
   payroll: 'info',
   lead: 'warning',
+  delivery_assigned: 'info',
+  delivery_reassigned: 'warning',
+  delivery_return: 'info',
+  stock_transfer: 'warning',
+  sensitive_delete: 'danger',
+  sensitive_edit: 'warning',
+  reminder_due: 'warning',
+  loan_alert: 'info',
 } as const
 
 const typeLabels = {
@@ -38,11 +59,33 @@ const typeLabels = {
   invoice_overdue: 'Facture',
   payroll: 'Paie',
   lead: 'CRM',
+  delivery_assigned: 'Livraison',
+  delivery_reassigned: 'Livraison',
+  delivery_return: 'Livraison',
+  stock_transfer: 'Transfert',
+  sensitive_delete: '⚠️ Sensible',
+  sensitive_edit: '🟠 Modification',
+  reminder_due: 'Rappel',
+  loan_alert: 'Prêt',
 }
 
 export default function NotificationsPage() {
   const businessId = useBusinessId()
   const notifications = useLiveQuery(() => db.notifications.where('businessId').equals(businessId).reverse().sortBy('createdAt'), [businessId]) ?? []
+  const [alertCfg, setAlertCfg] = useState<AlertSettings | null>(null)
+  const [showSettings, setShowSettings] = useState(false)
+
+  useEffect(() => {
+    getAlertSettings().then(setAlertCfg)
+  }, [])
+
+  async function updateAlert(patch: Partial<AlertSettings>) {
+    if (!alertCfg) return
+    const next = { ...alertCfg, ...patch }
+    setAlertCfg(next)
+    await setAlertSettings(patch)
+    toast('Alertes mises à jour', 'success')
+  }
 
   async function markAllRead() {
     const unread = notifications?.filter(n => !n.read) || []
@@ -80,7 +123,40 @@ export default function NotificationsPage() {
             <CheckCheck className="w-4 h-4" /> Tout marquer lu
           </Button>
         )}
+        <Button variant="outline" size="sm" onClick={() => setShowSettings(!showSettings)}>
+          <Settings2 className="w-4 h-4" /> Alertes
+        </Button>
       </div>
+
+      {showSettings && alertCfg && (
+        <div className="p-4 rounded-2xl bg-surface-100 border border-surface-200">
+          <p className="text-sm font-semibold text-surface-900 mb-3">Réglages des alertes du gérant</p>
+          <p className="text-xs text-surface-500 mb-3">Les opérations normales (ventes, paiements) sont seulement journalisées. Seules les actions sensibles notifient — activez/désactivez chaque alerte :</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {([
+              ['saleDelete', '🔴 Suppression de vente'],
+              ['saleEdit', '🟠 Modification de vente'],
+              ['paymentEdit', '🟠 Modification/suppression de paiement'],
+              ['loanDelete', '🔴 Suppression de prêt'],
+              ['stockManual', '🟡 Modification manuelle de stock'],
+              ['cashEdit', '🔴 Opérations de caisse sensibles'],
+            ] as const).map(([key, label]) => (
+              <label key={key} className="flex items-center gap-2 p-2 rounded-xl bg-surface-50 border border-surface-200 cursor-pointer">
+                <input type="checkbox" checked={alertCfg[key]} onChange={e => updateAlert({ [key]: e.target.checked } as any)}
+                  className="w-4 h-4 accent-primary-500" />
+                <span className="text-sm text-surface-700">{label}</span>
+              </label>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-3">
+            <Input label="Seuil modif. vente (FCFA)" type="number" min="0" value={alertCfg.thresholdSaleEdit} onChange={e => updateAlert({ thresholdSaleEdit: +e.target.value || 0 })} />
+            <Input label="Seuil dépense (FCFA)" type="number" min="0" value={alertCfg.thresholdExpense} onChange={e => updateAlert({ thresholdExpense: +e.target.value || 0 })} />
+            <Input label="Seuil prêt (FCFA)" type="number" min="0" value={alertCfg.thresholdLoan} onChange={e => updateAlert({ thresholdLoan: +e.target.value || 0 })} />
+            <Input label="Seuil stock (unités)" type="number" min="0" value={alertCfg.thresholdStock} onChange={e => updateAlert({ thresholdStock: +e.target.value || 0 })} />
+          </div>
+          <p className="text-xs text-surface-400 mt-2">0 = toujours (aucun seuil). Les notifications répétées d'un même utilisateur sont regroupées sur 30 minutes.</p>
+        </div>
+      )}
 
       {paginatedItems.length > 0 && (
         <div className="space-y-2">
@@ -112,7 +188,7 @@ function NotificationCard({ notification: n, onRead, onDelete, unread }: { notif
   return (
     <Card
       padding="sm"
-      className={`cursor-pointer transition-colors hover:bg-surface-50 ${unread ? 'border-primary-300 bg-primary-50/30' : ''}`}
+      className={`group cursor-pointer transition-colors hover:bg-surface-50 ${unread ? 'border-primary-300 bg-primary-50/30' : ''}`}
       onClick={() => onRead(n.id)}
     >
       <div className="flex items-start gap-3 p-2">

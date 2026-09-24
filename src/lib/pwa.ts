@@ -9,10 +9,11 @@ let deferredPrompt: BeforeInstallPromptEvent | null = null
 let listeners: Array<(installable: boolean) => void> = []
 
 export function registerSW() {
-  // registerType: 'autoUpdate' — le SW appelle skipWaiting() + clientsClaim()
-  // et workbox nettoie les anciens precaches (cleanupOutdatedCaches) à l'activation.
-  // Quand un nouveau SW s'active (nouveau déploiement), la page se recharge
-  // automatiquement pour servir les nouveaux chunks (évite l'ancien code base64).
+  // registerType: 'autoUpdate' + workbox{ skipWaiting, clientsClaim } —
+  // le nouveau SW s'active immédiatement, prend le contrôle de toutes les pages
+  // ouvertes et recharge la page pour servir les nouveaux chunks.
+  // Le sw.js est servi en no-cache par Vercel, donc chaque ouverture détecte
+  // un nouveau déploiement sans vider le cache manuellement.
   registerPWA({
     immediate: true,
   })

@@ -1,18 +1,20 @@
 import { useState, useMemo } from 'react'
-import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
+import { Card, CardHeader, CardTitle, Button, Input, Select, Modal, Badge, Pagination, NumericInput } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
 import db from '@/db'
-import { generateId, generateInvoiceNumber, formatCurrency, getProductUnitInfo, getPurchaseUnits, calculateMargin } from '@/lib/utils'
+import { generateId, generateInvoiceNumber, formatCurrency, formatDate, getProductUnitInfo, getPurchaseUnits } from '@/lib/utils'
 import { toast } from '@/lib/toast'
-import { Search, Plus, Edit2, Trash2, Package, DollarSign, FileText, ChevronDown, ChevronUp, X, Minus, Plus as PlusIcon } from 'lucide-react'
+import { Search, Plus, Edit2, Trash2, Package, DollarSign, FileText, ChevronDown, ChevronUp, X, Minus, Plus as PlusIcon, Printer, Send, MessageCircle } from 'lucide-react'
 import type { Purchase, SaleItem, Product, Supplier, StockMovement, AuditLog, AccountingEntry, ProductUnit } from '@/types'
 
 
 import { useAppStore } from '@/stores/appStore'
 import { processPurchase, deletePurchase } from '@/engine/operations'
 import { syncWriteObject } from '@/lib/realtime'
+import { printPurchaseDocument } from '@/lib/pdf'
+import { openWhatsAppLink, shareViaWeChat } from '@/lib/share'
 import type { Location } from '@/engine/types'
 import SupplierTabs from '@/modules/suppliers/SupplierTabs'
 
@@ -36,6 +38,7 @@ export default function PurchasesPage() {
   const suppliers = useLiveQuery(() => db.suppliers.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const allLocations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const settings = useLiveQuery(() => db.settings.get('default'), [])
   const [search, setSearch] = useState('')
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Purchase | null>(null)
@@ -43,7 +46,7 @@ export default function PurchasesPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
 
   const [newProductOpen, setNewProductOpen] = useState(false)
-  const [npForm, setNpForm] = useState({ name: '', unit: 'piece' as ProductUnit, purchasePrice: 0, sellingPrice: 0, packSize: 10, quantity: 1, packCost: 0, dozenCost: 0 })
+  const [npForm, setNpForm] = useState({ name: '', unit: 'piece' as ProductUnit, purchaseCost: 0, packSize: 10, packUnit: 'piece' as 'piece' | 'dozen', quantity: 1 })
 
   const [supplierId, setSupplierId] = useState('')
   const [locationId, setLocationId] = useState('')
@@ -63,8 +66,8 @@ export default function PurchasesPage() {
   const totals = useMemo(() => {
     const subtotal = items.reduce((s, i) => s + (i.unitPrice * i.quantity), 0)
     const discountTotal = items.reduce((s, i) => s + i.discount, 0)
-    const taxTotal = items.reduce((s, i) => s + (i.unitPrice * i.quantity * i.taxRate / 100), 0)
-    return { subtotal, discountTotal, taxTotal, total: subtotal - discountTotal + taxTotal }
+    const taxTotal = 0
+    return { subtotal, discountTotal, taxTotal, total: subtotal - discountTotal }
   }, [items])
 
   function openCreate() {
@@ -92,7 +95,7 @@ export default function PurchasesPage() {
     if (!product) return
     const existing = items.find(i => i.productId === productId)
     if (existing) {
-      setItems(items.map(i => i.productId === productId ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * i.unitPrice * (1 + i.taxRate / 100) - i.discount } : i))
+      setItems(items.map(i => i.productId === productId ? { ...i, quantity: i.quantity + 1, total: (i.quantity + 1) * i.unitPrice - i.discount } : i))
       return
     }
     const info = getProductUnitInfo(product)
@@ -103,8 +106,8 @@ export default function PurchasesPage() {
       quantity: 1,
       unitPrice,
       discount: 0,
-      taxRate: product.taxRate,
-      total: unitPrice * (1 + product.taxRate / 100),
+      taxRate: 0,
+      total: unitPrice,
       unitName: info.name,
       unitQuantity: info.quantity,
     }])
@@ -113,7 +116,7 @@ export default function PurchasesPage() {
   function changeItemUnit(productId: string, unitName: string, unitQuantity: number, unitPrice: number) {
     setItems(items.map(i => {
       if (i.productId !== productId) return i
-      return { ...i, unitName, unitQuantity, unitPrice, total: i.quantity * unitPrice * (1 + i.taxRate / 100) - i.discount }
+      return { ...i, unitName, unitQuantity, unitPrice, total: i.quantity * unitPrice - i.discount }
     }))
   }
 
@@ -121,32 +124,33 @@ export default function PurchasesPage() {
     setItems(items.map(i => {
       if (i.productId !== productId) return i
       const updated = { ...i, [field]: value }
-      updated.total = updated.unitPrice * updated.quantity * (1 + updated.taxRate / 100) - updated.discount
+      updated.total = updated.unitPrice * updated.quantity - updated.discount
       return updated
     }))
   }
 
   async function handleCreateProduct() {
     if (!npForm.name.trim()) { toast('Nom du produit requis', 'warning'); return }
+    if (npForm.purchaseCost <= 0) { toast('Prix de revient requis', 'warning'); return }
     const now = new Date().toISOString()
-    const packSize = npForm.unit === 'pack' ? Math.max(1, npForm.packSize || 1) : undefined
+    const packSize = npForm.unit === 'pack' ? Math.max(1, npForm.packUnit === 'dozen' ? (npForm.packSize || 1) * 12 : npForm.packSize || 1) : undefined
+    const purchasePrice = Math.round((npForm.purchaseCost / (npForm.unit === 'dozen' ? 12 : npForm.unit === 'pack' ? packSize! : 1)) * 100) / 100
     const id = generateId()
     try {
       const product: Product = {
         id, businessId, name: npForm.name.trim(), description: '', photos: [],
-        unit: npForm.unit, purchasePrice: npForm.purchasePrice,
-        sellingPrice: npForm.sellingPrice, wholesalePrice: 0,
-        priceDozen: npForm.unit !== 'piece' ? Math.round(npForm.sellingPrice * (npForm.unit === 'dozen' ? 12 : packSize!)) : 0,
-        pricePack: npForm.unit === 'pack' ? Math.round(npForm.sellingPrice * packSize!) : 0,
-        packSize,
-        margin: calculateMargin(npForm.purchasePrice, npForm.sellingPrice),
+         unit: npForm.unit, purchasePrice,
+         sellingPrice: 0, wholesalePrice: 0,
+         priceDozen: 0, pricePack: 0,
+         packSize,
+         margin: 0,
         taxRate: 0, stockAlert: 0, status: 'active',
         createdAt: now, updatedAt: now,
       }
       await db.products.add(product)
       try { await syncWriteObject('products', product) } catch {}
       const info = getProductUnitInfo(product)
-      const unitPrice = npForm.purchasePrice * info.quantity
+       const unitPrice = purchasePrice * info.quantity
       const quantity = Math.max(1, npForm.quantity || 1)
       setItems([...items, {
         productId: id, productName: product.name,
@@ -154,7 +158,7 @@ export default function PurchasesPage() {
         total: unitPrice * quantity,
         unitName: info.name, unitQuantity: info.quantity,
       }])
-      setNpForm({ name: '', unit: 'piece', purchasePrice: 0, sellingPrice: 0, packSize: 10, quantity: 1, packCost: 0, dozenCost: 0 })
+       setNpForm({ name: '', unit: 'piece', purchaseCost: 0, packSize: 10, packUnit: 'piece', quantity: 1 })
       setNewProductOpen(false)
       toast('Produit créé et ajouté à l\'achat', 'success')
     } catch {
@@ -223,6 +227,40 @@ export default function PurchasesPage() {
     }
   }
 
+  function buildPurchaseText(p: Purchase) {
+    const lines = [
+      `BON D'ACHAT`,
+      `Fournisseur: ${p.supplierName || 'N/A'}`,
+      `Référence: #${p.id}`,
+      `Date: ${formatDate(p.createdAt)}`,
+      '',
+      'Produit | Qté | P.U. | Total',
+      ...p.items.map(i => `${i.productName} | ${i.quantity} ${i.unitName || ''} | ${formatCurrency(i.unitPrice)} | ${formatCurrency(i.total || i.unitPrice * i.quantity)}`),
+      '',
+      `Sous-total: ${formatCurrency(p.subtotal)}`,
+      p.discountTotal > 0 ? `Remise: ${formatCurrency(p.discountTotal)}` : '',
+      `TOTAL: ${formatCurrency(p.total)}`,
+      `Payé: ${formatCurrency(p.paid)}`,
+      `Reste: ${formatCurrency(Math.max(0, p.total - p.paid))}`,
+      `Statut: ${statusLabels[p.status] || p.status}`,
+    ]
+    return lines.filter(Boolean).join('\n')
+  }
+
+  function handlePrint(p: Purchase) {
+    printPurchaseDocument(p, settings)
+    toast('Document d\'achat généré', 'success')
+  }
+
+  function handleWhatsApp(p: Purchase) {
+    const supplier = suppliers?.find(s => s.id === p.supplierId) || suppliers?.find(s => s.name === p.supplierName)
+    openWhatsAppLink(supplier?.phone || '', buildPurchaseText(p))
+  }
+
+  function handleWeChat(p: Purchase) {
+    shareViaWeChat(buildPurchaseText(p), `Bon d'achat ${p.supplierName || ''}`)
+  }
+
   function getStatusVariant(status: string) {
     return statusColors[status as keyof typeof statusColors] || 'default'
   }
@@ -262,6 +300,15 @@ export default function PurchasesPage() {
                   </p>
                 </div>
                 <div className="flex gap-1 shrink-0">
+                  <button onClick={() => handlePrint(p)} className="p-2 rounded-lg hover:bg-surface-100 text-surface-400" aria-label="Imprimer" title="Imprimer">
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handleWhatsApp(p)} className="p-2 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" aria-label="WhatsApp" title="Envoyer par WhatsApp">
+                    <Send className="w-4 h-4" />
+                  </button>
+                  <button onClick={() => handleWeChat(p)} className="p-2 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400" aria-label="WeChat" title="Envoyer par WeChat">
+                    <MessageCircle className="w-4 h-4" />
+                  </button>
                   <button onClick={() => openEdit(p)} className="p-2 rounded-lg hover:bg-surface-100 text-surface-400" aria-label="Modifier">
                     <Edit2 className="w-4 h-4" />
                   </button>
@@ -379,8 +426,7 @@ export default function PurchasesPage() {
                     </select>
                     {selectedUnit.name === 'Paquet' && product && !product.packSize && (
                       <div className="flex items-center gap-1">
-                        <input
-                          type="number" min={1} value={item.unitQuantity || 10}
+                        <NumericInput min={1} value={item.unitQuantity || 10}
                           onChange={(e) => {
                             const v = Math.max(1, Number(e.target.value) || 1)
                             changeItemUnit(item.productId, 'Paquet', v, v * product.purchasePrice)
@@ -392,16 +438,14 @@ export default function PurchasesPage() {
                     )}
                     <div className="flex items-center gap-1">
                       <button onClick={() => updateItem(item.productId, 'quantity', Math.max(1, item.quantity - 1))} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><Minus className="w-3 h-3" /></button>
-                      <input
-                        type="number" min="1" value={item.quantity}
+                      <NumericInput min="1" value={item.quantity}
                         onChange={(e) => updateItem(item.productId, 'quantity', Math.max(1, Number(e.target.value) || 1))}
                         inputMode="numeric"
                         className="w-14 text-sm px-1 py-1 rounded-lg border border-surface-200 text-center"
                       />
                       <button onClick={() => updateItem(item.productId, 'quantity', item.quantity + 1)} className="p-1 rounded-md hover:bg-surface-200 text-surface-500"><Plus className="w-3 h-3" /></button>
                     </div>
-                    <input
-                      type="number" value={item.unitPrice}
+                    <NumericInput value={item.unitPrice}
                       onChange={(e) => updateItem(item.productId, 'unitPrice', Number(e.target.value))}
                       className="w-20 text-sm px-2 py-1 rounded-lg border border-surface-200 text-right"
                     />
@@ -430,7 +474,6 @@ export default function PurchasesPage() {
           <div className="bg-surface-50 rounded-xl p-4 space-y-1 text-sm">
             <div className="flex justify-between text-surface-500"><span>Sous-total</span><span>{formatCurrency(totals.subtotal)}</span></div>
             {totals.discountTotal > 0 && <div className="flex justify-between text-danger"><span>Remise</span><span>-{formatCurrency(totals.discountTotal)}</span></div>}
-            {totals.taxTotal > 0 && <div className="flex justify-between text-surface-500"><span>TVA</span><span>{formatCurrency(totals.taxTotal)}</span></div>}
             <div className="flex justify-between font-bold text-surface-900 pt-1 border-t border-surface-200"><span>Total</span><span>{formatCurrency(totals.total)}</span></div>
           </div>
 
@@ -445,61 +488,27 @@ export default function PurchasesPage() {
 
       <Modal open={newProductOpen} onClose={() => setNewProductOpen(false)} title="Nouveau produit" size="md">
         <div className="p-6 space-y-4">
-          <Input label="Nom du produit *" value={npForm.name} onChange={(e) => setNpForm({ ...npForm, name: e.target.value })} placeholder="Ex: Riz 25kg" />
-          <div className="grid grid-cols-2 gap-4">
-            {npForm.unit === 'piece' && (
-              <Input label="Prix de revient (pièce)" type="number" value={npForm.purchasePrice} onChange={(e) => setNpForm({ ...npForm, purchasePrice: Number(e.target.value) })} />
-            )}
-            {npForm.unit === 'pack' && (
-              <Input label={`Prix de revient (paquet de ${npForm.packSize} pcs)`} type="number" value={npForm.packCost} onChange={(e) => {
-                const packCost = Number(e.target.value)
-                const size = Math.max(1, npForm.packSize || 1)
-                setNpForm({ ...npForm, packCost, purchasePrice: packCost > 0 ? Math.round((packCost / size) * 100) / 100 : 0 })
-              }} />
-            )}
-            {npForm.unit === 'dozen' && (
-              <Input label="Prix de revient (douzaine)" type="number" value={npForm.dozenCost} onChange={(e) => {
-                const dozenCost = Number(e.target.value)
-                setNpForm({ ...npForm, dozenCost, purchasePrice: dozenCost > 0 ? Math.round((dozenCost / 12) * 100) / 100 : 0 })
-              }} />
-            )}
-            <Input label="Prix de vente (pièce)" type="number" value={npForm.sellingPrice} onChange={(e) => setNpForm({ ...npForm, sellingPrice: Number(e.target.value) })} />
-          </div>
-          {npForm.unit !== 'piece' && npForm.purchasePrice > 0 && (
-            <p className="text-sm text-surface-500">Coût unitaire : <span className="font-semibold text-surface-700">{formatCurrency(npForm.purchasePrice)} / pièce</span></p>
-          )}
-          <Select
-            label="Unité"
-            value={npForm.unit}
-            onChange={(e) => {
-              const unit = e.target.value as ProductUnit
-              setNpForm(prev => {
-                const next = { ...prev, unit }
-                if (unit === 'pack' && prev.purchasePrice > 0) {
-                  next.packCost = Math.round(prev.purchasePrice * Math.max(1, prev.packSize || 1) * 100) / 100
-                }
-                if (unit === 'dozen' && prev.purchasePrice > 0) {
-                  next.dozenCost = Math.round(prev.purchasePrice * 12 * 100) / 100
-                }
-                return next
-              })
-            }}
+           <Input label="Nom du produit *" value={npForm.name} onChange={(e) => setNpForm({ ...npForm, name: e.target.value })} placeholder="Ex: Riz 25kg" />
+           <Select
+             label="Unité"
+             value={npForm.unit}
+             onChange={(e) => {
+               const unit = e.target.value as ProductUnit
+               setNpForm(prev => ({ ...prev, unit, purchaseCost: 0 }))
+             }}
             options={[
               { value: 'piece', label: 'Pièce' },
               { value: 'dozen', label: 'Douzaine' },
               { value: 'pack', label: 'Paquet' },
             ]}
           />
-          {npForm.unit === 'pack' && (
-            <Input label="Pièces par paquet" type="number" min={1} value={npForm.packSize} onChange={(e) => {
-              const packSize = Number(e.target.value)
-              setNpForm(prev => {
-                const next = { ...prev, packSize }
-                if (next.packCost > 0 && packSize > 0) next.purchasePrice = Math.round((next.packCost / packSize) * 100) / 100
-                return next
-              })
-            }} />
-          )}
+           {npForm.unit === 'pack' && (
+             <div className="grid grid-cols-2 gap-3">
+               <Select label="Composition" value={npForm.packUnit} onChange={(e) => setNpForm({ ...npForm, packUnit: e.target.value as 'piece' | 'dozen' })} options={[{ value: 'piece', label: 'Pièces' }, { value: 'dozen', label: 'Douzaines' }]} />
+               <Input label="Nombre" type="number" min={1} value={npForm.packSize} onChange={(e) => setNpForm({ ...npForm, packSize: Number(e.target.value) })} />
+             </div>
+           )}
+           <Input label={`Prix de revient (${npForm.unit === 'piece' ? 'pièce' : npForm.unit === 'dozen' ? 'douzaine' : 'paquet'})`} type="number" value={npForm.purchaseCost || ''} onChange={(e) => setNpForm({ ...npForm, purchaseCost: Number(e.target.value) || 0 })} />
           <Input label="Quantité à acheter" type="number" min={1} value={npForm.quantity} onChange={(e) => setNpForm({ ...npForm, quantity: Number(e.target.value) })} />
           <div className="flex justify-end gap-3 pt-2">
             <Button variant="ghost" onClick={() => setNewProductOpen(false)}>Annuler</Button>

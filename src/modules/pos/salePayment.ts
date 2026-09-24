@@ -3,8 +3,14 @@ import db from '@/db'
 import { generateId } from '@/lib/utils'
 import type { Customer, Supplier } from '@/types'
 
-export type SalePaymentType = 'complet' | 'partiel' | 'credit'
+export type SalePaymentType = 'complet' | 'partiel' | 'credit' | 'split'
 export type PayMethod = 'cash' | 'wave' | 'orange' | 'card' | 'mobile' | 'bank'
+
+export interface SplitPaymentEntry {
+  id: string
+  method: PayMethod
+  amount: number
+}
 
 export const PAY_METHOD_LABELS: Record<PayMethod, string> = {
   cash: 'Espèces',
@@ -21,6 +27,7 @@ export const PAYMENT_TYPE_LABELS: Record<SalePaymentType, string> = {
   complet: 'Complet',
   partiel: 'Partiel',
   credit: 'Crédit',
+  split: 'Mixte',
 }
 
 export function useSalePayment(total: number) {
@@ -28,6 +35,7 @@ export function useSalePayment(total: number) {
   const [payMethodState, setPayMethodState] = useState<PayMethod>('cash')
   const [amountReceived, setAmountReceived] = useState(0)
   const [dueDate, setDueDate] = useState('')
+  const [splitPaymentsState, setSplitPaymentsState] = useState<SplitPaymentEntry[]>([])
 
   useEffect(() => {
     setAmountReceived(a => {
@@ -41,10 +49,16 @@ export function useSalePayment(total: number) {
     if (t === 'complet') {
       setAmountReceived(total)
       setDueDate('')
+      setSplitPaymentsState([])
     } else if (t === 'partiel') {
       setAmountReceived(0)
+      setSplitPaymentsState([])
+    } else if (t === 'credit') {
+      setAmountReceived(0)
+      setSplitPaymentsState([])
     } else {
       setAmountReceived(0)
+      setSplitPaymentsState([{ id: generateId(), method: 'cash', amount: 0 }])
     }
   }
 
@@ -53,12 +67,18 @@ export function useSalePayment(total: number) {
     if (paymentType === 'complet') setAmountReceived(total)
   }
 
+  const splitPaid = useMemo(
+    () => splitPaymentsState.reduce((s, p) => s + (p.amount || 0), 0),
+    [splitPaymentsState]
+  )
+
   const paid = useMemo(() => {
+    if (paymentType === 'split') return Math.min(splitPaid, total)
     if (paymentType === 'complet') {
       return payMethodState === 'cash' ? Math.min(amountReceived || 0, total) : total
     }
     return Math.min(amountReceived || 0, total)
-  }, [paymentType, payMethodState, amountReceived, total])
+  }, [paymentType, payMethodState, amountReceived, total, splitPaid])
 
   const change = useMemo(() => (
     paymentType === 'complet' && payMethodState === 'cash'
@@ -67,14 +87,32 @@ export function useSalePayment(total: number) {
   ), [paymentType, payMethodState, amountReceived, total])
 
   const creditAmount = paymentType === 'complet' ? 0 : Math.max(0, total - paid)
-  const isCredit = paymentType !== 'complet'
+  const isCredit = paymentType === 'partiel' || paymentType === 'credit' || (paymentType === 'split' && splitPaid < total)
   const isShort = paymentType === 'complet' && payMethodState === 'cash' && (amountReceived || 0) < total
+  const isSplit = paymentType === 'split'
+
+  function setPayMethodAt(id: string, method: PayMethod) {
+    setSplitPaymentsState(prev => prev.map(p => p.id === id ? { ...p, method } : p))
+  }
+
+  function setAmountAt(id: string, amount: number) {
+    setSplitPaymentsState(prev => prev.map(p => p.id === id ? { ...p, amount: Math.max(0, Math.min(amount, total)) } : p))
+  }
+
+  function addSplitPayment(method: PayMethod = 'wave') {
+    setSplitPaymentsState(prev => prev.length >= 5 ? prev : [...prev, { id: generateId(), method, amount: 0 }])
+  }
+
+  function removeSplitPayment(id: string) {
+    setSplitPaymentsState(prev => prev.length <= 1 ? prev : prev.filter(p => p.id !== id))
+  }
 
   function reset() {
     setPaymentTypeState('complet')
     setPayMethodState('cash')
     setAmountReceived(0)
     setDueDate('')
+    setSplitPaymentsState([])
   }
 
   return {
@@ -83,6 +121,13 @@ export function useSalePayment(total: number) {
     amountReceived, setAmountReceived,
     dueDate, setDueDate,
     paid, change, creditAmount, isCredit, isShort, reset,
+    splitPayments: splitPaymentsState,
+    splitPaid,
+    isSplit,
+    setSplitMethod: setPayMethodAt,
+    setSplitAmount: setAmountAt,
+    addSplitPayment,
+    removeSplitPayment,
   }
 }
 

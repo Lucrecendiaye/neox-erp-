@@ -1,15 +1,19 @@
 import { useState, useRef, useEffect } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import { useAppStore, useSyncStore } from '@/stores/appStore'
 import { formatDateTime, cn } from '@/lib/utils'
 import SearchDialog from '@/components/ui/SearchDialog'
 import SyncIndicator from '@/components/ui/SyncIndicator'
 import { signOut } from '@/lib/auth'
-import { LogOut, Settings, User, Palette } from 'lucide-react'
+import { LogOut, Settings, User, Palette, Bell, ArrowLeft } from 'lucide-react'
 import { useTheme, THEMES } from '@/providers/theme-provider'
+import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useBusinessId } from '@/hooks/useBusinessId'
+import db from '@/db'
 
 export default function Header() {
   const navigate = useNavigate()
+  const location = useLocation()
   const { sidebarOpen, setSidebarOpen, settings, currentBusiness, user } = useAppStore()
   const { lastSync } = useSyncStore()
   const { theme, setTheme } = useTheme()
@@ -18,6 +22,9 @@ export default function Header() {
   const [themeDropdown, setThemeDropdown] = useState(false)
   const userRef = useRef<HTMLDivElement>(null)
   const themeRef = useRef<HTMLDivElement>(null)
+  const businessId = useBusinessId()
+  const notifications = useLiveQuery(() => db.notifications.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const unreadCount = notifications.filter(n => !n.read).length
 
   useEffect(() => {
     function handleClick(e: MouseEvent) {
@@ -45,6 +52,16 @@ export default function Header() {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
+          {location.pathname !== '/treasury' && location.pathname !== '/' && (
+            <button
+              onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/treasury')}
+              className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-surface-100 text-surface-500 transition-colors"
+              title="Retour"
+              aria-label="Retour"
+            >
+              <ArrowLeft className="w-5 h-5" />
+            </button>
+          )}
 
           <div className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-surface-700">
             <div className="w-7 h-7 bg-primary-100 rounded-lg flex items-center justify-center text-primary-400 text-xs font-bold">
@@ -69,6 +86,19 @@ export default function Header() {
         </div>
 
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => navigate('/notifications')}
+            className="relative flex items-center justify-center w-10 h-10 rounded-xl hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors"
+            title="Notifications"
+          >
+            <Bell className="w-5 h-5" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 rounded-full bg-danger text-white text-[10px] font-bold flex items-center justify-center">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </button>
+
           <div className="relative" ref={themeRef}>
             <button onClick={() => setThemeDropdown(!themeDropdown)}
               className="flex items-center justify-center w-10 h-10 rounded-xl hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors"

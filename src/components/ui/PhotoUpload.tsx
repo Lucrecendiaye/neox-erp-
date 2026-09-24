@@ -1,5 +1,5 @@
 import { useState, useRef } from 'react'
-import { Camera, X, Loader2, ImagePlus } from 'lucide-react'
+import { X, Loader2, ImagePlus } from 'lucide-react'
 import { compressImage, uploadImage } from '@/lib/imageStorage'
 
 interface PhotoUploadProps {
@@ -88,7 +88,7 @@ export default function PhotoUpload({ photos, onChange, max = 5 }: PhotoUploadPr
               disabled={uploading}
               className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-surface-300 text-sm font-medium text-surface-700 hover:border-primary-300 hover:text-primary-400 hover:bg-surface-50 transition-colors disabled:opacity-50"
             >
-              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Camera className="w-4 h-4" />}
+              {uploading ? <Loader2 className="w-4 h-4 animate-spin" /> : <ImagePlus className="w-4 h-4" />}
               Changer
             </button>
             <div className="flex flex-wrap gap-2">
@@ -131,7 +131,7 @@ export default function PhotoUpload({ photos, onChange, max = 5 }: PhotoUploadPr
             <Loader2 className="w-6 h-6 text-surface-400 animate-spin" />
           ) : (
             <>
-              <Camera className="w-6 h-6 text-surface-400" />
+               <ImagePlus className="w-6 h-6 text-surface-400" />
               <span className="text-sm text-surface-500 font-medium">Cliquez pour ajouter une photo</span>
               <span className="text-xs text-surface-400">ou glissez-déposez une image (max {max})</span>
             </>

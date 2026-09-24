@@ -4,6 +4,7 @@ import { useBusinessId } from '@/hooks/useBusinessId'
 import { useAppStore } from '@/stores/appStore'
 import type { RealtimePostgresChangesPayload } from '@supabase/supabase-js'
 import { sanitizeForCloud } from './syncEngine'
+import { sanitizePayloadForSync } from './imageStorage'
 
 export type TableName =
   | 'products' | 'categories' | 'stock_movements' | 'customers'
@@ -14,6 +15,7 @@ export type TableName =
   | 'leads' | 'business_cards' | 'settings'
   | 'locations' | 'product_stocks' | 'product_history'
   | 'supplier_invoices' | 'supplier_payments' | 'compensations' | 'transfers'
+  | 'cash_operations' | 'cash_categories' | 'bon_sorties'
 
 type QueryBuilder = any
 
@@ -25,6 +27,7 @@ const TENANT_TABLES: Set<TableName> = new Set([
   'leads', 'business_cards', 'locations', 'product_stocks',
   'product_history', 'supplier_invoices', 'supplier_payments',
   'compensations', 'transfers', 'notifications',
+  'cash_operations', 'cash_categories', 'bon_sorties',
 ])
 
 export function useSupabaseQuery<T>(
@@ -131,7 +134,8 @@ export const sb = {
     if (bizId && TENANT_TABLES.has(table) && !enriched.businessId) {
       enriched.businessId = bizId
     }
-    const { data, error } = await supabase.from(table).insert(enriched).select().single()
+    const clean = await sanitizePayloadForSync(enriched)
+    const { data, error } = await supabase.from(table).insert(sanitizeForCloud(table, clean)).select().single()
     if (error) {
       console.error(`[Supabase] insert ${table}:`, error, enriched)
       throw error
@@ -142,7 +146,8 @@ export const sb = {
   update: async <T>(table: TableName, id: string, updates: Partial<T>) => {
     if (!isSupabaseConfigured()) throw new Error('Supabase non configuré')
     const bizId = getCurrentBusinessId()
-    let q = supabase.from(table).update(updates as any).eq('id', id)
+    const clean = await sanitizePayloadForSync(updates as any)
+    let q = supabase.from(table).update(sanitizeForCloud(table, clean)).eq('id', id)
     if (bizId && TENANT_TABLES.has(table)) q = q.eq('businessId', bizId)
     const { data, error } = await q.select().single()
     if (error) {
@@ -177,6 +182,7 @@ export const sb = {
 
 export async function syncToSupabase(table: TableName, records: any[]) {
   if (!isSupabaseConfigured() || records.length === 0) return
-  const { error } = await supabase.from(table).upsert(records.map(r => sanitizeForCloud(table, r)), { onConflict: 'id' })
+  const clean = await Promise.all(records.map(async record => sanitizePayloadForSync(record)))
+  const { error } = await supabase.from(table).upsert(clean.map(record => sanitizeForCloud(table, record)), { onConflict: 'id' })
   if (error) console.error(`[Supabase] sync error [${table}]:`, error)
 }

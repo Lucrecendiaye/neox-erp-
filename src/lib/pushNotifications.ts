@@ -16,6 +16,8 @@ export async function subscribeToPushNotifications(): Promise<boolean> {
     const existingSubscription = await registration.pushManager.getSubscription()
 
     if (existingSubscription) {
+      await syncSubscriptionToCloud(existingSubscription)
+      localStorage.setItem('neox-push-subscribed', 'true')
       return true
     }
 
@@ -24,20 +26,29 @@ export async function subscribeToPushNotifications(): Promise<boolean> {
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY) as any,
     })
 
-    if (isSupabaseConfigured() && supabase) {
-      await supabase.from('push_subscriptions').upsert({
-        id: generateId(),
-        user_id: localStorage.getItem('neox-user-id') || '',
-        endpoint: subscription.endpoint,
-        keys: subscription.toJSON().keys,
-        created_at: new Date().toISOString(),
-      } as any)
-    }
+    // La synchronisation cloud est best-effort : l'activation locale reste
+    // fonctionnelle même si la table distante est indisponible.
+    await syncSubscriptionToCloud(subscription)
 
     localStorage.setItem('neox-push-subscribed', 'true')
     return true
   } catch {
     return false
+  }
+}
+
+async function syncSubscriptionToCloud(subscription: PushSubscription): Promise<void> {
+  if (!isSupabaseConfigured() || !supabase) return
+  try {
+    await supabase.from('push_subscriptions').upsert({
+      id: generateId(),
+      user_id: localStorage.getItem('neox-user-id') || '',
+      endpoint: subscription.endpoint,
+      keys: subscription.toJSON().keys,
+      created_at: new Date().toISOString(),
+    } as any)
+  } catch {
+    // ex: table absente / hors connexion — ne bloque jamais l'activation locale
   }
 }
 

@@ -4,8 +4,9 @@ import { cn } from '@/lib/utils'
 import { useAppStore } from '@/stores/appStore'
 import { usePermission } from '@/hooks/usePermission'
 import {
-  LayoutDashboard, ShoppingCart, Receipt, Building2, Package,
+  ShoppingCart, Receipt, Building2, Package,
   Users, Truck, HandCoins, BarChart3, UsersRound, Settings, Trash2,
+  Coins, Landmark, MapPin,
 } from 'lucide-react'
 
 interface NavItem {
@@ -17,14 +18,17 @@ interface NavItem {
 }
 
 const allNavItems: NavItem[] = [
-  { to: '/', label: 'Tableau de bord', module: 'dashboard', icon: <LayoutDashboard className="w-5 h-5" /> },
-  { to: '/pos', label: 'Point de Vente', module: 'pos', icon: <ShoppingCart className="w-5 h-5" /> },
-  { to: '/sales', label: 'Ventes', module: 'sales', icon: <Receipt className="w-5 h-5" /> },
-  { to: '/credits', label: 'Crédits', module: 'sales', icon: <HandCoins className="w-5 h-5" /> },
+  { to: '/pos', label: 'Ventes boutique', module: 'pos', icon: <ShoppingCart className="w-5 h-5" /> },
+  { to: '/sales', label: 'Facture Ventes', module: 'sales', icon: <Receipt className="w-5 h-5" /> },
+  { to: '/products', label: 'Produits boutique', module: 'products', icon: <Package className="w-5 h-5" /> },
   { to: '/depots', label: 'Dépôts', module: 'depots', icon: <Building2 className="w-5 h-5" /> },
-  { to: '/products', label: 'Produits', module: 'products', icon: <Package className="w-5 h-5" /> },
-  { to: '/customers', label: 'Clients', module: 'customers', icon: <Users className="w-5 h-5" /> },
   { to: '/suppliers', label: 'Fournisseurs', module: 'suppliers', icon: <Truck className="w-5 h-5" /> },
+  { to: '/credits', label: 'Crédits', module: 'sales', icon: <HandCoins className="w-5 h-5" /> },
+  { to: '/deliveries', label: 'Ventes à livraison', module: 'deliveries', icon: <Truck className="w-5 h-5" /> },
+  { to: '/mes-livraisons', label: 'Mes livraisons', module: 'deliveries', icon: <MapPin className="w-5 h-5" /> },
+  { to: '/customers', label: 'Clients', module: 'customers', icon: <Users className="w-5 h-5" /> },
+  { to: '/cash', label: 'Cash', module: 'cash', icon: <Coins className="w-5 h-5" /> },
+  { to: '/treasury', label: 'Trésorerie', module: 'cash', icon: <Landmark className="w-5 h-5" /> },
   { to: '/reports', label: 'Rapports', module: 'reports', icon: <BarChart3 className="w-5 h-5" /> },
   { to: '/users', label: 'Utilisateurs', module: 'users', icon: <UsersRound className="w-5 h-5" /> },
   { to: '/settings', label: 'Paramètres', module: 'settings', icon: <Settings className="w-5 h-5" /> },
@@ -79,15 +83,15 @@ export default function Sidebar() {
             {settings?.logo || currentBusiness?.logo ? (
               <img src={settings?.logo || currentBusiness?.logo} alt="" className="w-7 h-7 object-contain" />
             ) : (
-              <span className="text-white font-bold text-base drop-shadow-sm">
+              <span className="text-on-accent font-bold text-base drop-shadow-sm">
                 {(settings?.name || 'N')[0]}
               </span>
             )}
           </div>
           {sidebarOpen && (
             <div className="min-w-0">
-              <p className="font-semibold text-sm text-white truncate drop-shadow-sm">{settings?.name || 'NeoX ERP'}</p>
-              {settings?.slogan && <p className="text-[10px] text-white/50 truncate">{settings.slogan}</p>}
+              <p className="font-semibold text-sm text-surface-900 truncate">{settings?.name || 'NeoX ERP'}</p>
+              {settings?.slogan && <p className="text-[10px] text-surface-500 truncate">{settings.slogan}</p>}
             </div>
           )}
         </div>
@@ -103,8 +107,8 @@ export default function Sidebar() {
                 cn(
                   'sidebar-item flex items-center gap-3 px-3 py-3 rounded-xl text-sm font-medium transition-all duration-150 min-h-[44px]',
                   isActive
-                    ? 'sidebar-item-active text-white'
-                    : 'text-white/60 hover:text-white/90'
+                     ? 'sidebar-item-active text-surface-900'
+                     : 'text-surface-600 hover:text-surface-900'
                 )
               }
             >
@@ -119,10 +123,10 @@ export default function Sidebar() {
         </nav>
 
         {/* Bottom toggle */}
-        <div className="p-3 border-t border-white/5">
+        <div className="p-3 border-t border-surface-200">
           <button
             onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-white/40 hover:text-white/70 hover:bg-surface-100/5 transition-all min-h-[44px]"
+            className="w-full flex items-center gap-3 px-3 py-3 rounded-xl text-sm text-surface-500 hover:text-surface-900 hover:bg-surface-100 transition-all min-h-[44px]"
           >
             <svg className="w-5 h-5 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />

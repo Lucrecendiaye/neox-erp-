@@ -5,6 +5,10 @@ import { isSupabaseConfigured } from '@/lib/supabase'
 import { useAppStore } from '@/stores/appStore'
 import { requirePermission, checkBusinessAccess } from '@/lib/checkPermission'
 import { softDelete } from '@/lib/softDelete'
+import { createNotification } from './notifications'
+import { notifySensitive } from './sensitiveNotifications'
+import { ensureReminder, resolveRemindersForCredit } from './reminders'
+import { allocateSaleItems } from './stockAllocation'
 import type {
   Location, ProductStock, ProductHistory, ProductHistoryAction,
   SupplierInvoice, SupplierInvoiceItem, SupplierPayment, PaymentLine,
@@ -66,8 +70,7 @@ async function adjustStock(productId: string, locationId: string, delta: number,
   const record = records[0]
   if (!record) return
   const before = record.quantity
-  const after = before + delta
-  if (after < 0) throw new Error(`Stock insuffisant: ${before} disponible(s)`)
+  const after = Math.max(0, before + delta)
   await db.productStocks.update(record.id, { quantity: after, updatedAt: now() })
   const historyEntry = {
     id: generateId(),
@@ -117,24 +120,29 @@ function getMainQty(item: { quantity: number; unitQuantity?: number }): number {
   return item.unitQuantity ? item.quantity * item.unitQuantity : item.quantity
 }
 
-export async function processSale(sale: Sale, opts?: { downPaymentMethod?: PaymentMethod; dueDate?: string }) {
-  requirePermission('pos', 'create')
-  const requiredByLocation = new Map<string, number>()
-  const productNames = new Map<string, string>()
-  for (const item of sale.items) {
+async function assertStockAvailable(items: Sale['items'], defaultLocationId: string, prefix = '') {
+  const demand = new Map<string, { name: string; productId: string; locationId: string; qty: number }>()
+  for (const item of items) {
     const mainQty = getMainQty(item)
-    const itemLocationId = (item as { locationId?: string }).locationId || sale.locationId
-    if (!itemLocationId || mainQty <= 0) throw new Error(`Quantité invalide pour ${item.productName}`)
-    requiredByLocation.set(`${item.productId}::${itemLocationId}`, (requiredByLocation.get(`${item.productId}::${itemLocationId}`) || 0) + mainQty)
-    productNames.set(`${item.productId}::${itemLocationId}`, item.productName)
+    if (mainQty <= 0) continue
+    const itemLocationId = (item as { locationId?: string }).locationId || defaultLocationId
+    const key = `${item.productId}::${itemLocationId}`
+    const entry = demand.get(key) || { name: item.productName, productId: item.productId, locationId: itemLocationId, qty: 0 }
+    entry.qty += mainQty
+    demand.set(key, entry)
   }
-  for (const [key, required] of requiredByLocation) {
-    const [productId, locationId] = key.split('::')
-    const available = await getStock(productId, locationId)
-    if (available < required) {
-      throw new Error(`Stock insuffisant pour ${productNames.get(key) || 'ce produit'} : ${available} disponible(s), ${required} demandé(s)`)
+  for (const entry of demand.values()) {
+    const available = await getStock(entry.productId, entry.locationId)
+    if (entry.qty > available) {
+      throw new Error(`${prefix}Stock insuffisant pour "${entry.name}": ${available} disponible, ${entry.qty} demandé`)
     }
   }
+}
+
+export async function processSale(sale: Sale, opts?: { downPaymentMethod?: PaymentMethod; dueDate?: string; sourceSelections?: Record<string, string> }) {
+  requirePermission('pos', 'create')
+  sale.items = await allocateSaleItems(sale.items, sale.businessId || currentBizId(), sale.locationId, opts?.sourceSelections)
+  await assertStockAvailable(sale.items, sale.locationId)
   for (const item of sale.items) {
     const mainQty = getMainQty(item)
     const itemLocationId = (item as { locationId?: string }).locationId || sale.locationId
@@ -144,7 +152,36 @@ export async function processSale(sale: Sale, opts?: { downPaymentMethod?: Payme
   await syncAfter('sales', sale)
   await audit('create', 'sale', sale.id, `Vente ${sale.invoiceNumber} - ${sale.total} FCFA (${currentUserName()})`)
 
-  if (sale.paymentMethod === 'credit' && sale.customerId && sale.paid < sale.total) {
+  const isSplitSale = sale.paymentMethod === 'split' && (sale.splitPayments?.length ?? 0) > 0
+  const creditNeeded = sale.paid < sale.total && (sale.paymentMethod === 'credit' || isSplitSale)
+
+  if (sale.paid > 0 && !creditNeeded) {
+    const payLines = isSplitSale && (sale.splitPayments || []).some(p => p.amount > 0)
+      ? (sale.splitPayments || []).filter(p => p.amount > 0)
+      : [{ method: (sale.paymentMethod === 'split' ? 'cash' : sale.paymentMethod) as PaymentMethod, amount: sale.paid }]
+    for (const line of payLines) {
+      const entry: CashBookEntry = {
+        id: generateId(),
+        businessId: currentBizId(),
+        date: sale.createdAt,
+        type: 'in',
+        category: 'Encaissement vente',
+        amount: line.amount,
+        description: `Encaissement vente - ${sale.invoiceNumber}${isSplitSale ? ` (${line.method})` : ''}`,
+        partyId: sale.customerId,
+        partyName: sale.customerName,
+        paymentMethod: line.method,
+        reference: sale.invoiceNumber,
+        linkedId: sale.id,
+        createdAt: now(),
+        userId: currentUserId(),
+      }
+      await db.cashBook.add(entry)
+      await syncAfter('cashBook', entry)
+    }
+  }
+
+  if (creditNeeded && sale.customerId) {
     const creditAmount = sale.total - sale.paid
     const credit: Credit = {
       id: generateId(),
@@ -163,35 +200,43 @@ export async function processSale(sale: Sale, opts?: { downPaymentMethod?: Payme
     await db.credits.add(credit)
 
     if (sale.paid > 0) {
-      const payment: CreditPayment = {
-        id: generateId(),
-        businessId: currentBizId(),
-        creditId: credit.id,
-        saleId: sale.id,
-        customerId: sale.customerId,
-        amount: sale.paid,
-        method: opts?.downPaymentMethod || (sale.paymentMethod === 'credit' ? 'cash' : sale.paymentMethod),
-        date: sale.createdAt,
-        userId: currentUserId(),
-        createdAt: now(),
+      const payLines = isSplitSale
+        ? (sale.splitPayments || []).filter(p => p.amount > 0)
+        : [{ method: (opts?.downPaymentMethod || 'cash') as PaymentMethod, amount: sale.paid }]
+
+      for (const line of payLines) {
+        const payment: CreditPayment = {
+          id: generateId(),
+          businessId: currentBizId(),
+          creditId: credit.id,
+          saleId: sale.id,
+          customerId: sale.customerId,
+          amount: line.amount,
+          method: line.method,
+          date: sale.createdAt,
+          userId: currentUserId(),
+          createdAt: now(),
+        }
+        await db.creditPayments.add(payment)
+        const entry: CashBookEntry = {
+          id: generateId(),
+          businessId: currentBizId(),
+          date: sale.createdAt,
+          type: 'in',
+          category: isSplitSale ? 'Paiement mixte' : 'Acompte crédit',
+          amount: line.amount,
+          description: `${isSplitSale ? 'Paiement partiel' : 'Acompte'} sur vente ${sale.invoiceNumber}${isSplitSale ? ` (${line.method})` : ''}`,
+          partyId: sale.customerId,
+          partyName: sale.customerName,
+          paymentMethod: line.method,
+          reference: sale.invoiceNumber,
+          linkedId: payment.id,
+          createdAt: now(),
+          userId: currentUserId(),
+        }
+        await db.cashBook.add(entry)
+        await syncAfter('cashBook', entry)
       }
-      await db.creditPayments.add(payment)
-      await db.cashBook.add({
-        id: generateId(),
-        businessId: currentBizId(),
-        date: sale.createdAt,
-        type: 'in',
-        category: 'Acompte crédit',
-        amount: sale.paid,
-        description: `Acompte sur vente ${sale.invoiceNumber}`,
-        partyId: sale.customerId,
-        partyName: sale.customerName,
-        paymentMethod: payment.method,
-        reference: sale.invoiceNumber,
-        linkedId: payment.id,
-        createdAt: now(),
-        userId: currentUserId(),
-      } satisfies CashBookEntry)
     }
 
     const customer = await db.customers.get(sale.customerId)
@@ -199,23 +244,19 @@ export async function processSale(sale: Sale, opts?: { downPaymentMethod?: Payme
       await db.customers.update(sale.customerId, { currentBalance: (customer.currentBalance || 0) + creditAmount })
     }
 
+    await ensureReminder({
+      creditId: credit.id,
+      saleId: sale.id,
+      customerId: sale.customerId,
+      customerName: sale.customerName || 'Client',
+      customerPhone: sale.customerPhone || customer?.phone,
+      debtAmount: creditAmount,
+      paidAmount: sale.paid,
+      dueDate: opts?.dueDate,
+    })
+
     await audit('create', 'credit', credit.id, `Crédit ${creditAmount} FCFA pour ${sale.customerName} (${currentUserName()})`)
   }
-}
-
-export async function markSaleDelivered(saleId: string) {
-  requirePermission('pos', 'create')
-  const sale = await db.sales.get(saleId)
-  if (!sale) throw new Error('Vente introuvable')
-  if (sale.saleChannel !== 'delivery') throw new Error('Cette vente n’est pas une livraison')
-  if (sale.deliveryStatus === 'delivered') return sale
-  const deliveredAt = now()
-  await db.sales.update(saleId, { deliveryStatus: 'delivered', deliveredAt })
-  if (isSupabaseConfigured()) {
-    await syncWrite('sales', { id: saleId, deliveryStatus: 'delivered', deliveredAt }).catch(() => {})
-  }
-  await audit('deliver', 'sale', saleId, `Vente ${sale.invoiceNumber} livrée (${currentUserName()})`)
-  return { ...sale, deliveryStatus: 'delivered' as const, deliveredAt }
 }
 
 export async function cancelSale(saleId: string) {
@@ -229,6 +270,12 @@ export async function cancelSale(saleId: string) {
   }
   await db.sales.update(saleId, { status: 'cancelled' })
   await audit('cancel', 'sale', saleId, `Vente ${sale.invoiceNumber} annulée (${currentUserName()})`)
+  await notifySensitive({
+    category: 'saleDelete',
+    title: '🔴 Vente annulée',
+    message: `A annulé la vente ${sale.invoiceNumber} d'un montant de ${sale.total} FCFA`,
+    link: '/sales',
+  })
 }
 
 export async function deleteSale(saleId: string) {
@@ -241,29 +288,38 @@ export async function deleteSale(saleId: string) {
     await adjustStock(item.productId, itemLocationId, mainQty, 'returned', sale.invoiceNumber, `Suppression vente #${sale.invoiceNumber} par ${currentUserName()}`)
   }
 
-  if (sale.paymentMethod === 'credit' && sale.customerId) {
-    const relatedCredits = (await db.credits.toArray()).filter(c => c.invoiceId === saleId)
-    for (const credit of relatedCredits) {
-      await softDelete('credits', credit.id, credit as any, `Crédit ${credit.customerName}`)
-      await db.credits.delete(credit.id)
-      const payments = await db.creditPayments.where({ creditId: credit.id }).toArray()
-      for (const p of payments) {
-        try { await softDelete('creditPayments', p.id, p as any, `Paiement ${p.amount}`) } catch {}
-        await db.creditPayments.delete(p.id)
-      }
-      const customer = await db.customers.get(credit.customerId)
-      if (customer) {
-        await db.customers.update(credit.customerId, {
-          currentBalance: Math.max(0, (customer.currentBalance || 0) - credit.balance),
-        })
-      }
+  const relatedCredits = (await db.credits.toArray()).filter(c => c.invoiceId === saleId)
+  for (const credit of relatedCredits) {
+    await softDelete('credits', credit.id, credit as any, `Crédit ${credit.customerName}`)
+    await db.credits.delete(credit.id)
+    const payments = await db.creditPayments.where({ creditId: credit.id }).toArray()
+    for (const p of payments) {
+      try { await softDelete('creditPayments', p.id, p as any, `Paiement ${p.amount}`) } catch {}
+      await db.creditPayments.delete(p.id)
+      const linked = await db.cashBook.where('linkedId').equals(p.id).toArray()
+      for (const e of linked) await db.cashBook.delete(e.id)
+    }
+    const customer = await db.customers.get(credit.customerId)
+    if (customer) {
+      await db.customers.update(credit.customerId, {
+        currentBalance: Math.max(0, (customer.currentBalance || 0) - credit.balance),
+      })
     }
   }
+
+  const saleLinked = await db.cashBook.where('linkedId').equals(saleId).toArray()
+  for (const e of saleLinked) await db.cashBook.delete(e.id)
 
   try { await softDelete('sales', saleId, sale as any, sale.invoiceNumber) } catch {}
   await db.sales.delete(saleId)
   try { await syncDeleteObject('sales', saleId) } catch {}
   await audit('delete', 'sale', saleId, `Vente ${sale.invoiceNumber} supprimée (${currentUserName()})`)
+  await notifySensitive({
+    category: 'saleDelete',
+    title: '🔴 Vente supprimée',
+    message: `A supprimé la vente ${sale.invoiceNumber} d'un montant de ${sale.total} FCFA`,
+    link: '/sales',
+  })
 }
 
 export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
@@ -276,8 +332,8 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
   const newMethod = updatedSale.paymentMethod || oldSale.paymentMethod
   const paid = oldSale.paid || 0
   const subtotal = newItems.reduce((s, i) => s + i.total, 0)
-  const taxTotal = newItems.reduce((s, i) => s + i.total * (i.taxRate || 0) / 100, 0)
-  const newTotal = updatedSale.total ?? subtotal + taxTotal
+  const taxTotal = 0
+  const newTotal = updatedSale.total ?? subtotal
 
   if (newTotal < paid) {
     throw new Error(`Impossible: le nouveau total (${newTotal}) est inférieur au montant déjà encaissé (${paid})`)
@@ -290,8 +346,10 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
     await adjustStock(item.productId, itemLocationId, mainQty, 'returned', oldSale.invoiceNumber, `Modification - restitution ancien stock #${oldSale.invoiceNumber}`)
   }
 
-  // Apply new stock deduction if items changed
-  for (const item of newItems) {
+  // Reallocate unassigned lines using the same shop-first rule as a new sale.
+  const allocatedItems = await allocateSaleItems(newItems, oldSale.businessId || currentBizId(), newLocationId)
+  await assertStockAvailable(allocatedItems, newLocationId, 'Modification: ')
+  for (const item of allocatedItems) {
     const mainQty = getMainQty(item)
     const itemLocationId = (item as { locationId?: string }).locationId || newLocationId
     await adjustStock(item.productId, itemLocationId, -mainQty, 'sold', oldSale.invoiceNumber, `Modification - nouveau stock #${oldSale.invoiceNumber} (${currentUserName()})`)
@@ -299,13 +357,37 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
 
   await db.sales.update(saleId, {
     ...updatedSale,
-    items: newItems,
+    items: allocatedItems,
     locationId: newLocationId,
     total: newTotal,
     subtotal,
     taxTotal,
     paymentStatus: paid >= newTotal ? 'paid' : paid > 0 ? 'partial' : 'unpaid',
   })
+
+  // Notification "modification sensible" avec les différences réellement calculées
+  try {
+    const diffs: string[] = []
+    const oldTotal = oldSale.total || 0
+    if (oldTotal !== newTotal) diffs.push(`Montant : ${oldTotal.toLocaleString('fr-FR')} → ${newTotal.toLocaleString('fr-FR')} FCFA`)
+    const oldQty = oldSale.items.reduce((s, i) => s + (i.quantity || 0), 0)
+    const newQty = newItems.reduce((s, i) => s + (i.quantity || 0), 0)
+    if (oldQty !== newQty) diffs.push(`Quantité : ${oldQty} → ${newQty}`)
+    const oldName = oldSale.customerName || oldSale.supplierName || '—'
+    const newName = (updatedSale.customerName !== undefined ? updatedSale.customerName : oldSale.customerName) || (updatedSale.supplierName !== undefined ? updatedSale.supplierName : oldSale.supplierName) || '—'
+    if (oldName !== newName) diffs.push(`Client : ${oldName} → ${newName}`)
+    const oldMethod = oldSale.paymentMethod || ''
+    const newMethod = updatedSale.paymentMethod || oldMethod
+    if (oldMethod !== newMethod) diffs.push(`Paiement : ${oldMethod} → ${newMethod}`)
+    if (diffs.length > 0) {
+      await notifySensitive({
+        category: 'saleEdit',
+        title: '🟠 Vente modifiée',
+        message: `A modifié la vente ${oldSale.invoiceNumber} — ${diffs.join(' ; ')}`,
+        link: '/sales',
+      })
+    }
+  } catch { /* notification non bloquante */ }
 
   const linkedCredits = (await db.credits.toArray()).filter(c => c.invoiceId === saleId)
   for (const credit of linkedCredits) {
@@ -346,6 +428,9 @@ export async function editSale(saleId: string, updatedSale: Partial<Sale>) {
     })
   }
 
+  for (const credit of linkedCredits) {
+    await resolveRemindersForCredit(credit.id)
+  }
   await audit('edit', 'sale', saleId, `Vente ${oldSale.invoiceNumber} modifiée (${currentUserName()})`)
 }
 
@@ -417,7 +502,6 @@ async function createBonSortieFromTransfer(transfer: Transfer): Promise<BonSorti
     items.push({
       productId: item.productId,
       productName: item.productName || prod?.name || '',
-      barcode: prod?.barcode,
       reference: prod?.reference,
       variant: prod?.brand,
       quantity: qty,
@@ -471,13 +555,16 @@ export async function processTransfer(transfer: Transfer) {
   transfer.businessId = currentBizId()
   transfer.createdAt = now()
   transfer.userId = currentUserId()
-  transfer.status = 'pending'
+  transfer.status = 'completed'
+  transfer.receivedAt = now()
+  transfer.receivedBy = currentUserName()
   transfer.bonNumber = await generateBonNumber()
 
   for (const item of transfer.items) {
     const fromQty = await getStock(item.productId, transfer.fromLocationId)
     if (fromQty < item.quantity) throw new Error(`Stock insuffisant pour ${item.productName} dans l'emplacement source`)
-    await adjustStock(item.productId, transfer.fromLocationId, -item.quantity, 'transferred_out', transfer.id, `Transfert vers ${transfer.toLocationId}`)
+    await adjustStock(item.productId, transfer.fromLocationId, -item.quantity, 'transferred_out', transfer.id, `Transfert vers ${transfer.toLocationId} (${currentUserName()})`)
+    await adjustStock(item.productId, transfer.toLocationId, item.quantity, 'transferred_in', transfer.id, `Réception transfert ${transfer.bonNumber} par ${currentUserName()}`)
   }
 
   await db.transfers.add(transfer)
@@ -486,6 +573,21 @@ export async function processTransfer(transfer: Transfer) {
   await createBonSortieFromTransfer(transfer)
 
   await audit('create', 'transfer', transfer.id, `Transfert ${transfer.bonNumber} - ${transfer.fromLocationId} → ${transfer.toLocationId} (${currentUserName()})`)
+
+  try {
+    const [fromLoc, toLoc] = await Promise.all([db.locations.get(transfer.fromLocationId), db.locations.get(transfer.toLocationId)])
+    await createNotification({
+      type: 'stock_transfer',
+      title: '📦 Transfert de stock',
+      message: `${fromLoc?.name || 'Dépôt'} → ${toLoc?.name || 'Boutique'} (${transfer.bonNumber || ''}) - ${transfer.items.reduce((sum, it) => sum + it.quantity, 0)} article(s) en transit`,
+      link: '/depots',
+      senderId: currentUserId(),
+      transferId: transfer.id,
+      shopId: transfer.toLocationId,
+    })
+  } catch {
+    // notification non bloquante
+  }
   return transfer
 }
 
@@ -493,15 +595,38 @@ export async function confirmTransferReception(transferId: string, receivedByNam
   requirePermission('depots', 'edit')
   const transfer = await db.transfers.get(transferId)
   if (!transfer) throw new Error('Transfert introuvable')
-  if (transfer.status === 'completed') throw new Error('Ce transfert a déjà été reçu')
   const bon = await db.bonSorties.where('transferId').equals(transferId).first()
   const name = receivedByName?.trim() || currentUserName()
+  const iso = now()
+
+  if (transfer.status === 'cancelled') throw new Error('Ce transfert a été annulé')
+
+  if (transfer.status === 'completed') {
+    if (transfer.receivedAt) {
+      await db.transfers.update(transferId, { receivedBy: name })
+      if (bon && bon.status !== 'recu') {
+        await db.bonSorties.update(bon.id, {
+          status: 'recu',
+          receivedAt: iso,
+          receivedTime: timeStr(iso),
+          receivedBy: name,
+          destinataireName: name,
+          signatures: { ...(bon.signatures || {}), destinataire: name, destinataireAt: iso },
+        })
+      }
+      if (isSupabaseConfigured()) {
+        await syncWrite('transfers', { id: transferId, receivedBy: name }).catch(() => {})
+      }
+      await audit('receive', 'transfer', transferId, `Réception du transfert ${bon?.number || transfer.bonNumber} par ${name}`)
+      return bon
+    }
+    throw new Error('Ce transfert a déjà été reçu')
+  }
 
   for (const item of transfer.items) {
     await adjustStock(item.productId, transfer.toLocationId, item.quantity, 'transferred_in', transfer.id, `Réception bon ${bon?.number || transfer.bonNumber} par ${name}`)
   }
 
-  const iso = now()
   await db.transfers.update(transferId, { status: 'completed', receivedAt: iso, receivedBy: name })
   if (isSupabaseConfigured()) {
     await syncWrite('transfers', { id: transferId, status: 'completed', receivedAt: iso, receivedBy: name }).catch(() => {})
@@ -539,11 +664,17 @@ export async function cancelBonSortie(bonId: string) {
   const bon = await db.bonSorties.get(bonId)
   if (!bon) throw new Error('Bon de sortie introuvable')
   if (bon.status === 'recu') throw new Error('Un bon reçu ne peut pas être annulé')
+  if (bon.status === 'annule') throw new Error('Ce bon a déjà été annulé')
   for (const item of bon.items) {
     await adjustStock(item.productId, bon.fromLocationId, item.quantity, 'returned', bon.id, `Annulation bon ${bon.number}`)
   }
   await db.bonSorties.update(bonId, { status: 'annule' })
-  if (bon.transferId) await db.transfers.update(bon.transferId, { status: 'cancelled' })
+  if (bon.transferId) {
+    const transfer = await db.transfers.get(bon.transferId)
+    if (transfer && transfer.status !== 'cancelled') {
+      await db.transfers.update(bon.transferId, { status: 'cancelled' })
+    }
+  }
   await audit('cancel', 'bon_sortie', bonId, `Bon de sortie ${bon.number} annulé`)
 }
 
@@ -593,11 +724,17 @@ export async function signBonSortie(bonId: string, sig: { destinateur?: string; 
 
 export async function processStockAdjustment(productId: string, locationId: string, newQty: number, note?: string) {
   requirePermission('products', 'adjust_stock')
-  if (newQty < 0) throw new Error('La quantité ne peut pas être négative')
   const current = await getStock(productId, locationId)
   const delta = newQty - current
   await adjustStock(productId, locationId, delta, 'adjusted', undefined, note || `Ajustement de ${current} à ${newQty} par ${currentUserName()}`)
   await audit('adjust', 'stock', `${productId}-${locationId}`, `Stock ajusté: ${current} → ${newQty} (${currentUserName()})`)
+  const product = await db.products.get(productId)
+  await notifySensitive({
+    category: 'stockManual',
+    title: '🟡 Ajustement manuel de stock',
+    message: `A modifié le stock de ${product?.name || 'produit'} : ${current} → ${newQty}`,
+    link: '/products',
+  })
 }
 
 export async function processStockRemoval(productId: string, locationId: string, quantity: number, reason: string, comment?: string) {
@@ -607,6 +744,13 @@ export async function processStockRemoval(productId: string, locationId: string,
   if (current < quantity) throw new Error(`Stock insuffisant: ${current} < ${quantity}`)
   await adjustStock(productId, locationId, -quantity, 'adjusted', reason, `${reason}${comment ? ' - ' + comment : ''} (${currentUserName()})`)
   await audit('remove_stock', 'stock', `${productId}-${locationId}`, `Retrait: ${quantity} pour ${reason} par ${currentUserName()}${comment ? ' - ' + comment : ''}`)
+  const product = await db.products.get(productId)
+  await notifySensitive({
+    category: 'stockManual',
+    title: '🟡 Retrait de stock',
+    message: `A retiré ${quantity} de ${product?.name || 'produit'} (${reason})`,
+    link: '/products',
+  })
 }
 
 export async function processSupplierInvoice(invoice: SupplierInvoice) {
@@ -799,6 +943,7 @@ export async function deletePurchase(purchaseId: string) {
   }
   await softDelete('purchases', purchaseId, purchase as any, purchase.id)
   await db.purchases.delete(purchaseId)
+  try { await syncDeleteObject('purchases', purchaseId) } catch {}
   await audit('delete', 'purchase', purchaseId, `Achat ${purchase.id} supprimé (${currentUserName()})`)
 }
 
@@ -885,7 +1030,7 @@ export async function recordCreditPayment(
       })
     }
 
-    await db.cashBook.add({
+    const cashEntry: CashBookEntry = {
       id: generateId(),
       businessId: bizId,
       date: payment.date,
@@ -900,7 +1045,9 @@ export async function recordCreditPayment(
       linkedId: paymentId,
       createdAt: now(),
       userId,
-    } satisfies CashBookEntry)
+    }
+    await db.cashBook.add(cashEntry)
+    await syncAfter('cashBook', cashEntry)
 
     await db.creditModifications.add({
       id: generateId(),
@@ -916,6 +1063,7 @@ export async function recordCreditPayment(
     })
   })
 
+  await resolveRemindersForCredit(creditId)
   await audit('payment', 'credit', creditId, `Paiement ${amount} FCFA sur crédit ${creditId.slice(0, 8)} par ${currentUserName()}${note ? ' - ' + note : ''}`)
   const payment = await db.creditPayments.get(paymentId)
   return payment
@@ -983,7 +1131,14 @@ export async function modifyCreditPayment(paymentId: string, newAmount: number, 
     })
   })
 
+  await resolveRemindersForCredit(payment.creditId)
   await audit('edit', 'credit_payment', paymentId, `Paiement modifié: ${payment.amount} → ${newAmount} FCFA (${currentUserName()})`)
+  await notifySensitive({
+    category: 'paymentEdit',
+    title: '🟠 Paiement modifié',
+    message: `A modifié un paiement de crédit : ${payment.amount} → ${newAmount} FCFA (${payment.customerId ? ': client' : ''})`,
+    link: '/credit',
+  })
 }
 
 export async function deleteCreditPayment(paymentId: string) {
@@ -1042,5 +1197,12 @@ export async function deleteCreditPayment(paymentId: string) {
     })
   })
 
+  await resolveRemindersForCredit(payment.creditId)
   await audit('delete', 'credit_payment', paymentId, `Paiement ${payment.amount} FCFA supprimé (${currentUserName()})`)
+  await notifySensitive({
+    category: 'paymentEdit',
+    title: '🔴 Paiement supprimé',
+    message: `A supprimé un paiement de crédit de ${payment.amount} FCFA`,
+    link: '/credit',
+  })
 }

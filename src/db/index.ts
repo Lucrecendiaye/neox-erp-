@@ -3,8 +3,8 @@ import type {
   Product, Category, StockMovement, Customer, Supplier,
   Sale, Purchase, Invoice, AccountingEntry, Account,
   Credit, CreditPayment, CreditModification, AuditLog, User, CompanySettings, Notification, Business,
-  Employee, Attendance, Payroll, CashBookEntry, Lead, BusinessCard,
-  AuthSession,
+  Employee, Attendance, Payroll, CashBookEntry, CashOperation, CashCategory, Lead, BusinessCard,
+  AuthSession, Delivery, Loan, LoanPayment, DebtReminder,
 } from '@/types'
 import type {
   Location, ProductStock, ProductHistory,
@@ -18,6 +18,9 @@ class NeoXDB extends Dexie {
   stockMovements!: EntityTable<StockMovement, 'id'>
   customers!: EntityTable<Customer, 'id'>
   suppliers!: EntityTable<Supplier, 'id'>
+  loans!: EntityTable<Loan, 'id'>
+  loanPayments!: EntityTable<LoanPayment, 'id'>
+  reminders!: EntityTable<DebtReminder, 'id'>
   sales!: EntityTable<Sale, 'id'>
   purchases!: EntityTable<Purchase, 'id'>
   invoices!: EntityTable<Invoice, 'id'>
@@ -45,6 +48,9 @@ class NeoXDB extends Dexie {
   compensations!: EntityTable<Compensation, 'id'>
   transfers!: EntityTable<Transfer, 'id'>
   bonSorties!: EntityTable<BonSortie, 'id'>
+  cashOps!: EntityTable<CashOperation, 'id'>
+  cashCategories!: EntityTable<CashCategory, 'id'>
+  deliveries!: EntityTable<Delivery, 'id'>
   deletedRecords!: EntityTable<DeletedRecord, 'id'>
   sessions!: EntityTable<AuthSession, 'id'>
 
@@ -56,6 +62,9 @@ class NeoXDB extends Dexie {
       stockMovements: 'id, businessId, locationId, productId, type, createdAt',
       customers: 'id, businessId, name, phone, email',
       suppliers: 'id, businessId, name, phone, email',
+      loans: 'id, businessId, partyId, partyKind, status, createdAt',
+      loanPayments: 'id, businessId, partyId, partyKind, date, createdAt',
+      reminders: 'id, businessId, customerId, creditId, saleId, status, remindDate, dueDate, createdAt',
       sales: 'id, businessId, locationId, invoiceNumber, customerId, status, createdAt',
       purchases: 'id, businessId, locationId, supplierId, status, createdAt',
       invoices: 'id, businessId, number, partyId, type, status, createdAt',
@@ -71,11 +80,11 @@ class NeoXDB extends Dexie {
       employees: 'id, businessId, name, department, position, status',
       attendance: 'id, businessId, employeeId, date, status',
       payrolls: 'id, businessId, employeeId, periodStart, status',
-      cashBook: 'id, businessId, date, type, category',
+      cashBook: 'id, businessId, date, type, category, linkedId',
       leads: 'id, businessId, name, phone, status, source',
       businessCards: 'id, businessId, name, design',
       locations: 'id, businessId, type, isActive',
-      productStocks: 'id, businessId, productId, locationId, [productId+locationId]',
+      productStocks: 'id, businessId, productId, locationId, [productId+locationId], stockAlert',
       productHistory: 'id, businessId, productId, locationId, action, createdAt',
       supplierInvoices: 'id, businessId, supplierId, number, status, createdAt',
       supplierPayments: 'id, businessId, invoiceId, date',
@@ -89,6 +98,31 @@ class NeoXDB extends Dexie {
       ...fullSchema,
       sessions: 'id, userId, businessId, revoked, expiresAt',
     })
+    this.version(12).stores({
+      ...fullSchema,
+      deliveries: 'id, businessId, number, saleId, status, paymentStatus, customerId, courierId, createdAt, updatedAt',
+      cashOps: 'id, businessId, number, type, date, categoryId, userId, locationId, paymentMethod, status',
+      cashCategories: 'id, businessId, name, type',
+      sessions: 'id, userId, businessId, revoked, expiresAt',
+      creditModifications: 'id, businessId, creditId, saleId, createdAt',
+    })
+    this.version(13).stores({
+      ...fullSchema,
+      loans: 'id, businessId, partyId, partyKind, status, createdAt',
+      loanPayments: 'id, businessId, partyId, partyKind, date, createdAt',
+      reminders: 'id, businessId, customerId, creditId, saleId, status, remindDate, dueDate, createdAt',
+    })
+    this.version(14).stores({
+      ...fullSchema,
+      cashBook: 'id, businessId, date, type, category, linkedId',
+      productStocks: 'id, businessId, productId, locationId, [productId+locationId], stockAlert',
+    })
+    this.version(11).stores({
+      ...fullSchema,
+      cashOps: 'id, businessId, number, type, date, categoryId, userId, locationId, paymentMethod, status',
+      cashCategories: 'id, businessId, name, type',
+      sessions: 'id, userId, businessId, revoked, expiresAt',
+    })
     this.version(9).stores({
       ...fullSchema,
       creditModifications: 'id, businessId, creditId, saleId, createdAt',
@@ -99,6 +133,10 @@ class NeoXDB extends Dexie {
 }
 
 const db = new NeoXDB()
+
+if (typeof window !== 'undefined') {
+  (window as any).__neoxDb = db
+}
 
 export async function initDB() {
   if (db.isOpen()) return
@@ -126,7 +164,8 @@ export async function initDB() {
         { code: 'USD', symbol: '$', rate: 0.0016 },
       ],
       locale: 'fr-FR', language: 'fr', timezone: 'Africa/Ouagadougou',
-      taxRate: 18, invoicePrefix: 'FAC-', invoiceNextNumber: 1,
+      taxRate: 0, invoicePrefix: 'FAC-', invoiceNextNumber: 1,
+      deliveryPrefix: 'VL-', deliveryNextNumber: 1,
     })
   }
 }

@@ -84,3 +84,49 @@ create policy "tenant_access_bon_sorties" on public.bon_sorties
 grant all on public.accounts to authenticated, anon;
 grant all on public.credit_payments to authenticated, anon;
 grant all on public.bon_sorties to authenticated, anon;
+
+create table if not exists public.deliveries (
+  id text primary key,
+  "businessId" text not null references public.businesses(id) on delete cascade,
+  number text not null,
+  "saleId" text,
+  "locationId" text,
+  status text not null default 'draft',
+  "paymentStatus" text not null default 'pending',
+  "paymentMethod" text not null default '',
+  "customerId" text,
+  "customerName" text not null,
+  "customerPhone" text,
+  "customerAddress" text,
+  quarter text,
+  "deliveryNote" text,
+  items jsonb not null default '[]',
+  payments jsonb not null default '[]',
+  subtotal numeric not null default 0,
+  discount numeric not null default 0,
+  "deliveryFee" numeric not null default 0,
+  "deliveryFeeClient" numeric not null default 0,
+  "deliveryFeeShop" numeric not null default 0,
+  total numeric not null default 0,
+  paid numeric not null default 0,
+  "courierId" text,
+  "courierName" text,
+  "plannedDate" timestamptz,
+  "createdById" text,
+  "createdByName" text,
+  "createdAt" timestamptz not null default now(),
+  "updatedAt" timestamptz not null default now(),
+  "deliveredAt" timestamptz,
+  "cancelledAt" timestamptz,
+  "returnedAt" timestamptz,
+  "cancelReason" text,
+  "stockReturned" boolean not null default false,
+  refund numeric not null default 0
+);
+
+alter table public.deliveries enable row level security;
+
+create policy "tenant_access_deliveries" on public.deliveries
+  for all using ("businessId" in (select "businessId" from profiles where "auth_user_id" = auth.uid()));
+
+grant all on public.deliveries to authenticated, anon;

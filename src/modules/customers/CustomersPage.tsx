@@ -11,7 +11,8 @@ import { toast } from '@/lib/toast'
 import { shareViaWeChat } from '@/lib/share'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import { softDelete } from '@/lib/softDelete'
-import { Search, Plus, Edit2, Trash2, Users, Phone, Mail, MapPin, CreditCard, MessageSquare, MessageCircle } from 'lucide-react'
+import CustomerFiche from '@/components/customers/CustomerFiche'
+import { Search, Plus, Edit2, Trash2, Users, Phone, Mail, MapPin, CreditCard, MessageSquare, MessageCircle, FileText, UserRoundSearch } from 'lucide-react'
 import type { Customer } from '@/types'
 
 export default function CustomersPage() {
@@ -25,6 +26,8 @@ export default function CustomersPage() {
   const [form, setForm] = useState({ name: '', phone: '', email: '', address: '', creditLimit: 0, notes: '' })
   const [pinModalOpen, setPinModalOpen] = useState(false)
   const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null)
+  const [ficheOpen, setFicheOpen] = useState(false)
+  const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null)
 
   const filtered = customers?.filter(c =>
     c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -50,6 +53,30 @@ export default function CustomersPage() {
   async function handleSave() {
     const now = new Date().toISOString()
     try {
+      if (!editing) {
+        // Prévention des doublons : téléphone prioritaire, sinon nom exact.
+        const phone = form.phone.replace(/[^\d]/g, '')
+        if (phone) {
+          const existing = customers.find(c => c.phone.replace(/[^\d]/g, '') === phone)
+          if (existing) {
+            setSelectedCustomer(existing)
+            setFicheOpen(true)
+            setModalOpen(false)
+            toast(`Un client avec ce téléphone existe déjà : ${existing.name} — fiche ouverte`, 'warning')
+            return
+          }
+        }
+        const byName = customers.find(c => c.name.trim().toLowerCase() === form.name.trim().toLowerCase())
+        if (byName) {
+          const yes = window.confirm(`${byName.name} existe déjà. Ouvrir sa fiche au lieu de créer un doublon ?`)
+          if (yes) {
+            setSelectedCustomer(byName)
+            setFicheOpen(true)
+            setModalOpen(false)
+            return
+          }
+        }
+      }
       if (editing) {
         await db.customers.update(editing.id, { ...form, updatedAt: now })
         toast('Client mis à jour avec succès', 'success')
@@ -117,7 +144,7 @@ export default function CustomersPage() {
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
         {paginatedItems?.map((c) => (
-          <Card key={c.id} className="relative group">
+          <Card key={c.id} className="relative group cursor-pointer" onClick={() => { setSelectedCustomer(c); setFicheOpen(true) }}>
             <div className="flex items-start gap-3">
               <div className="w-12 h-12 bg-primary-50 rounded-xl flex items-center justify-center text-primary-400 font-bold text-lg">
                 {c.name.charAt(0).toUpperCase()}
@@ -147,7 +174,10 @@ export default function CustomersPage() {
                 </div>
               </div>
             </div>
-            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div className="absolute top-3 right-3 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={(e) => e.stopPropagation()}>
+              <button onClick={() => { setSelectedCustomer(c); setFicheOpen(true) }} className="p-1.5 rounded-lg hover:bg-primary-500/15 text-surface-400 hover:text-primary-500" title="Fiche complète">
+                <FileText className="w-4 h-4" />
+              </button>
               <button onClick={() => handleWhatsApp(c.phone)} className="p-1.5 rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400">
                 <MessageSquare className="w-4 h-4" />
               </button>
@@ -207,6 +237,10 @@ export default function CustomersPage() {
         description="Cette action est protégée. Entrez votre code PIN de sécurité pour continuer."
         actionLabel="Supprimer"
       />
+
+      {ficheOpen && selectedCustomer && (
+        <CustomerFiche customer={selectedCustomer} onClose={() => setFicheOpen(false)} />
+      )}
     </div>
   )
 }

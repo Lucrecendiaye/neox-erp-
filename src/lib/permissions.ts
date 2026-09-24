@@ -1,17 +1,23 @@
 export const MODULES = [
-  'dashboard',
   'pos',
   'products',
   'depots',
   'customers',
+  'deliveries',
   'suppliers',
   'sales',
   'purchases',
   'payments',
   'reports',
+  'cash',
   'users',
   'settings',
   'trash',
+  'invoices',
+  'cashbook',
+  'sms',
+  'audit',
+  'notifications',
 ] as const
 
 export type Module = typeof MODULES[number]
@@ -36,19 +42,25 @@ export type Permission = `${Module}:${Action}` | '*'
 export const ALL_PERMISSION: Permission = '*'
 
 export const MODULE_LABELS: Record<Module, string> = {
-  dashboard: 'Tableau de bord',
   pos: 'Caisse POS',
   products: 'Produits',
   depots: 'Dépôts',
   customers: 'Clients',
+  deliveries: 'Ventes à livraison',
   suppliers: 'Fournisseurs',
   sales: 'Ventes',
   purchases: 'Achats',
   payments: 'Paiements',
   reports: 'Rapports',
+  cash: 'Cash',
   settings: 'Paramètres',
   users: 'Utilisateurs',
   trash: 'Corbeille',
+  invoices: 'Factures',
+  cashbook: 'Caisse',
+  sms: 'Rappels SMS',
+  audit: "Journal d'audit",
+  notifications: 'Notifications',
 }
 
 export const ACTION_LABELS: Record<Action, string> = {
@@ -72,13 +84,15 @@ export interface SimplifiedPermission {
 }
 
 export const SIMPLIFIED_PERMISSIONS: SimplifiedPermission[] = [
-  { id: 'dashboard', label: 'Tableau de bord', permissions: ['dashboard:view'] },
   { id: 'pos', label: 'Caisse POS', permissions: ['pos:view', 'pos:create'] },
   { id: 'products_view', label: 'Voir les produits', permissions: ['products:view'] },
   { id: 'products_manage', label: 'Gérer les produits (ajouter, modifier)', permissions: ['products:create', 'products:edit'] },
   { id: 'products_delete', label: 'Supprimer des produits', permissions: ['products:delete'] },
 
   { id: 'customers', label: 'Gérer les clients', permissions: ['customers:view', 'customers:create', 'customers:edit', 'customers:delete'] },
+  { id: 'deliveries_view', label: 'Voir les ventes à livraison', permissions: ['deliveries:view'] },
+  { id: 'deliveries_courier', label: 'Livreur (traiter ses livraisons)', permissions: ['deliveries:view', 'deliveries:edit'] },
+  { id: 'deliveries_manage', label: 'Gérer les ventes à livraison (créer, valider)', permissions: ['deliveries:create', 'deliveries:validate', 'deliveries:delete'] },
   { id: 'suppliers', label: 'Gérer les fournisseurs', permissions: ['suppliers:view', 'suppliers:create', 'suppliers:edit', 'suppliers:delete'] },
   { id: 'sales_view', label: 'Voir les ventes', permissions: ['sales:view'] },
   { id: 'sales_create', label: 'Effectuer des ventes', permissions: ['sales:create'] },
@@ -93,10 +107,21 @@ export const SIMPLIFIED_PERMISSIONS: SimplifiedPermission[] = [
   { id: 'depots_adjust', label: 'Ajuster le stock des dépôts', permissions: ['depots:adjust_stock'] },
   { id: 'depots_validate', label: 'Valider les bons de sortie', permissions: ['depots:validate'] },
   { id: 'reports', label: 'Rapports', permissions: ['reports:view'] },
+  { id: 'cash_view', label: 'Voir le cash (trésorerie externe)', permissions: ['cash:view'] },
+  { id: 'cash_manage', label: 'Gérer le cash (entrées, sorties)', permissions: ['cash:create', 'cash:edit'] },
+  { id: 'cash_delete', label: 'Supprimer / annuler des opérations cash', permissions: ['cash:delete'] },
+  { id: 'cash_export', label: 'Exporter / imprimer les rapports cash', permissions: ['cash:export', 'cash:print'] },
   { id: 'users_view', label: 'Voir les utilisateurs', permissions: ['users:view'] },
   { id: 'users_manage', label: 'Modifier les utilisateurs', permissions: ['users:create', 'users:edit', 'users:delete'] },
   { id: 'settings', label: 'Paramètres', permissions: ['settings:view'] },
   { id: 'trash', label: 'Corbeille', permissions: ['trash:view'] },
+  { id: 'invoices_view', label: 'Voir les factures', permissions: ['invoices:view'] },
+  { id: 'invoices_manage', label: 'Gérer les factures (créer, modifier, supprimer)', permissions: ['invoices:create', 'invoices:edit', 'invoices:delete'] },
+  { id: 'cashbook_view', label: 'Voir la caisse', permissions: ['cashbook:view'] },
+  { id: 'cashbook_manage', label: 'Gérer la caisse (entrées, sorties)', permissions: ['cashbook:create', 'cashbook:edit', 'cashbook:delete'] },
+  { id: 'sms', label: 'Envoyer des rappels', permissions: ['sms:view', 'sms:create'] },
+  { id: 'audit', label: 'Voir le journal d\'audit', permissions: ['audit:view'] },
+  { id: 'notifications', label: 'Voir les notifications', permissions: ['notifications:view'] },
 ]
 
 export interface RolePreset {
@@ -109,7 +134,12 @@ export const ROLE_PRESETS: RolePreset[] = [
   {
     id: 'vendeur',
     label: 'Vendeur',
-    permissionIds: ['dashboard', 'pos', 'products_view', 'customers', 'sales_view', 'sales_create', 'sales_cancel'],
+    permissionIds: ['pos', 'products_view', 'customers', 'sales_view', 'sales_create', 'sales_cancel'],
+  },
+  {
+    id: 'livreur',
+    label: 'Livreur',
+    permissionIds: ['deliveries_view', 'deliveries_courier'],
   },
   {
     id: 'gestionnaire_stock',
@@ -119,17 +149,17 @@ export const ROLE_PRESETS: RolePreset[] = [
   {
     id: 'comptable',
     label: 'Comptable',
-    permissionIds: ['dashboard', 'sales_view', 'purchases', 'payments', 'reports'],
+    permissionIds: ['sales_view', 'purchases', 'payments', 'reports', 'cash_view', 'cash_manage', 'cash_export'],
   },
   {
     id: 'superviseur',
     label: 'Superviseur',
-    permissionIds: ['dashboard', 'pos', 'products_view', 'products_manage', 'customers', 'suppliers', 'sales_view', 'sales_create', 'sales_cancel', 'purchases', 'payments', 'depots', 'reports', 'trash'],
+    permissionIds: ['pos', 'products_view', 'products_manage', 'customers', 'suppliers', 'sales_view', 'sales_create', 'sales_cancel', 'purchases', 'payments', 'depots', 'reports', 'cash_view', 'cash_manage', 'cash_delete', 'cash_export', 'trash'],
   },
   {
     id: 'observateur',
     label: 'Observateur',
-    permissionIds: ['dashboard', 'products_view', 'customers', 'suppliers', 'sales_view', 'purchases', 'reports'],
+    permissionIds: ['products_view', 'customers', 'suppliers', 'sales_view', 'purchases', 'reports'],
   },
 ]
 
@@ -217,7 +247,6 @@ export function getAllPermissions(): Permission[] {
 export const DEFAULT_ADMIN_PERMISSIONS: Permission[] = ['*']
 
 export const DEFAULT_STAFF_PERMISSIONS: Permission[] = [
-  'dashboard:view',
   'pos:view', 'pos:create',
   'products:view', 'products:create',
   'customers:view', 'customers:create',
@@ -226,7 +255,6 @@ export const DEFAULT_STAFF_PERMISSIONS: Permission[] = [
 ]
 
 export const DEFAULT_VIEWER_PERMISSIONS: Permission[] = [
-  'dashboard:view',
   'products:view',
   'customers:view',
   'suppliers:view',

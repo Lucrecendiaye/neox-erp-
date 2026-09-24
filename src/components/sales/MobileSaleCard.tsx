@@ -1,6 +1,6 @@
 import { cn, formatCurrency, formatDateTime } from '@/lib/utils'
 import type { Sale } from '@/types'
-import { ShoppingBag, CreditCard, Clock, Truck, CheckCircle } from 'lucide-react'
+import { ShoppingBag, CreditCard, Clock } from 'lucide-react'
 
 function statusVariant(sale: Sale): { badge: string; label: string } {
   if (sale.status === 'cancelled') return { badge: 'bg-red-500/20 text-red-300', label: 'Annulée' }
@@ -30,12 +30,6 @@ export default function MobileSaleCard({ sale, onTap }: { sale: Sale; onTap: () 
       <div className="flex items-center gap-1.5 text-xs text-surface-400">
         <CreditCard className="w-3 h-3" />
         <span className="capitalize">{sale.paymentMethod}</span>
-        {sale.saleChannel === 'delivery' && (
-          <span className={cn('ml-auto inline-flex items-center gap-1 font-semibold', sale.deliveryStatus === 'delivered' ? 'text-emerald-400' : 'text-amber-400')}>
-            {sale.deliveryStatus === 'delivered' ? <CheckCircle className="w-3 h-3" /> : <Truck className="w-3 h-3" />}
-            {sale.deliveryStatus === 'delivered' ? 'Livrée' : 'À livrer'}
-          </span>
-        )}
       </div>
     </div>
   )

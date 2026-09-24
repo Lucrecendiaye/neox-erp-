@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, Button, Modal, Badge, Pagination } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
+import { useIsMobile } from '@/hooks/useIsMobile'
 import { usePagination } from '@/hooks/usePagination'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePermission } from '@/hooks/usePermission'
@@ -13,7 +14,7 @@ import { confirmTransferReception, validateBonSortie, cancelBonSortie, duplicate
 import { printBonSortieDocument, downloadBonSortiePDF } from '@/lib/pdf'
 import {
   ArrowLeft, Plus, Search, Eye, Printer, FileDown, Copy, CheckCircle2, XCircle,
-  Clock, Truck, PenLine, FileText, AlertTriangle
+  Clock, Truck, PenLine, FileText, AlertTriangle, ArrowRightLeft, User, FilterX
 } from 'lucide-react'
 import type { BonSortie } from '@/engine/types'
 import type { CompanySettings } from '@/types'
@@ -90,11 +91,11 @@ function BonView({ bon, settings, onClose }: { bon: BonSortie; settings?: Compan
           <tbody>
             {bon.items.map((it, i) => (
               <tr key={i} className="border-b border-surface-100">
-                <td className="px-3 py-2 text-xs text-surface-500">{it.reference || it.barcode || '—'}</td>
-                <td className="px-3 py-2 font-medium text-surface-900">{it.productName}</td>
-                <td className="px-3 py-2">{it.quantity} {it.unit || ''}</td>
-                <td className="px-3 py-2">{it.unitPrice ? formatCurrency(it.unitPrice) : '—'}</td>
-                <td className="px-3 py-2 text-right font-semibold">{it.total ? formatCurrency(it.total) : '—'}</td>
+                <td data-label="Réf." className="px-3 py-2 text-xs text-surface-500">{it.reference || '—'}</td>
+                <td data-label="Produit" className="px-3 py-2 font-medium text-surface-900">{it.productName}</td>
+                <td data-label="Qté" className="px-3 py-2">{it.quantity} {it.unit || ''}</td>
+                <td data-label="P.U." className="px-3 py-2">{it.unitPrice ? formatCurrency(it.unitPrice) : '—'}</td>
+                <td data-label="Valeur" className="px-3 py-2 text-right font-semibold">{it.total ? formatCurrency(it.total) : '—'}</td>
               </tr>
             ))}
           </tbody>
@@ -139,6 +140,7 @@ function BonView({ bon, settings, onClose }: { bon: BonSortie; settings?: Compan
 export default function BonSortiePage() {
   const businessId = useBusinessId()
   const navigate = useNavigate()
+  const isMobile = useIsMobile()
   const [searchParams] = useSearchParams()
   const currentUser = useAppStore(s => s.user)
   const settings = useAppStore(s => s.settings)
@@ -284,55 +286,122 @@ export default function BonSortiePage() {
         </select>
       </div>
 
-      <Card className="overflow-hidden p-0 flex-1">
-        <div className="overflow-x-auto responsive-table">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b border-surface-200 bg-surface-50">
-                <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">N°</th>
-                <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Statut</th>
-                <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Date</th>
-                <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Origine → Destination</th>
-                <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Articles</th>
-                <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Valeur</th>
-                <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-surface-100">
-              {paginatedItems.map(b => {
-                const st = statusMeta[b.status] || { label: b.status, badge: 'default' }
-                return (
-                  <tr key={b.id} className="hover:bg-surface-50 cursor-pointer" onClick={() => setSelected(b)}>
-                    <td data-label="N°" className="px-6 py-4 text-sm font-semibold text-[#1e40af]">{b.number}</td>
-                    <td data-label="Statut" className="px-6 py-4"><Badge variant={st.badge}>{st.label}</Badge></td>
-                    <td data-label="Date" className="px-6 py-4 text-xs text-surface-500 whitespace-nowrap">{formatDateTime(b.createdAt)}</td>
-                    <td data-label="Parcours" className="px-6 py-4 text-sm text-surface-700">
-                      <span className="font-medium">{b.fromLocationName}</span> → <span className="font-medium">{b.toLocationName}</span>
-                      <span className="hidden sm:inline text-xs text-surface-400"> · {b.createdByName}</span>
-                    </td>
-                    <td data-label="Articles" className="px-6 py-4 text-right text-sm">{b.totalArticles} ({b.totalQuantity})</td>
-                    <td data-label="Valeur" className="px-6 py-4 text-right text-sm font-semibold">{b.totalValue ? formatCurrency(b.totalValue) : '—'}</td>
-                    <td data-label="Actions" className="px-6 py-4 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
-                      <div className="inline-flex gap-1">
-                        <button title="Voir" onClick={() => setSelected(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Eye className="w-4 h-4" /></button>
-                        <button title="Imprimer" onClick={() => setPrintFormat(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Printer className="w-4 h-4" /></button>
-                        <button title="PDF" onClick={() => { downloadBonSortiePDF(b, settings || undefined, 'a4'); toast('PDF téléchargé', 'success') }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><FileDown className="w-4 h-4" /></button>
-                        <button title="Dupliquer" onClick={() => handleDuplicate(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Copy className="w-4 h-4" /></button>
-                      </div>
-                    </td>
-                  </tr>
-                )
-              })}
-              {paginatedItems.length === 0 && (
-                <tr><td colSpan={7} className="px-6 py-12 text-center text-surface-400">Aucun bon de sortie trouvé</td></tr>
-              )}
-            </tbody>
-          </table>
+      {(search || statusFilter !== 'all' || periodFilter !== 'all' || fromFilter !== 'all') && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary-500/10 border border-primary-500/30 text-xs font-medium text-primary-700">
+            <FilterX className="w-3 h-3" />
+            Filtres actifs
+          </span>
+          <button
+            onClick={() => { setSearch(''); setStatusFilter('all'); setPeriodFilter('all'); setFromFilter('all') }}
+            className="px-3 py-1 rounded-lg bg-surface-100 border border-surface-300 text-xs font-medium text-surface-600 hover:bg-surface-50"
+          >
+            Réinitialiser
+          </button>
         </div>
-        <div className="px-6 py-4 border-t border-surface-100">
+      )}
+
+      {isMobile ? (
+        <div className="flex flex-col gap-3 w-full">
+          {paginatedItems.map(b => {
+            const st = statusMeta[b.status] || { label: b.status, badge: 'default' }
+            return (
+              <div key={b.id} className="bg-surface-100 rounded-2xl border border-surface-200 shadow-sm overflow-hidden">
+                <button className="w-full text-left p-4" onClick={() => setSelected(b)}>
+                  <div className="flex items-center justify-between gap-2 mb-2">
+                    <span className="text-sm font-bold text-[#1e40af]">{b.number}</span>
+                    <Badge variant={st.badge}>{st.label}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-surface-700 mb-1">
+                    <ArrowRightLeft className="w-3.5 h-3.5 text-surface-400 shrink-0" />
+                    <span className="truncate"><span className="font-medium">{b.fromLocationName}</span> → <span className="font-medium">{b.toLocationName}</span></span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-surface-500 mb-1.5">
+                    <Clock className="w-3 h-3 shrink-0" />
+                    <span>{formatDateTime(b.createdAt)}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-xs text-surface-500 mb-2">
+                    <User className="w-3 h-3 shrink-0" />
+                    <span>{b.createdByName || '—'}</span>
+                    <span className="ml-auto text-xs text-surface-400">{b.totalArticles} art. · {b.totalQuantity} qté</span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-bold text-surface-900">{b.totalValue ? formatCurrency(b.totalValue) : '—'}</span>
+                  </div>
+                </button>
+                <div className="flex items-center gap-2 px-4 pb-4 border-t border-surface-100 pt-3">
+                  <button onClick={() => setSelected(b)} className="flex-1 min-h-[40px] rounded-xl bg-surface-50 border border-surface-200 text-xs font-semibold text-surface-600 flex items-center justify-center gap-1.5 active:scale-[0.98]"><Eye className="w-4 h-4" /> Voir</button>
+                  <button onClick={() => setPrintFormat(b)} className="flex-1 min-h-[40px] rounded-xl bg-surface-50 border border-surface-200 text-xs font-semibold text-surface-600 flex items-center justify-center gap-1.5 active:scale-[0.98]"><Printer className="w-4 h-4" /> Imprimer</button>
+                  <button onClick={() => handleDuplicate(b)} className="flex-1 min-h-[40px] rounded-xl bg-surface-50 border border-surface-200 text-xs font-semibold text-surface-600 flex items-center justify-center gap-1.5 active:scale-[0.98]"><Copy className="w-4 h-4" /> Dupliquer</button>
+                </div>
+              </div>
+            )
+          })}
+          {paginatedItems.length === 0 && (
+            <div className="bg-surface-100 rounded-2xl border border-surface-200 py-12 text-center text-surface-400">
+              <FileText className="w-10 h-10 mx-auto mb-2 opacity-50" />
+              <p className="text-sm font-medium">Aucun bon de sortie trouvé</p>
+              {(search || statusFilter !== 'all' || periodFilter !== 'all' || fromFilter !== 'all') && (
+                <button onClick={() => { setSearch(''); setStatusFilter('all'); setPeriodFilter('all'); setFromFilter('all') }}
+                  className="mt-3 px-4 py-2 rounded-xl bg-surface-50 border border-surface-300 text-xs font-medium text-surface-600">
+                  Réinitialiser les filtres
+                </button>
+              )}
+            </div>
+          )}
           <Pagination {...pag} onPageChange={pag.setPage} />
         </div>
-      </Card>
+      ) : (
+        <Card className="overflow-hidden p-0 lg:flex-1">
+          <div className="overflow-x-auto responsive-table">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-surface-200 bg-surface-50">
+                  <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">N°</th>
+                  <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Statut</th>
+                  <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Date</th>
+                  <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Origine → Destination</th>
+                  <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Articles</th>
+                  <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Valeur</th>
+                  <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-surface-100">
+                {paginatedItems.map(b => {
+                  const st = statusMeta[b.status] || { label: b.status, badge: 'default' }
+                  return (
+                    <tr key={b.id} className="hover:bg-surface-50 cursor-pointer" onClick={() => setSelected(b)}>
+                      <td data-label="N°" className="px-6 py-4 text-sm font-semibold text-[#1e40af]">{b.number}</td>
+                      <td data-label="Statut" className="px-6 py-4"><Badge variant={st.badge}>{st.label}</Badge></td>
+                      <td data-label="Date" className="px-6 py-4 text-xs text-surface-500 whitespace-nowrap">{formatDateTime(b.createdAt)}</td>
+                      <td data-label="Parcours" className="px-6 py-4 text-sm text-surface-700">
+                        <span className="font-medium">{b.fromLocationName}</span> → <span className="font-medium">{b.toLocationName}</span>
+                        <span className="hidden sm:inline text-xs text-surface-400"> · {b.createdByName}</span>
+                      </td>
+                      <td data-label="Articles" className="px-6 py-4 text-right text-sm">{b.totalArticles} ({b.totalQuantity})</td>
+                      <td data-label="Valeur" className="px-6 py-4 text-right text-sm font-semibold">{b.totalValue ? formatCurrency(b.totalValue) : '—'}</td>
+                      <td data-label="Actions" className="px-6 py-4 text-right whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                        <div className="inline-flex gap-1">
+                          <button title="Voir" onClick={() => setSelected(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Eye className="w-4 h-4" /></button>
+                          <button title="Imprimer" onClick={() => setPrintFormat(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Printer className="w-4 h-4" /></button>
+                          <button title="PDF" onClick={() => { downloadBonSortiePDF(b, settings || undefined, 'a4'); toast('PDF téléchargé', 'success') }} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><FileDown className="w-4 h-4" /></button>
+                          <button title="Dupliquer" onClick={() => handleDuplicate(b)} className="p-1.5 rounded-lg hover:bg-surface-100 text-surface-500"><Copy className="w-4 h-4" /></button>
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+                {paginatedItems.length === 0 && (
+                  <tr><td colSpan={7} className="px-6 py-12 text-center text-surface-400">Aucun bon de sortie trouvé</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          <div className="px-6 py-4 border-t border-surface-100">
+            <Pagination {...pag} onPageChange={pag.setPage} />
+          </div>
+        </Card>
+      )}
 
       <Modal open={!!selected} onClose={() => setSelected(null)} title={`Bon de sortie ${selected?.number || ''}`} className="md:max-w-[720px]">
         {selected && (
@@ -349,7 +418,7 @@ export default function BonSortiePage() {
                 <Button variant="outline" onClick={() => handleValidate(selected)}><CheckCircle2 className="w-4 h-4" /> Valider</Button>
               )}
               <Button variant="outline" onClick={() => { setSignDest(selected.destinateurName); setSignResp(''); setSignModal(selected) }}><PenLine className="w-4 h-4" /> Signer</Button>
-              {canManage && selected.status !== 'recu' && (
+              {canManage && selected.status !== 'recu' && selected.status !== 'annule' && (
                 <Button variant="ghost" className="text-red-400" onClick={() => setCancelTarget(selected)}><XCircle className="w-4 h-4" /> Annuler</Button>
               )}
             </div>

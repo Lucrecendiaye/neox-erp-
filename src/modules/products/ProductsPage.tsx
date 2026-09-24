@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
-import { Card, Button, Input, Select, Modal, Badge, Pagination } from '@/components/ui'
+import { Card, Button, Input, Select, Modal, Badge, Pagination, NumericInput } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 
 import { useBusinessId } from '@/hooks/useBusinessId'
@@ -9,24 +9,20 @@ import { usePermission } from '@/hooks/usePermission'
 
 import { useAppStore } from '@/stores/appStore'
 import db from '@/db'
-import { generateId, formatCurrency, calculateMargin, cn, getProductUnits } from '@/lib/utils'
+import { generateId, formatCurrency, cn } from '@/lib/utils'
 import type { Product } from '@/types'
 import type { ProductStock } from '@/engine/types'
-import BarcodeScanner from '@/components/ui/BarcodeScanner'
 import PhotoUpload from '@/components/ui/PhotoUpload'
 import { toast } from '@/lib/toast'
-import { printBarcodeLabels } from '@/lib/barcodePrint'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import { softDelete } from '@/lib/softDelete'
 import { syncDeleteObject, syncWriteObject } from '@/lib/realtime'
 import { processTransfer } from '@/engine/operations'
 import type { Transfer } from '@/engine/types'
 import {
-  Search, Plus, Package, Edit2, Trash2, ScanLine, Printer,
-  ChevronDown, Filter, Layers, Tags, Download, Eye,
-  History, PackageOpen, AlertTriangle, TrendingUp,
-  DollarSign, BarChart3, Archive, EyeOff, Clock,
-  ArrowUpDown, Settings, ArrowRightLeft
+  Search, Plus, Package, Edit2, Trash2,
+  ChevronDown, Layers, PackageOpen, AlertTriangle,
+  DollarSign, ArrowRightLeft
 } from 'lucide-react'
 
 type ProductFilter = 'all' | 'low_stock' | 'out_of_stock' | 'in_stock' | 'hidden' | 'archived' | 'top_selling' | 'least_selling' | 'recent'
@@ -89,20 +85,12 @@ export default function ProductsPage() {
   const [categoryId, setCategoryId] = useState('all')
   const [modalOpen, setModalOpen] = useState(false)
   const [categoryModalOpen, setCategoryModalOpen] = useState(false)
-  const [scannerOpen, setScannerOpen] = useState(false)
   const [editing, setEditing] = useState<Product | null>(null)
   const [form, setForm] = useState<{
-    name: string; description: string; barcode: string; reference: string; categoryId: string;
-    brand: string; unit: 'piece' | 'dozen' | 'pack'; purchasePrice: number; sellingPrice: number;
-    wholesalePrice: number; priceDozen: number; pricePack: number; packSize: number;
-    packCost: number; dozenCost: number;
-    taxRate: number; stockAlert: number; location: string;
+    name: string; categoryId: string; unit: 'piece' | 'dozen' | 'pack'; purchaseCost: number;
+    packSize: number; taxRate: number;
   }>({
-    name: '', description: '', barcode: '', reference: '', categoryId: '',
-    brand: '', unit: 'piece', purchasePrice: 0, sellingPrice: 0,
-    wholesalePrice: 0, priceDozen: 0, pricePack: 0, packSize: 0,
-    packCost: 0, dozenCost: 0,
-    taxRate: 0, stockAlert: 0, location: '',
+    name: '', categoryId: '', unit: 'piece', purchaseCost: 0, packSize: 0, taxRate: 0,
   })
   const [photos, setPhotos] = useState<string[]>([])
   const [catForm, setCatForm] = useState({ name: '', description: '' })
@@ -124,7 +112,7 @@ export default function ProductsPage() {
   const transferDestinations = allLocations.filter(l => l.id !== shopId && l.isActive)
 
   const computedPackSize = packUnit === 'dozen' ? packQty * 12 : packQty
-  const piecesPerPack = form.unit === 'pack' ? (form.packSize || computedPackSize || 0) : 0
+  const piecesPerUnit = form.unit === 'dozen' ? 12 : form.unit === 'pack' ? (form.packSize || computedPackSize || 0) : 1
 
   async function handlePinConfirm() {
     if (!pinAction) return
@@ -150,10 +138,6 @@ export default function ProductsPage() {
   }
 
   const stats = useMemo(() => {
-    const totalValue = products.reduce((s, p) => {
-      const st = getStock(p)
-      return s + (st?.quantity || 0) * p.sellingPrice
-    }, 0)
     const totalCost = products.reduce((s, p) => {
       const st = getStock(p)
       return s + (st?.quantity || 0) * p.purchasePrice
@@ -168,11 +152,10 @@ export default function ProductsPage() {
     })
     const activeCats = new Set(products.map(p => p.categoryId).filter(Boolean))
     return {
-      totalValue, totalCost, totalProducts: products.length,
+      totalCost, totalProducts: products.length,
       categoryCount: activeCats.size,
       lowStockCount: lowStock.length,
       outOfStockCount: outOfStock.length,
-      potentialProfit: totalValue - totalCost,
     }
   }, [products, stocksByProduct])
 
@@ -183,9 +166,6 @@ export default function ProductsPage() {
       const q = search.toLowerCase()
       result = result.filter(p =>
         p.name.toLowerCase().includes(q) ||
-        p.barcode?.toLowerCase().includes(q) ||
-        p.reference?.toLowerCase().includes(q) ||
-        p.brand?.toLowerCase().includes(q) ||
         categories.find((c: any) => c.id === p.categoryId)?.name?.toLowerCase().includes(q)
       )
     }
@@ -236,7 +216,7 @@ export default function ProductsPage() {
 
   function openCreate() {
     setEditing(null)
-    setForm({ name: '', description: '', barcode: '', reference: '', categoryId: '', brand: '', unit: 'piece', purchasePrice: 0, sellingPrice: 0, wholesalePrice: 0, priceDozen: 0, pricePack: 0, packSize: 0, packCost: 0, dozenCost: 0, taxRate: 0, stockAlert: 0, location: '' })
+    setForm({ name: '', categoryId: '', unit: 'piece', purchaseCost: 0, packSize: 0, taxRate: 0 })
     setPhotos([])
     setInitialStock(0)
     setPackUnit('piece')
@@ -248,17 +228,12 @@ export default function ProductsPage() {
     setEditing(product)
     setPhotos(product.photos || [])
     setForm({
-      name: product.name, description: product.description || '',
-      barcode: product.barcode || '', reference: product.reference || '',
-      categoryId: product.categoryId || '', brand: product.brand || '',
-      unit: product.unit, purchasePrice: product.purchasePrice,
-      sellingPrice: product.sellingPrice, wholesalePrice: product.wholesalePrice || 0,
-      priceDozen: product.priceDozen || 0, pricePack: product.pricePack || 0,
-      packSize: product.packSize || 0,
-      packCost: product.packSize ? Math.round((product.purchasePrice * product.packSize) * 100) / 100 : 0,
-      dozenCost: Math.round(product.purchasePrice * 12 * 100) / 100,
-      taxRate: product.taxRate, stockAlert: product.stockAlert || 0,
-      location: product.location || '',
+      name: product.name,
+      categoryId: product.categoryId || '',
+      unit: product.unit,
+      purchaseCost: product.purchasePrice * (product.unit === 'dozen' ? 12 : product.unit === 'pack' ? (product.packSize || 1) : 1),
+      packSize: 0,
+      taxRate: product.taxRate,
     })
     setInitialStock(getStock(product)?.quantity || 0)
     if (product.packSize) {
@@ -275,8 +250,17 @@ export default function ProductsPage() {
     const now = new Date().toISOString()
     try {
       const packSize = form.unit === 'pack' ? (form.packSize || computedPackSize) : undefined
+      if (!form.name.trim()) { toast('Nom du produit requis', 'warning'); return }
+      if (form.purchaseCost <= 0) { toast('Prix de revient requis', 'warning'); return }
+      if (form.unit === 'pack' && (!packSize || packSize <= 0)) { toast('Indiquez la composition du paquet', 'warning'); return }
+      const purchasePrice = Math.round((form.purchaseCost / (form.unit === 'dozen' ? 12 : form.unit === 'pack' ? packSize! : 1)) * 100) / 100
+      const productFields = {
+        name: form.name.trim(), categoryId: form.categoryId || undefined, unit: form.unit,
+        purchasePrice, sellingPrice: 0, wholesalePrice: 0, priceDozen: 0, pricePack: 0,
+        photos, packSize, margin: 0, taxRate: form.taxRate,
+      }
       if (editing) {
-        const data = { ...form, photos, packSize, margin: calculateMargin(form.purchasePrice, form.sellingPrice), updatedAt: now }
+        const data = { ...productFields, updatedAt: now }
         await db.products.update(editing.id, data)
         try { await syncWriteObject('products', { id: editing.id, ...data }) } catch {}
         const currentStock = getStock(editing)?.quantity || 0
@@ -297,7 +281,7 @@ export default function ProductsPage() {
           } else {
             const newStock = {
               id: generateId(), businessId, productId: editing.id,
-              locationId: shopId, quantity: initialStock, stockAlert: form.stockAlert || 0,
+              locationId: shopId, quantity: initialStock, stockAlert: editing.stockAlert || 0,
               stockMin: 0, stockMax: 0, updatedAt: now,
             }
             await db.productStocks.add(newStock)
@@ -308,9 +292,7 @@ export default function ProductsPage() {
       } else {
         const id = generateId()
         const product = {
-          id, businessId, ...form, photos,
-          packSize,
-          margin: calculateMargin(form.purchasePrice, form.sellingPrice),
+          id, businessId, ...productFields,
           status: 'active' as const, createdAt: now, updatedAt: now,
         }
         await db.products.add(product)
@@ -319,13 +301,13 @@ export default function ProductsPage() {
           const movement = {
             id: generateId(), businessId, locationId: shopId,
             productId: id, type: 'in' as const, quantity: initialStock,
-            unitPrice: form.purchasePrice, reference: 'INIT',
+            unitPrice: purchasePrice, reference: 'INIT',
             note: 'Stock initial', createdAt: now, userId,
           }
           await db.stockMovements.add(movement)
           await db.productStocks.add({
             id: generateId(), businessId, productId: id,
-            locationId: shopId, quantity: initialStock, stockAlert: form.stockAlert || 0,
+            locationId: shopId, quantity: initialStock, stockAlert: 0,
             stockMin: 0, stockMax: 0, updatedAt: now,
           })
         }
@@ -351,11 +333,6 @@ export default function ProductsPage() {
       try { await syncDeleteObject('productStocks', stock.id) } catch {}
     }
     toast('Produit supprimé', 'success')
-  }
-
-  function handleBarcodeScan(code: string) {
-    const found = products.find(p => p.barcode === code)
-    if (found) { openEdit(found) } else { setForm(prev => ({ ...prev, barcode: code })); if (!modalOpen) setModalOpen(true) }
   }
 
   function openStockAdjust(product: Product) {
@@ -442,19 +419,19 @@ export default function ProductsPage() {
       {/* Header */}
       <div className="flex items-center justify-between w-full">
         <div>
-          <h1 className="text-2xl font-bold text-surface-900">Produits</h1>
+          <h1 className="text-2xl font-bold text-surface-900">Produits boutique</h1>
           <p className="text-surface-500 text-sm mt-1">{stats.totalProducts} produits · {stats.categoryCount} catégories</p>
         </div>
       </div>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-3 w-full">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 w-full">
         <Card className="p-4">
           <div className="flex items-center justify-between mb-1">
             <p className="text-xs text-surface-500">Valeur stock</p>
             <DollarSign className="w-4 h-4 text-emerald-500" />
           </div>
-          <p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalValue)}</p>
+             <p className="text-lg font-bold text-surface-900">{formatCurrency(stats.totalCost)}</p>
         </Card>
         <Card className="p-4">
           <div className="flex items-center justify-between mb-1">
@@ -479,13 +456,6 @@ export default function ProductsPage() {
             {stats.lowStockCount}
           </p>
         </Card>
-        <Card className="p-4">
-          <div className="flex items-center justify-between mb-1">
-            <p className="text-xs text-surface-500">Bénéfice potentiel</p>
-            <TrendingUp className="w-4 h-4 text-green-500" />
-          </div>
-          <p className="text-lg font-bold text-surface-900">{formatCurrency(stats.potentialProfit)}</p>
-        </Card>
       </div>
 
       {/* Action Bar */}
@@ -494,7 +464,7 @@ export default function ProductsPage() {
           <div className="relative flex-1 sm:w-64 min-w-[160px]">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
             <input
-              type="text" placeholder="Nom, code-barres, SKU, marque..."
+              type="text" placeholder="Rechercher un produit..."
               value={search} onChange={(e) => setSearch(e.target.value)}
               className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 bg-surface-100 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500"
             />
@@ -522,19 +492,11 @@ export default function ProductsPage() {
           <Button variant="outline" size="sm" onClick={() => { setCatEdit(null); setCatForm({ name: '', description: '' }); setCategoryModalOpen(true) }}>
             <Layers className="w-4 h-4" /> Catégories
           </Button>
-          <Button variant="outline" size="sm" onClick={() => printBarcodeLabels(filteredProducts)}>
-            <Printer className="w-4 h-4" /> Étiquettes
-          </Button>
-          <Button variant="outline" size="sm">
-            <Download className="w-4 h-4" /> Export
-          </Button>
           <Button size="sm" onClick={openCreate}>
             <Plus className="w-4 h-4" /> Nouveau
           </Button>
         </div>
       </div>
-
-      <BarcodeScanner open={scannerOpen} onClose={() => setScannerOpen(false)} onScan={handleBarcodeScan} />
 
       {/* Product Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5 gap-5 w-full">
@@ -544,11 +506,7 @@ export default function ProductsPage() {
           const alert = p.stockAlert || 5
           const isLow = qty > 0 && qty <= alert
           const isOut = qty <= 0
-          const stockValue = qty * p.sellingPrice
-          const totalCost = qty * p.purchasePrice
-          const marginPct = calculateMargin(p.purchasePrice, p.sellingPrice)
           const catName = categories.find((c: any) => c.id === p.categoryId)?.name
-          const soldQty = productSales.get(p.id) || 0
 
           return (
             <div key={p.id} className="bg-surface-100 rounded-2xl border border-surface-200 shadow-sm hover:shadow-md hover:border-primary-300 transition-all flex flex-col overflow-hidden">
@@ -578,14 +536,10 @@ export default function ProductsPage() {
                 </div>
 
                 <div className="flex items-center gap-2 text-sm">
-                  <span className="flex-1 text-surface-600">
-                    <span className="text-[10px] uppercase text-surface-500 block font-medium">Prix détail</span>
-                    <span className="font-extrabold text-primary-500 text-base">{formatCurrency(p.sellingPrice)}</span>
-                  </span>
-                  <span className="flex-1 text-surface-600">
-                    <span className="text-[10px] uppercase text-surface-500 block font-medium">Prix gros</span>
-                    <span className="font-bold text-surface-900">{(p.wholesalePrice || 0) > 0 ? formatCurrency(p.wholesalePrice!) : '—'}</span>
-                  </span>
+                   <span className="flex-1 text-surface-600">
+                     <span className="text-[10px] uppercase text-surface-500 block font-medium">Prix de revient</span>
+                     <span className="font-bold text-surface-900">{formatCurrency(p.purchasePrice)} / unité</span>
+                   </span>
                   <span className="text-right">
                     <span className="text-[10px] uppercase text-surface-500 block font-medium">Stock</span>
                     <span className={cn('font-extrabold', isOut ? 'text-red-500' : isLow ? 'text-amber-500' : 'text-success')}>{qty} pcs</span>
@@ -631,32 +585,30 @@ export default function ProductsPage() {
       <Pagination page={pag.page} totalPages={pag.totalPages} totalItems={pag.totalItems} onPageChange={pag.setPage} />
 
       {/* Product Modal */}
-      <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Modifier le produit' : 'Nouveau produit'} size="lg">
+      <Modal
+        open={modalOpen}
+        onClose={() => setModalOpen(false)}
+        title={editing ? 'Modifier le produit' : 'Nouveau produit'}
+        size="lg"
+        footer={
+          <>
+            <Button variant="ghost" onClick={() => setModalOpen(false)}>Annuler</Button>
+            <Button onClick={handleSave}>{editing ? 'Mettre à jour' : 'Créer'}</Button>
+          </>
+        }
+      >
         <div className="p-6 space-y-5">
           <div>
             <h3 className="modal-section-title">Informations principales</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <Input label="Nom du produit" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
-              <Input label="Code-barres" value={form.barcode} onChange={(e) => setForm({ ...form, barcode: e.target.value })} />
               <Select label="Catégorie" value={form.categoryId} onChange={(e) => setForm({ ...form, categoryId: e.target.value })} options={(categories || []).map((c: any) => ({ value: c.id, label: c.name }))} placeholder="Sélectionner..." />
-              <Input label="Marque" value={form.brand} onChange={(e) => setForm({ ...form, brand: e.target.value })} />
-              <Input label="Référence" value={form.reference} onChange={(e) => setForm({ ...form, reference: e.target.value })} />
               <Select
                 label="Unité"
                 value={form.unit}
                 onChange={(e) => {
                   const unit = e.target.value as 'piece' | 'dozen' | 'pack'
-                  setForm(prev => {
-                    const next = { ...prev, unit }
-                    if (unit === 'pack' && prev.purchasePrice > 0) {
-                      const size = prev.packSize || computedPackSize
-                      if (size > 0) next.packCost = Math.round(prev.purchasePrice * size * 100) / 100
-                    }
-                    if (unit === 'dozen' && prev.purchasePrice > 0) {
-                      next.dozenCost = Math.round(prev.purchasePrice * 12 * 100) / 100
-                    }
-                    return next
-                  })
+                  setForm(prev => ({ ...prev, unit, purchaseCost: 0, packSize: 0 }))
                 }}
                 options={[
                   { value: 'piece', label: 'Pièce' },
@@ -672,13 +624,7 @@ export default function ProductsPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="radio" id="comp-piece" name="packComp" checked={packUnit === 'piece'}
-                      onChange={() => {
-                        setPackUnit('piece')
-                        if (form.packCost > 0) {
-                          const size = form.packSize || packQty
-                          if (size > 0) setForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / size) * 100) / 100 }))
-                        }
-                      }}
+                      onChange={() => { setPackUnit('piece'); setForm(f => ({ ...f, packSize: 0 })) }}
                       className="w-4 h-4 text-primary-500"
                     />
                     <label htmlFor="comp-piece" className="text-sm text-surface-700">Pièces</label>
@@ -686,13 +632,7 @@ export default function ProductsPage() {
                   <div className="flex items-center gap-2">
                     <input
                       type="radio" id="comp-dozen" name="packComp" checked={packUnit === 'dozen'}
-                      onChange={() => {
-                        setPackUnit('dozen')
-                        if (form.packCost > 0) {
-                          const size = form.packSize || packQty * 12
-                          if (size > 0) setForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / size) * 100) / 100 }))
-                        }
-                      }}
+                      onChange={() => { setPackUnit('dozen'); setForm(f => ({ ...f, packSize: 0 })) }}
                       className="w-4 h-4 text-primary-500"
                     />
                     <label htmlFor="comp-dozen" className="text-sm text-surface-700">Douzaines</label>
@@ -700,16 +640,9 @@ export default function ProductsPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm text-surface-500">1 paquet =</span>
-                  <input
-                    type="number" min="1"
-                    value={packQty || ''}
-                    onChange={(e) => {
-                      setPackQty(+e.target.value)
-                      if (form.packCost > 0) {
-                        const size = form.packSize || (packUnit === 'dozen' ? +e.target.value * 12 : +e.target.value)
-                        if (size > 0) setForm(f => ({ ...f, purchasePrice: Math.round((f.packCost / size) * 100) / 100 }))
-                      }
-                    }}
+                  <NumericInput min="1"
+                     value={packQty || ''}
+                     onChange={(e) => { setPackQty(+e.target.value); setForm(f => ({ ...f, packSize: 0 })) }}
                     className="w-24 px-3 py-1.5 rounded-lg border border-surface-300 text-sm text-right"
                   />
                   <span className="text-sm text-surface-500">{packUnit === 'dozen' ? 'douzaines' : 'pièces'}</span>
@@ -729,63 +662,25 @@ export default function ProductsPage() {
           </div>
 
           <div>
-            <h3 className="modal-section-title">Description</h3>
-            <Input label="Description" value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-          </div>
-
-          <div>
-            <h3 className="modal-section-title">Prix</h3>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              {form.unit === 'piece' && (
-                <Input label="Prix de revient (pièce)" type="number" value={form.purchasePrice} onChange={(e) => setForm({ ...form, purchasePrice: +e.target.value })} />
-              )}
-              {form.unit === 'pack' && (
-                <Input label={`Prix de revient (paquet de ${piecesPerPack || '—'} pcs)`} type="number" value={form.packCost} onChange={(e) => {
-                  const packCost = +e.target.value
-                  setForm(f => ({ ...f, packCost, purchasePrice: piecesPerPack > 0 && packCost > 0 ? Math.round((packCost / piecesPerPack) * 100) / 100 : 0 }))
-                }} />
-              )}
-              {form.unit === 'dozen' && (
-                <Input label="Prix de revient (douzaine)" type="number" value={form.dozenCost} onChange={(e) => {
-                  const dozenCost = +e.target.value
-                  setForm(f => ({ ...f, dozenCost, purchasePrice: dozenCost > 0 ? Math.round((dozenCost / 12) * 100) / 100 : 0 }))
-                }} />
-              )}
-              <Input label="Prix de vente (pièce)" type="number" value={form.sellingPrice} onChange={(e) => setForm({ ...form, sellingPrice: +e.target.value })} />
-              <Input label="Prix de gros" type="number" value={form.wholesalePrice} onChange={(e) => setForm({ ...form, wholesalePrice: +e.target.value })} />
-            </div>
-            {form.unit !== 'piece' && form.purchasePrice > 0 && (
-              <p className="text-sm text-surface-500 mt-3">
-                Coût unitaire : <span className="font-semibold text-surface-700">{formatCurrency(form.purchasePrice)} / pièce</span>
-              </p>
-            )}
-            {form.purchasePrice > 0 && (
-              <p className="text-sm text-surface-500 mt-3">
-                Marge : <span className="font-semibold text-success">{calculateMargin(form.purchasePrice, form.sellingPrice).toFixed(1)}%</span>
-              </p>
-            )}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <Input label="Prix par douzaine" type="number" value={form.priceDozen} onChange={(e) => setForm({ ...form, priceDozen: +e.target.value })} />
-              <Input label="Prix par paquet" type="number" value={form.pricePack} onChange={(e) => setForm({ ...form, pricePack: +e.target.value })} />
-            </div>
+            <h3 className="modal-section-title">Prix de revient</h3>
+            <Input
+              label={`Prix de revient (${form.unit === 'piece' ? 'pièce' : form.unit === 'dozen' ? 'douzaine' : `paquet de ${piecesPerUnit || '—'} pièces`})`}
+              type="number"
+              value={form.purchaseCost || ''}
+              onChange={(e) => setForm({ ...form, purchaseCost: +e.target.value || 0 })}
+            />
+            <p className="text-xs text-surface-400 mt-2">Le prix de vente sera saisi au moment de chaque vente.</p>
           </div>
 
           <div>
             <h3 className="modal-section-title">Stock</h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <Input label="TVA (%)" type="number" value={form.taxRate} onChange={(e) => setForm({ ...form, taxRate: +e.target.value })} />
-              <Input label="Alerte stock" type="number" value={form.stockAlert} onChange={(e) => setForm({ ...form, stockAlert: +e.target.value })} />
-              <Input label="Emplacement" value={form.location} onChange={(e) => setForm({ ...form, location: e.target.value })} />
               <Input label={editing ? 'Quantité en stock' : 'Stock initial'} type="number" value={initialStock} onChange={(e) => setInitialStock(+e.target.value)} />
             </div>
             {editing && (
               <p className="text-xs text-surface-500 mt-2">La différence par rapport au stock actuel sera comptabilisée automatiquement.</p>
             )}
           </div>
-        </div>
-        <div className="flex justify-end gap-3 p-6 border-t border-surface-200">
-          <Button variant="ghost" onClick={() => setModalOpen(false)}>Annuler</Button>
-          <Button onClick={handleSave}>{editing ? 'Mettre à jour' : 'Créer'}</Button>
         </div>
       </Modal>
 

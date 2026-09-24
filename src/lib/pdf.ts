@@ -1,8 +1,9 @@
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
-import type { Invoice, Sale } from '@/types'
+import type { Invoice, Sale, CashOperation, Purchase } from '@/types'
 import type { Transfer, TransferItem, BonSortie } from '@/engine/types'
 import type { CompanySettings } from '@/types'
+import { formatDateLong } from '@/lib/utils'
 
 function isDataUrl(photo: string): boolean {
   return photo.startsWith('data:')
@@ -106,7 +107,7 @@ function drawBanner(doc: jsPDF, settings: CompanySettings) {
   if (settings.rccm) { doc.text(`RCCM: ${settings.rccm}`, lx, iy) }
 }
 
-function drawInvoiceBadge(doc: jsPDF, sale: Sale, y: number) {
+function drawInvoiceBadge(doc: jsPDF, sale: Sale, y: number, title = 'FACTURE') {
   const bw = 60
   const bh = 28
   const x = PW - M - bw
@@ -119,7 +120,7 @@ function drawInvoiceBadge(doc: jsPDF, sale: Sale, y: number) {
   doc.setTextColor(...hexToRgb(BLUE))
   doc.setFontSize(11)
   doc.setFont('helvetica', 'bold')
-  doc.text('FACTURE', x + bw / 2, y + 8, { align: 'center' })
+  doc.text(title, x + bw / 2, y + 8, { align: 'center' })
 
   doc.setFontSize(6)
   doc.setFont('helvetica', 'normal')
@@ -150,7 +151,7 @@ function drawInvoiceBadge(doc: jsPDF, sale: Sale, y: number) {
   }
 }
 
-function drawInfoCards(doc: jsPDF, sale: Sale, settings: CompanySettings, startY: number): number {
+function drawInfoCards(doc: jsPDF, sale: Sale, settings: CompanySettings, startY: number, sellerName?: string): number {
   const cw = (PW - M * 3) / 2
 
   function drawCard(x: number, y: number, w: number, title: string, lines: string[]) {
@@ -177,8 +178,9 @@ function drawInfoCards(doc: jsPDF, sale: Sale, settings: CompanySettings, startY
     : 'Comptant'
 
   const client = [
+    sellerName ? `Vendeur: ${sellerName}` : '',
     sale.customerName || 'Client divers',
-    `Tel: ...`,
+    sale.customerPhone ? `Tel: ${sale.customerPhone}` : '',
     `Paiement: ${saleTypeLabel}`,
     sale.paid < sale.total ? `Reste: ${fmt(sale.total - sale.paid)}` : '',
   ].filter(Boolean)
@@ -205,11 +207,11 @@ function getPaymentStatusLabel(sale: Sale): string {
     if (sale.paid > 0) return 'Crédit partiel'
     return 'Crédit total'
   }
-  if (sale.paid > 0 && sale.paid < sale.total) return 'Partielle'
+  if (sale.paid > 0 && sale.paid < sale.total) return sale.splitPayments?.length ? 'Partielle (mixte)' : 'Partielle'
   return 'En attente'
 }
 
-export function exportSalePDF(sale: Sale, settings?: CompanySettings, productPhotos?: Record<string, string>) {
+export function exportSalePDF(sale: Sale, settings?: CompanySettings, productPhotos?: Record<string, string>, sellerName?: string) {
   const doc = new jsPDF({ format: 'a5' })
   const s = settings || {} as CompanySettings
 
@@ -218,7 +220,7 @@ export function exportSalePDF(sale: Sale, settings?: CompanySettings, productPho
   drawInvoiceBadge(doc, sale, 8)
 
   let yPos = 50
-  yPos = drawInfoCards(doc, sale, s, yPos) + 2
+  yPos = drawInfoCards(doc, sale, s, yPos, sellerName) + 2
 
   const rows = sale.items.map(item => [
     item.productName,
@@ -283,12 +285,11 @@ export function exportSalePDF(sale: Sale, settings?: CompanySettings, productPho
   const lh = 5
 
   const summaryLines: { label: string; value: string; bold?: boolean; color?: string }[] = [
-    { label: 'Sous-total HT', value: fmt(subtotal) },
+    { label: 'Sous-total', value: fmt(subtotal) },
     { label: 'Remise totale', value: `- ${fmt(discountTotal)}`, color: RED },
   ]
-  if (taxTotal > 0) summaryLines.push({ label: 'Taxe', value: fmt(taxTotal) })
   summaryLines.push({ label: '', value: '' })
-  summaryLines.push({ label: 'TOTAL TTC', value: fmt(total), bold: true })
+  summaryLines.push({ label: 'TOTAL', value: fmt(total), bold: true })
 
   const tH = summaryLines.length * lh + 10
 
@@ -316,11 +317,15 @@ export function exportSalePDF(sale: Sale, settings?: CompanySettings, productPho
   const payX = summaryX + summaryW + M
   const payW = PW - M - payX
 
+  const split = sale.splitPayments?.filter(p => p.amount > 0) || []
+  const isSplit = split.length > 0
+
   const payLines: { label: string; value: string; color?: string }[] = [
     { label: 'Montant paye', value: fmt(sale.paid) },
+    ...(isSplit ? split.map(p => ({ label: formatPaymentMethodLabel(p.method), value: fmt(p.amount), color: BLUE })) : []),
     { label: 'Montant restant', value: fmt(sale.total - sale.paid), color: RED },
     { label: 'Statut', value: getPaymentStatusLabel(sale) },
-    { label: 'Mode', value: formatPaymentMethodLabel(sale.paymentMethod) },
+    { label: 'Mode', value: isSplit ? 'Mixte' : formatPaymentMethodLabel(sale.paymentMethod) },
   ]
 
   const payH = payLines.length * lh + 10
@@ -345,7 +350,7 @@ export function exportSalePDF(sale: Sale, settings?: CompanySettings, productPho
 
   let nextY = summaryStart + tH + 6
 
-  if (sale.paymentMethod === 'credit' && sale.paid < sale.total) {
+  if ((sale.paymentMethod === 'credit' || isSplit) && sale.paid < sale.total) {
     const remaining = sale.total - sale.paid
     rect(doc, M, nextY, PW - M * 2, 10, RED, 3)
     doc.setFontSize(7)
@@ -410,13 +415,13 @@ export function exportSalePDF(sale: Sale, settings?: CompanySettings, productPho
   doc.save(`facture_${sale.invoiceNumber || 'vente'}.pdf`)
 }
 
-export function shareSalePDF(sale: Sale, settings?: CompanySettings, productPhotos?: Record<string, string>) {
+export function shareSalePDF(sale: Sale, settings?: CompanySettings, productPhotos?: Record<string, string>, sellerName?: string) {
   const doc = new jsPDF({ format: 'a5' })
   const s = settings || {} as CompanySettings
   drawBanner(doc, s)
   drawInvoiceBadge(doc, sale, 8)
   let yPos = 50
-  yPos = drawInfoCards(doc, sale, s, yPos) + 2
+  yPos = drawInfoCards(doc, sale, s, yPos, sellerName) + 2
   const rows = sale.items.map(item => [
     item.productName,
     item.quantity.toLocaleString('fr-FR'),
@@ -474,12 +479,11 @@ export function shareSalePDF(sale: Sale, settings?: CompanySettings, productPhot
   const summaryStart = finalY
   const lh = 5
   const summaryLines: { label: string; value: string; bold?: boolean; color?: string }[] = [
-    { label: 'Sous-total HT', value: fmt(subtotal) },
+    { label: 'Sous-total', value: fmt(subtotal) },
     { label: 'Remise totale', value: `- ${fmt(discountTotal)}`, color: RED },
   ]
-  if (taxTotal > 0) summaryLines.push({ label: 'Taxe', value: fmt(taxTotal) })
   summaryLines.push({ label: '', value: '' })
-  summaryLines.push({ label: 'TOTAL TTC', value: fmt(total), bold: true })
+  summaryLines.push({ label: 'TOTAL', value: fmt(total), bold: true })
   const tH = summaryLines.length * lh + 10
   rect(doc, summaryX, summaryStart - 2, summaryW, tH, LIGHT_GRAY, 4)
   summaryLines.forEach((line, i) => {
@@ -502,11 +506,14 @@ export function shareSalePDF(sale: Sale, settings?: CompanySettings, productPhot
   })
   const payX = summaryX + summaryW + M
   const payW = PW - M - payX
+  const split2 = sale.splitPayments?.filter(p => p.amount > 0) || []
+  const isSplit2 = split2.length > 0
   const payLines: { label: string; value: string; color?: string }[] = [
     { label: 'Montant paye', value: fmt(sale.paid) },
+    ...(isSplit2 ? split2.map(p => ({ label: formatPaymentMethodLabel(p.method), value: fmt(p.amount), color: BLUE })) : []),
     { label: 'Montant restant', value: fmt(sale.total - sale.paid), color: RED },
     { label: 'Statut', value: getPaymentStatusLabel(sale) },
-    { label: 'Mode', value: formatPaymentMethodLabel(sale.paymentMethod) },
+    { label: 'Mode', value: isSplit2 ? 'Mixte' : formatPaymentMethodLabel(sale.paymentMethod) },
   ]
   const payH = payLines.length * lh + 10
   rect(doc, payX, summaryStart - 2, payW, payH, LIGHT_GRAY, 4)
@@ -525,7 +532,7 @@ export function shareSalePDF(sale: Sale, settings?: CompanySettings, productPhot
     doc.text(line.value, payX + payW - 4, ly + 2, { align: 'right' })
   })
   let nextY = summaryStart + tH + 6
-  if (sale.paymentMethod === 'credit' && sale.paid < sale.total) {
+  if ((sale.paymentMethod === 'credit' || isSplit2) && sale.paid < sale.total) {
     const remaining = sale.total - sale.paid
     rect(doc, M, nextY, PW - M * 2, 10, RED, 3)
     doc.setFontSize(7)
@@ -589,6 +596,7 @@ export function exportInvoicePDF(invoice: Invoice, settings?: CompanySettings, p
     invoiceNumber: invoice.number,
     customerId: invoice.partyId,
     customerName: invoice.partyName,
+    customerPhone: invoice.partyPhone,
     items: invoice.items.map(i => ({
       productId: i.productId,
       productName: i.productName,
@@ -635,7 +643,7 @@ export function exportBonSortiePDF(
   doc.setTextColor(80, 80, 80)
   doc.text(`Origine: ${fromName}`, M, 58)
   doc.text(`Destination: ${toName}`, M, 64)
-  doc.text(`Date: ${new Date(date).toLocaleDateString('fr-FR', { dateStyle: 'long' })}`, M, 70)
+  doc.text(`Date: ${formatDateLong(date)}`, M, 70)
   doc.text(`Utilisateur: ${userName}`, M, 76)
 
   const rows = items.map(item => [
@@ -856,7 +864,7 @@ export function buildSupplierFicheHTML(
 
   <div class="meta">
     <strong>Fournisseur :</strong> ${escS(supplierName)} &nbsp;|&nbsp;
-    <strong>Générée le :</strong> ${new Date().toLocaleDateString('fr-FR', { dateStyle: 'long' })} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+    <strong>Générée le :</strong> ${formatDateLong(new Date())} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
   </div>
 
   <table>
@@ -886,6 +894,116 @@ export function printSupplierFiche(
   setTimeout(() => { try { w.focus(); w.print() } catch { /* fenêtre fermée */ } }, 500)
 }
 
+const PURCHASE_STATUS_LABELS: Record<string, string> = {
+  pending: 'EN ATTENTE',
+  completed: 'TERMINÉ',
+  cancelled: 'ANNULÉ',
+  returned: 'RETOURNÉ',
+}
+
+export function buildPurchaseHTML(purchase: Purchase, settings?: CompanySettings): string {
+  const escS = (v: string | number | null | undefined) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+  const rows = purchase.items.map(item => `
+    <tr>
+      <td>${escS(item.productName)}</td>
+      <td class="r">${item.quantity}</td>
+      <td class="c">${escS(item.unitName || 'p')}</td>
+      <td class="r">${fmt(item.unitPrice)}</td>
+      <td class="r strong">${fmt(item.total || item.unitPrice * item.quantity)}</td>
+    </tr>`).join('')
+
+  const remaining = purchase.total - purchase.paid
+  const status = PURCHASE_STATUS_LABELS[purchase.status] || purchase.status
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Bon d'achat ${escS(purchase.id)}</title>
+<style>
+  @page { size: A5; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; font-size: 12px; }
+  .banner { display: flex; justify-content: space-between; align-items: center; background: #1e40af; color: #fff; padding: 12px 14px; border-radius: 4px; }
+  .banner h1 { margin: 0; font-size: 18px; }
+  .banner h2 { margin: 2px 0 0; font-size: 12px; font-weight: normal; }
+  .banner .right { text-align: right; }
+  .banner .right .title { font-size: 16px; font-weight: bold; }
+  .status { color: #fde047; font-size: 11px; font-weight: bold; }
+  .meta { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 10px; font-size: 11px; }
+  .meta .box { border: 1px solid #dbe3f0; border-radius: 4px; padding: 8px 10px; }
+  .meta h3 { margin: 0 0 4px; font-size: 10px; text-transform: uppercase; color: #1e40af; }
+  .meta p { margin: 2px 0; }
+  table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 11px; }
+  th { background: #1e40af; color: #fff; text-align: left; padding: 6px 8px; text-transform: uppercase; font-size: 10px; }
+  td { border-bottom: 1px solid #e2e8f0; padding: 5px 8px; }
+  .r { text-align: right; }
+  .c { text-align: center; }
+  .strong { font-weight: bold; }
+  .totals { display: flex; justify-content: flex-end; margin-top: 8px; font-size: 11px; }
+  .totals .inner { width: 55%; }
+  .totals .line { display: flex; justify-content: space-between; padding: 2px 0; }
+  .totals .grand { font-weight: bold; border-top: 2px solid #1e40af; margin-top: 4px; padding-top: 4px; }
+  .totals .grand span { background: #1e40af; color: #fff; padding: 3px 8px; border-radius: 3px; }
+  .footer { margin-top: 16px; padding-top: 6px; border-top: 2px solid #1e40af; font-size: 9px; color: #64748b; text-align: center; }
+  .paid { color: #059669; }
+  .due { color: #dc2626; }
+</style></head><body>
+  <div class="banner">
+    <div>
+      <h1>${escS(settings?.name || 'Entreprise')}</h1>
+      ${settings?.slogan ? `<h2>${escS(settings.slogan)}</h2>` : ''}
+      ${settings?.address ? `<h2>${escS(settings.address)}</h2>` : ''}
+      ${settings?.phone ? `<h2>Tel: ${escS(settings.phone)}</h2>` : ''}
+    </div>
+    <div class="right">
+      <div class="title">BON D'ACHAT</div>
+      <div>N° ${escS(purchase.id)}</div>
+      <div class="status">${escS(status)}</div>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div class="box">
+      <h3>Fournisseur</h3>
+      <p><strong>${escS(purchase.supplierName || 'N/A')}</strong></p>
+      <p>${new Date(purchase.createdAt).toLocaleDateString('fr-FR')} à ${new Date(purchase.createdAt).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}</p>
+    </div>
+    <div class="box">
+      <h3>Achat</h3>
+      <p>Référence: ${escS(purchase.id)}</p>
+      <p>Articles: ${escS(purchase.items.length)}</p>
+      ${purchase.note ? `<p>Note: ${escS(purchase.note)}</p>` : ''}
+    </div>
+  </div>
+
+  <table>
+    <thead><tr><th>Produit</th><th class="r">Qté</th><th class="c">Unité</th><th class="r">P.U.</th><th class="r">Montant</th></tr></thead>
+    <tbody>${rows}</tbody>
+  </table>
+
+  <div class="totals">
+    <div class="inner">
+      <div class="line"><span>Sous-total</span><span>${fmt(purchase.subtotal)}</span></div>
+      ${purchase.discountTotal > 0 ? `<div class="line"><span>Remise</span><span>− ${fmt(purchase.discountTotal)}</span></div>` : ''}
+      <div class="line grand"><span>TOTAL</span><span>${fmt(purchase.total)}</span></div>
+      <div class="line"><span>Payé</span><span class="paid">${fmt(purchase.paid)}</span></div>
+      <div class="line"><span>Reste à payer</span><span class="due">${fmt(Math.max(0, remaining))}</span></div>
+    </div>
+  </div>
+
+  <div class="footer">
+    Document généré par ${escS(settings?.name || 'NeoX ERP')} le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+  </div>
+</body></html>`
+}
+
+export function printPurchaseDocument(purchase: Purchase, settings?: CompanySettings) {
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.open()
+  w.document.write(buildPurchaseHTML(purchase, settings))
+  w.document.close()
+  setTimeout(() => { try { w.focus(); w.print() } catch { /* fenêtre fermée */ } }, 500)
+}
+
 const STATUS_LABELS: Record<string, string> = {
   en_attente: 'EN ATTENTE',
   valide: 'VALIDÉ',
@@ -908,7 +1026,6 @@ export function buildBonSortieHTML(bon: BonSortie, settings?: CompanySettings, f
   const rows = bon.items.map(item => `
     <tr>
       <td>${esc(item.reference)}</td>
-      <td>${esc(item.barcode)}</td>
       <td>${esc(item.productName)}</td>
       <td>${esc(item.variant)}</td>
       <td class="r">${item.quantity}</td>
@@ -918,12 +1035,12 @@ export function buildBonSortieHTML(bon: BonSortie, settings?: CompanySettings, f
     </tr>`).join('')
 
   const recep = bon.receivedAt
-    ? `<p><strong>Date de réception :</strong> ${new Date(bon.receivedAt).toLocaleDateString('fr-FR', { dateStyle: 'long' })} — ${bon.receivedTime || ''}</p>
+    ? `<p><strong>Date de réception :</strong> ${formatDateLong(bon.receivedAt)} — ${bon.receivedTime || ''}</p>
        <p><strong>Reçu par :</strong> ${esc(bon.receivedBy) || '—'}</p>`
     : `<p class="muted">Réception non confirmée</p>`
 
   const val = bon.validatedAt
-    ? `<p><strong>Validé le :</strong> ${new Date(bon.validatedAt).toLocaleDateString('fr-FR', { dateStyle: 'long' })} par ${esc(bon.validatedByName) || '—'}</p>`
+    ? `<p><strong>Validé le :</strong> ${formatDateLong(bon.validatedAt)} par ${esc(bon.validatedByName) || '—'}</p>`
     : ''
 
   const sigs = bon.signatures || {}
@@ -989,7 +1106,7 @@ export function buildBonSortieHTML(bon: BonSortie, settings?: CompanySettings, f
   </div>
 
   <div class="meta">
-    <p><strong>Date de création :</strong> ${new Date(bon.createdAt).toLocaleDateString('fr-FR', { dateStyle: 'long' })} — ${esc(bon.createdTime)} &nbsp;&nbsp; <strong>Date d'expédition :</strong> ${bon.shippedAt ? new Date(bon.shippedAt).toLocaleDateString('fr-FR', { dateStyle: 'long' }) : '—'} ${bon.shippedTime ? '— ' + esc(bon.shippedTime) : ''}</p>
+    <p><strong>Date de création :</strong> ${formatDateLong(bon.createdAt)} — ${esc(bon.createdTime)} &nbsp;&nbsp; <strong>Date d'expédition :</strong> ${bon.shippedAt ? formatDateLong(bon.shippedAt) : '—'} ${bon.shippedTime ? '— ' + esc(bon.shippedTime) : ''}</p>
     <p><strong>Destinateur :</strong> ${esc(bon.destinateurName)} ${bon.destinateurRole ? `(${esc(bon.destinateurRole)})` : ''} &nbsp;&nbsp; <strong>Destinataire :</strong> ${esc(bon.destinataireName) || '—'} ${bon.destinataireRole ? `(${esc(bon.destinataireRole)})` : ''}</p>
     <p><strong>Référence :</strong> ${esc(bon.reference) || '—'} &nbsp;&nbsp; <strong>Motif :</strong> ${esc(bon.motif) || '—'}</p>
     ${bon.comments ? `<p><strong>Observations :</strong> ${esc(bon.comments)}</p>` : ''}
@@ -997,7 +1114,7 @@ export function buildBonSortieHTML(bon: BonSortie, settings?: CompanySettings, f
   </div>
 
   <table>
-    <thead><tr><th>Réf.</th><th>Code-barres</th><th>Produit</th><th>Variante</th><th>Qté</th><th>Unité</th><th>P.U.</th><th>Valeur</th></tr></thead>
+    <thead><tr><th>Réf.</th><th>Produit</th><th>Variante</th><th>Qté</th><th>Unité</th><th>P.U.</th><th>Valeur</th></tr></thead>
     <tbody>${rows}</tbody>
   </table>
 
@@ -1102,10 +1219,9 @@ export function downloadBonSortiePDF(bon: BonSortie, settings?: CompanySettings,
   for (const line of meta) { if (line) { doc.text(line, M, y); y += 4 } }
 
   y += 3
-  const head = ['Réf.', 'Code-barres', 'Produit', 'Variante', 'Qté', 'Unité', 'P.U.', 'Valeur']
+  const head = ['Réf.', 'Produit', 'Variante', 'Qté', 'Unité', 'P.U.', 'Valeur']
   const body = bon.items.map(it => [
     it.reference || '',
-    it.barcode || '',
     it.productName,
     it.variant || '',
     String(it.quantity),
@@ -1166,4 +1282,186 @@ export function downloadBonSortiePDF(bon: BonSortie, settings?: CompanySettings,
   doc.text(`N° ${bon.number}`, W - M, foot + 5, { align: 'right' })
 
   doc.save(`bon_sortie_${bon.number}.pdf`)
+}
+
+const CASH_PAYMENT_LABELS: Record<string, string> = {
+  cash: 'Espèces',
+  wave: 'Wave',
+  orange: 'Orange Money',
+  mobile: 'Mobile Money',
+  card: 'Carte',
+  bank: 'Virement',
+  credit: 'Crédit',
+}
+
+export function buildCashReceiptHTML(op: CashOperation, settings?: CompanySettings, format: 'a4' | 'a5' | 'thermal' = 'a4'): string {
+  const widths = { a4: 210, a5: 148, thermal: 80 }
+  const w = widths[format]
+  const compact = format === 'thermal'
+  const fs = compact ? 10 : 12
+  const small = compact ? 8 : 10
+  const isIn = op.type === 'in'
+  const color = isIn ? '#059669' : '#dc2626'
+  const label = isIn ? 'ENTRÉE DE CASH' : 'SORTIE DE CASH'
+  const statusLabel = op.status === 'cancelled' ? 'ANNULÉE' : op.status === 'pending' ? 'EN ATTENTE' : 'VALIDÉE'
+
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Reçu cash ${op.number}</title>
+<style>
+  @page { size: ${w}mm auto; margin: 8mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; font-size: ${fs}px; color: #111; margin: 0; }
+  .banner { display: flex; justify-content: space-between; align-items: center; background: #1e40af; color: #fff; padding: 10px 12px; border-radius: 4px; }
+  .banner .left { display: flex; align-items: center; gap: 10px; }
+  .banner img { height: 40px; width: 40px; object-fit: contain; }
+  .banner h1 { margin: 0; font-size: ${compact ? 13 : 18}px; }
+  .banner h2 { margin: 0; font-size: ${compact ? 11 : 16}px; font-weight: normal; }
+  .banner .num { text-align: right; font-size: ${compact ? 9 : 12}px; }
+  .amount { text-align: center; margin: 14px 0; padding: 12px; border: 2px solid ${color}; border-radius: 6px; color: ${color}; }
+  .amount .sign { font-size: ${compact ? 11 : 15}px; text-transform: uppercase; font-weight: bold; }
+  .amount .val { font-size: ${compact ? 18 : 30}px; font-weight: bold; }
+  .meta { margin-top: 10px; font-size: ${small}px; }
+  .meta p { margin: 3px 0; display: flex; justify-content: space-between; }
+  .meta p span:first-child { color: #64748b; }
+  .meta p span:last-child { font-weight: 600; text-align: right; }
+  .desc { margin-top: 10px; border-top: 1px dashed #94a3b8; padding-top: 8px; font-size: ${small}px; }
+  .desc p { margin: 3px 0; }
+  .footer { margin-top: 16px; padding-top: 6px; border-top: 2px solid #1e40af; font-size: ${compact ? 7 : 9}px; color: #64748b; text-align: center; }
+  .status { font-weight: bold; color: ${op.status === 'cancelled' ? '#dc2626' : '#059669'}; }
+  .cancel { margin-top: 10px; padding: 8px; border: 1px solid #dc2626; border-radius: 4px; color: #dc2626; font-size: ${small}px; }
+  .sign { margin-top: 32px; border-top: 1px dashed #94a3b8; font-size: ${small}px; color: #475569; text-align: center; }
+</style></head><body>
+  <div class="banner">
+    <div class="left">
+      ${settings?.logo ? `<img src="${esc(settings.logo)}" alt="logo" />` : ''}
+      <div>
+        <h1>${esc(settings?.name || 'Entreprise')}</h1>
+        ${settings?.address ? `<h2>${esc(settings.address)}</h2>` : ''}
+        ${settings?.phone ? `<h2>Tel: ${esc(settings.phone)}</h2>` : ''}
+      </div>
+    </div>
+    <div class="num">
+      <div style="font-weight:bold;font-size:${compact ? 11 : 16}px;">${label}</div>
+      <div>N° ${esc(op.number)}</div>
+      <div class="status">${statusLabel}</div>
+    </div>
+  </div>
+
+  <div class="amount">
+    <div class="sign">${isIn ? 'Montant reçu' : 'Montant sorti'}</div>
+    <div class="val">${isIn ? '+' : '-'}${fmt(op.amount)}</div>
+  </div>
+
+  <div class="meta">
+    <p><span>Catégorie</span><span>${esc(op.categoryName) || 'Sans catégorie'}</span></p>
+    ${op.partyName ? `<p><span>Tiers</span><span>${esc(op.partyName)}</span></p>` : ''}
+    <p><span>Moyen de paiement</span><span>${CASH_PAYMENT_LABELS[op.paymentMethod] || op.paymentMethod}</span></p>
+    <p><span>Date</span><span>${formatDateLong(op.date)}</span></p>
+    <p><span>Utilisateur</span><span>${esc(op.userName) || '—'}</span></p>
+    ${op.reference ? `<p><span>Référence</span><span>${esc(op.reference)}</span></p>` : ''}
+    ${op.balanceAfter !== undefined ? `<p><span>Solde après opération</span><span>${fmt(op.balanceAfter)}</span></p>` : ''}
+  </div>
+
+  <div class="desc">
+    ${op.description ? `<p><strong>Description :</strong> ${esc(op.description)}</p>` : ''}
+    ${op.locationName ? `<p><strong>Emplacement :</strong> ${esc(op.locationName)}</p>` : ''}
+  </div>
+
+  ${op.status === 'cancelled' ? `<div class="cancel">Opération annulée${op.cancelReason ? ` — ${esc(op.cancelReason)}` : ''}</div>` : ''}
+
+  <div class="sign">Signature</div>
+
+  <div class="footer">
+    Document généré par ${esc(settings?.name || 'NeoX ERP')} le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })} — N° ${esc(op.number)}
+  </div>
+</body></html>`
+}
+
+export function printCashReceipt(op: CashOperation, settings?: CompanySettings, format: 'a4' | 'a5' | 'thermal' = 'a4') {
+  const w = window.open('', '_blank')
+  if (!w) return
+  w.document.open()
+  w.document.write(buildCashReceiptHTML(op, settings, format))
+  w.document.close()
+  setTimeout(() => { try { w.focus(); w.print() } catch { /* fenêtre fermée */ } }, 500)
+}
+
+export function downloadCashReceiptPDF(op: CashOperation, settings?: CompanySettings, format: 'a4' | 'a5' = 'a4') {
+  const isA5 = format === 'a5'
+  const doc = new jsPDF({ unit: 'mm', format: isA5 ? 'a5' : 'a4' })
+  const W = isA5 ? 148 : 210
+  const H = isA5 ? 210 : 297
+  const M = 10
+  const s = settings || {} as CompanySettings
+  const isIn = op.type === 'in'
+  const color = isIn ? '#059669' : '#dc2626'
+
+  rect(doc, 0, 0, W, 34, BLUE)
+  let lx = M
+  if (s.logo) { try { doc.addImage(s.logo, 'JPEG', M, 5, 18, 18) } catch { try { doc.addImage(s.logo, 'PNG', M, 5, 18, 18) } catch {} } lx = M + (s.logo ? 24 : 0) }
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(13); doc.setFont('helvetica', 'bold')
+  doc.text(s.name || 'Entreprise', lx, 12)
+  doc.setFontSize(7); doc.setFont('helvetica', 'normal')
+  let ly = 18
+  if (s.slogan) { doc.text(s.slogan, lx, ly); ly += 4 }
+  if (s.address) { doc.text(s.address, lx, ly); ly += 4 }
+  if (s.phone) { doc.text(`Tel: ${s.phone}`, lx, ly); ly += 4 }
+  doc.setFontSize(16); doc.setFont('helvetica', 'bold')
+  doc.text(isIn ? 'ENTRÉE DE CASH' : 'SORTIE DE CASH', W - M, 14, { align: 'right' })
+  doc.setFontSize(9)
+  doc.text(`N° ${op.number}`, W - M, 22, { align: 'right' })
+  doc.setFontSize(8)
+  const statusLabel = op.status === 'cancelled' ? 'ANNULÉE' : op.status === 'pending' ? 'EN ATTENTE' : 'VALIDÉE'
+  doc.setTextColor(253, 224, 71)
+  doc.text(statusLabel, W - M, 28, { align: 'right' })
+
+  let y = 44
+  doc.setFillColor(...hexToRgb(color))
+  doc.roundedRect(M, y, W - M * 2, 24, 2, 2, 'F')
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(9); doc.setFont('helvetica', 'normal')
+  doc.text(isIn ? 'MONTANT REÇU' : 'MONTANT SORTI', W / 2, y + 8, { align: 'center' })
+  doc.setFontSize(20); doc.setFont('helvetica', 'bold')
+  doc.text(`${isIn ? '+' : '-'}${fmt(op.amount)}`, W / 2, y + 20, { align: 'center' })
+
+  y += 32
+  doc.setFontSize(8); doc.setFont('helvetica', 'normal'); doc.setTextColor(80, 80, 80)
+  const meta: [string, string][] = [
+    ['Catégorie', op.categoryName || 'Sans catégorie'],
+    ['Moyen de paiement', CASH_PAYMENT_LABELS[op.paymentMethod] || op.paymentMethod],
+    ['Date', formatDateLong(op.date)],
+    ['Utilisateur', op.userName || '—'],
+  ]
+  if (op.partyName) meta.push(['Tiers', op.partyName])
+  if (op.reference) meta.push(['Référence', op.reference])
+  if (op.balanceAfter !== undefined) meta.push(['Solde après opération', fmt(op.balanceAfter)])
+  for (const [k, v] of meta) {
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100)
+    doc.text(k, M, y)
+    doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30)
+    const txt = doc.splitTextToSize(String(v), W - M * 2 - 55)
+    doc.text(txt, W - M, y, { align: 'right' })
+    y += Math.max(5, txt.length * 4)
+  }
+  if (op.description) {
+    y += 2
+    doc.setFont('helvetica', 'normal'); doc.setTextColor(100, 100, 100)
+    const lines = doc.splitTextToSize(`Description : ${op.description}`, W - M * 2)
+    doc.text(lines, M, y)
+    y += lines.length * 4
+  }
+  if (op.status === 'cancelled') {
+    y += 4
+    doc.setTextColor(...hexToRgb(RED)); doc.setFont('helvetica', 'bold')
+    doc.text(`Opération annulée${op.cancelReason ? ` — ${op.cancelReason}` : ''}`, M, y)
+  }
+
+  const foot = H - 12
+  rect(doc, 0, foot, W, 12, BLUE)
+  doc.setFontSize(5.5); doc.setFont('helvetica', 'normal'); doc.setTextColor(255, 255, 255)
+  const now = new Date()
+  doc.text(`Document généré par ${s.name || 'NeoX ERP'} le ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, M, foot + 5)
+  doc.text(`N° ${op.number}`, W - M, foot + 5, { align: 'right' })
+
+  doc.save(`recu_cash_${op.number}.pdf`)
 }

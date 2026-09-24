@@ -97,20 +97,15 @@ export default function DepotsPage() {
 
   return (
     <div className="w-full h-full flex flex-col gap-6">
-      <div className="flex items-center justify-between w-full">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 w-full">
         <div>
           <h1 className="text-2xl font-bold text-surface-900">Dépôts</h1>
           <p className="text-surface-500 text-sm mt-1">Gestion des dépôts et stocks</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <button onClick={() => navigate('/depots/stock-global')} className="px-4 py-2 rounded-xl border border-surface-300 text-surface-700 text-sm font-medium hover:bg-surface-50 transition-all flex items-center gap-2">
             <Package className="w-4 h-4" /> Stock
           </button>
-          {can('pos', 'create') && (
-            <button onClick={() => navigate('/depots/vente')} className="px-4 py-2 rounded-xl bg-primary-500 text-on-accent text-sm font-medium hover:bg-primary-500 transition-all flex items-center gap-2">
-              <TrendingUp className="w-4 h-4" /> Vente à livraison
-            </button>
-          )}
           {can('depots', 'validate') && (
             <button onClick={() => navigate('/depots/bons-sortie')} className="px-4 py-2 rounded-xl border border-surface-300 text-surface-700 text-sm font-medium hover:bg-surface-50 transition-all flex items-center gap-2">
               <FileText className="w-4 h-4" /> Bon de sortie

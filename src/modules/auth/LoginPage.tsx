@@ -57,18 +57,18 @@ export default function LoginPage() {
   const inputClass = 'w-full pl-10 pr-4 py-3 rounded-xl border border-surface-300 bg-surface-100 text-base focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all'
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-primary-600 via-primary-700 to-surface-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-surface-50 flex items-center justify-center p-4">
       <div className="w-full max-w-md animate-fade-in">
         <div className="text-center mb-8">
-          <div className="w-16 h-16 bg-surface-100/20 backdrop-blur rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
+          <div className="w-16 h-16 bg-primary-500 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
             {logoUrl ? (
               <img src={logoUrl} alt="" className="w-10 h-10 object-contain" />
             ) : (
-              <span className="text-3xl font-bold text-white">{(settings?.name || 'N')[0]}</span>
+              <span className="text-3xl font-bold text-on-accent">{(settings?.name || 'N')[0]}</span>
             )}
           </div>
-          <h1 className="text-2xl font-bold text-white">{settings?.name || 'NeoX ERP'}</h1>
-          <p className="text-primary-200 text-sm mt-1">
+          <h1 className="text-2xl font-bold text-surface-900">{settings?.name || 'NeoX ERP'}</h1>
+          <p className="text-surface-500 text-sm mt-1">
             {step === 'identifier' ? 'Connectez-vous à votre compte' : 'Entrez votre mot de passe'}
           </p>
         </div>

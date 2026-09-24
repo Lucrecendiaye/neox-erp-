@@ -1,18 +1,19 @@
 import { useState, useMemo, useCallback } from 'react'
-import { Card, Button, Input, Badge, Pagination, Modal, ProductSearch } from '@/components/ui'
+import { Card, Button, Input, Badge, Pagination, Modal, ProductSearch, NumericInput } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useIsMobile } from '@/hooks/useIsMobile'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import { usePagination } from '@/hooks/usePagination'
 import { useAppStore, useSyncStore } from '@/stores/appStore'
 import db from '@/db'
-import { formatCurrency, formatDate, formatDateTime, cn } from '@/lib/utils'
+import { formatCurrency, formatDate, formatDateTime, cn, getProductUnits } from '@/lib/utils'
 import { exportSalePDF, exportReportPDF, shareSalePDF, buildProductPhotos } from '@/lib/pdf'
 import { shareViaWeChat } from '@/lib/share'
 import type { Sale, SaleItem, PaymentMethod, CompanySettings, CreditPayment } from '@/types'
 import type { Location } from '@/engine/types'
 import { toast } from '@/lib/toast'
-import { deleteSale, editSale, markSaleDelivered } from '@/engine/operations'
+import { deleteSale, editSale } from '@/engine/operations'
+import { resolveUser } from '@/engine/userStats'
 import PinConfirmModal from '@/components/ui/PinConfirmModal'
 import MobileSaleCard from '@/components/sales/MobileSaleCard'
 import MobileActionsSheet from '@/components/sales/MobileActionsSheet'
@@ -22,17 +23,15 @@ import {
   ShoppingBag, ChevronDown, ChevronUp, Plus,
   User, Phone, MapPin, Send, Mail,
   Clock, ArrowUpDown, Wallet, FileSpreadsheet,
-  Receipt, Save, X, RefreshCw, MoreHorizontal, MessageCircle, Truck, CheckCircle
+  Receipt, Save, X, RefreshCw, MoreHorizontal, MessageCircle, Truck
 } from 'lucide-react'
 
-type TabKey = 'active' | 'deliveryPending' | 'delivered' | 'paid' | 'partial' | 'cancelled'
-type SaleType = 'retail' | 'wholesale' | 'depot' | 'shop'
+type TabKey = 'active' | 'paid' | 'partial' | 'cancelled'
+type SaleType = 'shop' | 'delivery'
 type PeriodKey = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'custom'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'active', label: 'Ventes' },
-  { key: 'deliveryPending', label: 'À livrer' },
-  { key: 'delivered', label: 'Livrées' },
   { key: 'paid', label: 'Payées' },
   { key: 'partial', label: 'Partielles' },
   { key: 'cancelled', label: 'Annulées' },
@@ -70,17 +69,8 @@ function statusBadge(status: string): { variant: 'success' | 'warning' | 'danger
   }
 }
 
-function getSaleType(sale: Sale, locations: Location[]): SaleType {
-  const loc = locations.find(l => l.id === sale.locationId)
-  return loc?.type === 'warehouse' ? 'depot' : 'shop'
-}
-
-function isDeliverySale(sale: Sale) {
-  return sale.saleChannel === 'delivery'
-}
-
-function isDeliveredSale(sale: Sale) {
-  return isDeliverySale(sale) && sale.deliveryStatus === 'delivered'
+function getSaleType(sale: Sale, locations: Location[], deliverySaleIds: Set<string>): SaleType {
+  return sale.saleType === 'delivery' || deliverySaleIds.has(sale.id) ? 'delivery' : 'shop'
 }
 
 function getPaymentStatusBadge(sale: Sale): React.ReactNode {
@@ -117,7 +107,7 @@ function getDateRange(key: PeriodKey): { start: Date; end: Date } | null {
 }
 
 function calculateSaleCost(items: SaleItem[], products: Map<string, number>): number {
-  return items.reduce((sum, item) => sum + (products.get(item.productId) ?? 0) * item.quantity, 0)
+  return items.reduce((sum, item) => sum + (products.get(item.productId) ?? 0) * item.quantity * (item.unitQuantity || 1), 0)
 }
 
 function formatPaymentMethod(method: PaymentMethod): string {
@@ -127,6 +117,17 @@ function formatPaymentMethod(method: PaymentMethod): string {
     credit: 'Crédit', bank: 'Virement', split: 'Mixte',
   }
   return map[method] || method
+}
+
+function saleSourceSummary(sale: Sale, locations: Location[]): string {
+  const totals = new Map<string, number>()
+  for (const item of sale.items) {
+    const locationId = item.locationId || sale.locationId
+    const location = locations.find(l => l.id === locationId)
+    const label = location?.type === 'shop' ? 'Boutique' : location?.name || locationId
+    totals.set(label, (totals.get(label) || 0) + item.quantity * (item.unitQuantity || 1))
+  }
+  return [...totals.entries()].map(([name, quantity]) => `${name}: ${quantity}`).join(' · ')
 }
 
 export default function SalesPage() {
@@ -143,6 +144,8 @@ export default function SalesPage() {
 
   const rawLocations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).toArray(), [businessId])
   const locations: Location[] = rawLocations ?? []
+  const deliveries = useLiveQuery(() => db.deliveries.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
+  const deliverySaleIds = useMemo(() => new Set(deliveries.map(d => d.saleId).filter(Boolean) as string[]), [deliveries])
 
   const customers: any[] = useLiveQuery(() => db.customers.toArray(), []) ?? []
 
@@ -188,18 +191,19 @@ export default function SalesPage() {
   const [editSaleTarget, setEditSaleTarget] = useState<Sale | null>(null)
   const [editCustomerName, setEditCustomerName] = useState('')
   const [editCustomerId, setEditCustomerId] = useState('')
+  const [editCustomerPhone, setEditCustomerPhone] = useState('')
+  const [editSaleDate, setEditSaleDate] = useState('')
+  const [editNote, setEditNote] = useState('')
   const [editPaymentMethod, setEditPaymentMethod] = useState<PaymentMethod>('cash')
   const [editItems, setEditItems] = useState<SaleItem[]>([])
 
   const filteredSales = useMemo(() => {
     let result = [...allSales]
-    const activeSales = result.filter(s => (s.status === 'completed' || s.status === 'pending') && !isDeliverySale(s))
-    const deliveryPendingSales = result.filter(s => isDeliverySale(s) && !isDeliveredSale(s) && s.status !== 'cancelled')
-    const deliveredSales = result.filter(s => isDeliveredSale(s))
-    const paidSales = result.filter(s => s.status === 'completed' && s.paid >= s.total && !isDeliverySale(s))
-    const partialSales = result.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total && !isDeliverySale(s))
+    const activeSales = result.filter(s => s.status === 'completed' || s.status === 'pending')
+    const paidSales = result.filter(s => s.status === 'completed' && s.paid >= s.total)
+    const partialSales = result.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total)
     const cancelledSales = result.filter(s => s.status === 'cancelled')
-    const tabMap: Record<TabKey, Sale[]> = { active: activeSales, deliveryPending: deliveryPendingSales, delivered: deliveredSales, paid: paidSales, partial: partialSales, cancelled: cancelledSales }
+    const tabMap: Record<TabKey, Sale[]> = { active: activeSales, paid: paidSales, partial: partialSales, cancelled: cancelledSales }
     result = tabMap[tab] || activeSales
     if (search) {
       const q = search.toLowerCase()
@@ -218,9 +222,9 @@ export default function SalesPage() {
       const start = new Date(customStart); const end = new Date(customEnd); end.setHours(23, 59, 59, 999)
       result = result.filter(s => { const d = new Date(s.createdAt); return d >= start && d <= end })
     }
-    if (locationFilter) result = result.filter(s => s.locationId === locationFilter)
+    if (locationFilter) result = result.filter(s => s.items.some(i => (i.locationId || s.locationId) === locationFilter))
     if (paymentMethodFilter) result = result.filter(s => s.paymentMethod === paymentMethodFilter || (paymentMethodFilter === 'split' && (s.splitPayments?.length ?? 0) > 0))
-    if (saleTypeFilter) result = result.filter(s => getSaleType(s, locations) === saleTypeFilter)
+    if (saleTypeFilter) result = result.filter(s => getSaleType(s, locations, deliverySaleIds) === saleTypeFilter)
     if (customerFilter) result = result.filter(s => s.customerId === customerFilter)
     if (sellerFilter) result = result.filter(s => s.userId === sellerFilter)
     result.sort((a, b) => {
@@ -235,16 +239,14 @@ export default function SalesPage() {
       return sortDir === 'desc' ? -cmp : cmp
     })
     return result
-  }, [allSales, tab, search, period, customStart, customEnd, locationFilter, paymentMethodFilter, saleTypeFilter, customerFilter, sellerFilter, sortField, sortDir, locations, customers, productsList])
+  }, [allSales, tab, search, period, customStart, customEnd, locationFilter, paymentMethodFilter, saleTypeFilter, customerFilter, sellerFilter, sortField, sortDir, locations, customers, productsList, deliverySaleIds])
 
   const tabCounts = useMemo(() => {
     const all = allSales
     return {
-      active: all.filter(s => (s.status === 'completed' || s.status === 'pending') && !isDeliverySale(s)).length,
-      deliveryPending: all.filter(s => isDeliverySale(s) && !isDeliveredSale(s) && s.status !== 'cancelled').length,
-      delivered: all.filter(s => isDeliveredSale(s)).length,
-      paid: all.filter(s => s.status === 'completed' && s.paid >= s.total && !isDeliverySale(s)).length,
-      partial: all.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total && !isDeliverySale(s)).length,
+      active: all.filter(s => s.status === 'completed' || s.status === 'pending').length,
+      paid: all.filter(s => s.status === 'completed' && s.paid >= s.total).length,
+      partial: all.filter(s => s.status === 'completed' && s.paid > 0 && s.paid < s.total).length,
       cancelled: all.filter(s => s.status === 'cancelled').length,
     }
   }, [allSales])
@@ -283,21 +285,20 @@ export default function SalesPage() {
   function openDetail(sale: Sale) { setSelectedSale(sale); setDetailOpen(true) }
 
   function handleExportPDF() {
-    const headers = ['Facture', 'Date', 'Client', 'Total', 'Payé', 'Statut', 'Type']
-    const data = paginatedSales.map(s => [s.invoiceNumber || '', formatDate(s.createdAt), s.customerName || '—', formatCurrency(s.total), formatCurrency(s.paid), s.status, getSaleType(s, locations)])
+    const headers = ['Facture', 'Date', 'Client', 'Total', 'Payé', 'Statut', 'Type', 'Sources']
+    const data = paginatedSales.map(s => [s.invoiceNumber || '', formatDate(s.createdAt), s.customerName || '—', formatCurrency(s.total), formatCurrency(s.paid), s.status, getSaleType(s, locations, deliverySaleIds), saleSourceSummary(s, locations)])
     exportReportPDF('Ventes', headers, data, 'ventes')
     toast('PDF exporté', 'success')
   }
 
   function handleExportCSV() {
-    const headers = ['Facture;Date;Client;Téléphone;Type;Paiement;Vendeur;Total;Coût;Bénéfice;Statut']
+    const headers = ['Facture;Date;Client;Téléphone;Type;Sources;Paiement;Vendeur;Total;Coût;Bénéfice;Statut']
     const rows = paginatedSales.map(s => {
       const cost = calculateSaleCost(s.items, productCostMap)
       const ratio = s.total > 0 ? s.paid / s.total : 1
       const phone = customers.find((c: any) => c.id === s.customerId)?.phone || ''
-      const seller = users.find((u: any) => u.id === s.userId)?.name || s.userId
-      const locName = locations.find(l => l.id === s.locationId)?.name || ''
-      return [s.invoiceNumber, formatDate(s.createdAt), s.customerName || '—', phone, getSaleType(s, locations), formatPaymentMethod(s.paymentMethod), seller, formatCurrency(s.total), formatCurrency(cost), formatCurrency((s.total - cost) * ratio), s.status].join(';')
+      const seller = resolveUser(users, s.userId)?.name || s.userId
+      return [s.invoiceNumber, formatDate(s.createdAt), s.customerName || '—', phone, getSaleType(s, locations, deliverySaleIds), saleSourceSummary(s, locations), formatPaymentMethod(s.paymentMethod), seller, formatCurrency(s.total), formatCurrency(cost), formatCurrency((s.total - cost) * ratio), s.status].join(';')
     })
     const csv = '\uFEFF' + [...headers, ...rows].join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' })
@@ -308,7 +309,7 @@ export default function SalesPage() {
   function handleExportExcel() {
     const rows = paginatedSales.map(s => {
       const ratio = s.total > 0 ? s.paid / s.total : 1
-      return [s.invoiceNumber, formatDate(s.createdAt), s.customerName || '—', s.total, s.paid, (s.total - calculateSaleCost(s.items, productCostMap)) * ratio, s.status, getSaleType(s, locations)].join(',')
+      return [s.invoiceNumber, formatDate(s.createdAt), s.customerName || '—', s.total, s.paid, (s.total - calculateSaleCost(s.items, productCostMap)) * ratio, s.status, getSaleType(s, locations, deliverySaleIds), saleSourceSummary(s, locations)].join(',')
     })
     const csv = '\uFEFF' + 'Facture,Date,Client,Total,Payé,Bénéfice,Statut,Type\n' + rows.join('\n')
     const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -317,17 +318,6 @@ export default function SalesPage() {
   }
 
   async function handleDelete(sale: Sale) { setDeleteTarget(sale); setPinModalOpen(true) }
-
-  async function handleMarkDelivered(sale: Sale) {
-    try {
-      await markSaleDelivered(sale.id)
-      toast('Vente marquée comme livrée', 'success')
-      setRefreshKey(key => key + 1)
-      setSelectedSale(current => current?.id === sale.id ? { ...current, deliveryStatus: 'delivered', deliveredAt: new Date().toISOString() } : current)
-    } catch (error: any) {
-      toast(error?.message || 'Impossible de confirmer la livraison', 'error')
-    }
-  }
 
   async function confirmDelete() {
     if (!deleteTarget) return
@@ -340,7 +330,7 @@ export default function SalesPage() {
   }
 
   async function handleWhatsApp(sale: Sale) {
-    shareSalePDF(sale, appSettings, await buildProductPhotos(productsList))
+    shareSalePDF(sale, appSettings, await buildProductPhotos(productsList), resolveUser(users, sale.userId)?.name)
     toast('Facture partagée', 'success')
   }
 
@@ -367,16 +357,32 @@ export default function SalesPage() {
     toast('Email ouvert', 'success')
   }
 
-  async function handlePrintPDF(sale: Sale) { exportSalePDF(sale, appSettings, await buildProductPhotos(productsList)); toast('PDF généré', 'success') }
+  async function handlePrintPDF(sale: Sale) { exportSalePDF(sale, appSettings, await buildProductPhotos(productsList), resolveUser(users, sale.userId)?.name); toast('PDF généré', 'success') }
 
   function getSaleCost(sale: Sale): number { return calculateSaleCost(sale.items, productCostMap) }
 
   function openEditModal(sale: Sale) {
+    // Reconstruction EXACTE de tous les champs enregistrés (client, téléphone, date,
+    // paiement, note, lignes avec unités et remises) — aucune donnée ne disparaît.
     setEditSaleTarget(sale)
     setEditCustomerName(sale.customerName || '')
     setEditCustomerId(sale.customerId || '')
+    setEditCustomerPhone(sale.customerPhone || '')
+    setEditSaleDate(sale.createdAt.slice(0, 16))
+    setEditNote(sale.note || '')
     setEditPaymentMethod(sale.paymentMethod)
-    setEditItems(sale.items.map(i => ({ ...i })))
+    setEditItems(sale.items.map(i => ({
+      productId: i.productId,
+      productName: i.productName,
+      quantity: i.quantity,
+      unitPrice: i.unitPrice,
+      unitName: i.unitName,
+      unitQuantity: i.unitQuantity,
+      discount: i.discount,
+      taxRate: 0,
+      total: i.total,
+      locationId: i.locationId,
+    })))
     setEditModalOpen(true)
   }
 
@@ -407,8 +413,21 @@ export default function SalesPage() {
     newItems[index] = {
       productId: product.id, productName: product.name,
       quantity: 1, unitPrice: product.sellingPrice, discount: 0,
-      taxRate: product.taxRate || 0, total: product.sellingPrice,
+      taxRate: 0,
+      unitName: 'Pièce', unitQuantity: 1,
+      total: product.sellingPrice,
     }
+    setEditItems(newItems)
+  }
+
+  function updateEditItemUnit(index: number, unitName: string) {
+    const item = editItems[index]
+    const product = productsList.find((p: any) => p.id === item.productId)
+    if (!product) return
+    const unit = getProductUnits(product).find(u => u.name === unitName)
+    if (!unit) return
+    const newItems = [...editItems]
+    newItems[index] = { ...item, unitName: unit.name, unitQuantity: unit.quantity }
     setEditItems(newItems)
   }
 
@@ -416,14 +435,19 @@ export default function SalesPage() {
     if (!editSaleTarget) return
     const subtotal = editItems.reduce((s, i) => s + i.total, 0)
     const discountTotal = editItems.reduce((s, i) => s + i.discount, 0)
-    const taxTotal = editItems.reduce((s, i) => s + i.total * (i.taxRate / 100), 0) || 0
-    const total = subtotal + taxTotal
+    const taxTotal = 0
+    const total = subtotal
     const updated: Partial<Sale> = {
+      locationId: editSaleTarget.locationId,
       customerName: editCustomerName,
       customerId: editCustomerId || undefined,
+      customerPhone: editCustomerPhone || undefined,
       paymentMethod: editPaymentMethod,
+      splitPayments: editPaymentMethod === editSaleTarget.paymentMethod ? editSaleTarget.splitPayments : undefined,
+      note: editNote || undefined,
       items: editItems,
       subtotal, discountTotal, taxTotal, total,
+      createdAt: editSaleDate ? new Date(editSaleDate).toISOString() : editSaleTarget.createdAt,
     }
     try {
       await editSale(editSaleTarget.id, updated)
@@ -437,7 +461,7 @@ export default function SalesPage() {
       <div className="flex items-center justify-between w-full">
         <div>
           <div className="flex items-center gap-2">
-            <h1 className="text-2xl font-bold text-surface-900">Ventes</h1>
+            <h1 className="text-2xl font-bold text-surface-900">Facture Ventes</h1>
             {syncing && <RefreshCw className="w-4 h-4 text-primary-500 animate-spin" />}
           </div>
           <p className="text-surface-500 text-sm mt-1">
@@ -493,13 +517,13 @@ export default function SalesPage() {
         {period === 'custom' && <div className="flex gap-3 items-center"><Input type="date" value={customStart} onChange={(e) => setCustomStart(e.target.value)} label="Du" /><Input type="date" value={customEnd} onChange={(e) => setCustomEnd(e.target.value)} label="Au" /></div>}
         {showFilters && (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-6 gap-3 p-4 bg-surface-50 rounded-2xl border border-surface-200">
-            <div><label className="block text-xs font-medium text-surface-500 mb-1">Boutique/Dépôt</label>
+             <div><label className="block text-xs font-medium text-surface-500 mb-1">Emplacement</label>
               <select value={locationFilter} onChange={(e) => setLocationFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="">Tous</option>{locations.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select></div>
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Type</label>
               <select value={saleTypeFilter} onChange={(e) => setSaleTypeFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                <option value="">Tous</option><option value="shop">Boutique</option><option value="depot">Dépôt</option>
+                 <option value="">Tous</option><option value="shop">Boutique</option><option value="delivery">Livraison</option>
               </select></div>
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Paiement</label>
               <select value={paymentMethodFilter} onChange={(e) => setPaymentMethodFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
@@ -507,7 +531,7 @@ export default function SalesPage() {
               </select></div>
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Vendeur</label>
               <select value={sellerFilter} onChange={(e) => setSellerFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
-                <option value="">Tous</option>{users.map((u: any) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                <option value="">Tous</option>{users.map((u: any) => <option key={u.id} value={u.authUserId || u.id}>{u.name}</option>)}
               </select></div>
             <div><label className="block text-xs font-medium text-surface-500 mb-1">Client</label>
               <select value={customerFilter} onChange={(e) => setCustomerFilter(e.target.value)} className="w-full rounded-xl border border-surface-300 bg-surface-100 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
@@ -548,7 +572,7 @@ export default function SalesPage() {
         </div>
       ) : (
         <div className="bg-surface-100 rounded-2xl border border-surface-200 shadow-sm overflow-hidden w-full">
-          <div className="overflow-x-auto">
+          <div className="responsive-table">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-surface-200 bg-surface-50/80">
@@ -570,31 +594,30 @@ export default function SalesPage() {
                 {paginatedSales.map((sale) => {
                   const ratio = sale.total > 0 ? sale.paid / sale.total : 1
                   const profit = (sale.total - getSaleCost(sale)) * ratio
-                  const phone = customers.find((c: any) => c.id === sale.customerId)?.phone || ''
-                  const seller = users.find((u: any) => u.id === sale.userId)?.name || '—'
+                  const phone = sale.customerPhone || customers.find((c: any) => c.id === sale.customerId)?.phone || ''
+                  const seller = resolveUser(users, sale.userId)?.name || '—'
                   const locName = locations.find(l => l.id === sale.locationId)?.name || '—'
                   return (
                     <tr key={sale.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition-colors cursor-pointer group" onClick={() => openDetail(sale)}>
-                      <td className="px-4 py-3 font-medium text-primary-400">{sale.invoiceNumber || '—'}</td>
-                      <td className="px-4 py-3 text-surface-600 whitespace-nowrap"><div className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-surface-400 shrink-0" /><span>{formatDateTime(sale.createdAt)}</span></div></td>
-                      <td className="px-4 py-3"><div className="flex items-center gap-2">{sale.supplierId ? <Truck className="w-3.5 h-3.5 text-amber-500 shrink-0" /> : <User className="w-3.5 h-3.5 text-surface-400 shrink-0" />}<span className="font-medium text-surface-900 truncate max-w-[120px]">{sale.supplierName || sale.customerName || 'Client divers'}</span></div></td>
-                      <td className="px-4 py-3 text-surface-500 text-xs">{phone || '—'}</td>
-                      <td className="px-4 py-3"><Badge variant={isDeliverySale(sale) ? 'warning' : getSaleType(sale, locations) === 'depot' ? 'warning' : 'info'}>{isDeliverySale(sale) ? 'Livraison' : getSaleType(sale, locations) === 'depot' ? 'Dépôt' : 'Boutique'}</Badge></td>
-                      <td className="px-4 py-3"><div className="flex items-center gap-1"><Wallet className="w-3 h-3 text-surface-400" /><span className="text-xs">{formatPaymentMethod(sale.paymentMethod)}</span></div></td>
-                      <td className="px-4 py-3 text-xs text-surface-600">{seller}</td>
-                      <td className="px-4 py-3 text-xs text-surface-600">{locName}</td>
-                      <td className="px-4 py-3 text-right font-semibold text-surface-900">{formatCurrency(sale.total)}</td>
-                      <td className={cn('px-4 py-3 text-right font-semibold', profit >= 0 ? 'text-emerald-400' : 'text-red-400')}>{formatCurrency(profit)}</td>
-                      <td className="px-4 py-3">{getPaymentStatusBadge(sale)}</td>
-                      <td className="px-4 py-3">
+                      <td data-label="Facture" className="px-4 py-3 font-medium text-primary-400">{sale.invoiceNumber || '—'}</td>
+                      <td data-label="Date/Heure" className="px-4 py-3 text-surface-600 whitespace-nowrap"><div className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-surface-400 shrink-0" /><span>{formatDateTime(sale.createdAt)}</span></div></td>
+                      <td data-label="Client" className="px-4 py-3"><div className="flex items-center gap-2">{sale.supplierId ? <Truck className="w-3.5 h-3.5 text-amber-500 shrink-0" /> : <User className="w-3.5 h-3.5 text-surface-400 shrink-0" />}<span className="font-medium text-surface-900 truncate max-w-[120px]">{sale.supplierName || sale.customerName || 'Client divers'}</span></div></td>
+                      <td data-label="Téléphone" className="px-4 py-3 text-surface-500 text-xs">{phone || '—'}</td>
+                      <td data-label="Type" className="px-4 py-3"><Badge variant={getSaleType(sale, locations, deliverySaleIds) === 'delivery' ? 'warning' : 'info'}>{getSaleType(sale, locations, deliverySaleIds) === 'delivery' ? 'Livraison' : 'Boutique'}</Badge></td>
+                      <td data-label="Paiement" className="px-4 py-3"><div className="flex items-center gap-1"><Wallet className="w-3 h-3 text-surface-400" /><span className="text-xs">{formatPaymentMethod(sale.paymentMethod)}</span></div></td>
+                      <td data-label="Vendeur" className="px-4 py-3 text-xs text-surface-600">{seller}</td>
+                      <td data-label="Boutique" className="px-4 py-3 text-xs text-surface-600">{locName}</td>
+                      <td data-label="Total" className="px-4 py-3 text-right font-semibold text-surface-900">{formatCurrency(sale.total)}</td>
+                      <td data-label="Bénéfice" className={cn('px-4 py-3 text-right font-semibold', profit >= 0 ? 'text-emerald-400' : 'text-red-400')}>{formatCurrency(profit)}</td>
+                      <td data-label="Statut" className="px-4 py-3">{getPaymentStatusBadge(sale)}</td>
+                      <td data-label="Actions" className="px-4 py-3">
                         <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => openDetail(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors" title="Détails"><Eye className="w-4 h-4" /></button>
                           <button onClick={() => handlePrintPDF(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="PDF"><FileText className="w-4 h-4" /></button>
                           <button onClick={() => handleWhatsApp(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-green-400 transition-colors" title="WhatsApp"><Send className="w-4 h-4" /></button>
-                           <button onClick={() => handleWeChat(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-emerald-400 transition-colors" title="WeChat"><MessageCircle className="w-4 h-4" /></button>
-                           <button onClick={() => { handleEmail(sale) }} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="Email"><Mail className="w-4 h-4" /></button>
-                           {isDeliverySale(sale) && !isDeliveredSale(sale) && <button onClick={() => handleMarkDelivered(sale)} className="touch-target-sm rounded-lg hover:bg-emerald-500/15 text-surface-400 hover:text-emerald-400 transition-colors" title="Marquer comme livrée"><CheckCircle className="w-4 h-4" /></button>}
-                           <button onClick={() => openEditModal(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-400 transition-colors" title="Modifier"><Edit2 className="w-4 h-4" /></button>
+                          <button onClick={() => handleWeChat(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-emerald-400 transition-colors" title="WeChat"><MessageCircle className="w-4 h-4" /></button>
+                          <button onClick={() => { handleEmail(sale) }} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="Email"><Mail className="w-4 h-4" /></button>
+                          <button onClick={() => openEditModal(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-amber-400 transition-colors" title="Modifier"><Edit2 className="w-4 h-4" /></button>
                           <button onClick={() => handleDelete(sale)} className="touch-target-sm rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400 transition-colors" title="Supprimer"><Trash2 className="w-4 h-4" /></button>
                         </div>
                       </td>
@@ -629,10 +652,9 @@ export default function SalesPage() {
           { key: 'detail', label: 'Voir détails', icon: <Eye className="w-5 h-5" />, onClick: () => openDetail(actionSheetSale) },
           { key: 'pdf', label: 'Télécharger PDF', icon: <FileText className="w-5 h-5" />, onClick: () => handlePrintPDF(actionSheetSale) },
           { key: 'whatsapp', label: 'Partager PDF par WhatsApp', icon: <Send className="w-5 h-5" />, onClick: () => handleWhatsApp(actionSheetSale) },
-           { key: 'wechat', label: 'Envoyer par WeChat', icon: <MessageCircle className="w-5 h-5" />, onClick: () => handleWeChat(actionSheetSale) },
-           { key: 'email', label: 'Envoyer par Email', icon: <Mail className="w-5 h-5" />, onClick: () => handleEmail(actionSheetSale) },
-           ...(isDeliverySale(actionSheetSale) && !isDeliveredSale(actionSheetSale) ? [{ key: 'deliver', label: 'Confirmer la livraison', icon: <CheckCircle className="w-5 h-5" />, onClick: () => handleMarkDelivered(actionSheetSale) }] : []),
-           { key: 'edit', label: 'Modifier', icon: <Edit2 className="w-5 h-5" />, onClick: () => openEditModal(actionSheetSale) },
+          { key: 'wechat', label: 'Envoyer par WeChat', icon: <MessageCircle className="w-5 h-5" />, onClick: () => handleWeChat(actionSheetSale) },
+          { key: 'email', label: 'Envoyer par Email', icon: <Mail className="w-5 h-5" />, onClick: () => handleEmail(actionSheetSale) },
+          { key: 'edit', label: 'Modifier', icon: <Edit2 className="w-5 h-5" />, onClick: () => openEditModal(actionSheetSale) },
           { key: 'delete', label: 'Supprimer', icon: <Trash2 className="w-5 h-5" />, variant: 'danger', onClick: () => handleDelete(actionSheetSale) },
         ] : []}
       />
@@ -643,26 +665,15 @@ export default function SalesPage() {
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
               <div><p className="text-xs text-surface-500">Facture</p><p className="text-sm font-semibold text-surface-900">{selectedSale.invoiceNumber}</p></div>
               <div><p className="text-xs text-surface-500">Date</p><p className="text-sm text-surface-900">{formatDate(selectedSale.createdAt)}</p></div>
-              <div><p className="text-xs text-surface-500">Vendeur</p><p className="text-sm text-surface-900">{users.find((u: any) => u.id === selectedSale.userId)?.name || '—'}</p></div>
+              <div><p className="text-xs text-surface-500">Vendeur</p><p className="text-sm text-surface-900">{resolveUser(users, selectedSale.userId)?.name || '—'}</p></div>
               <div><p className="text-xs text-surface-500">Paiement</p><p className="text-sm text-surface-900">{formatPaymentMethod(selectedSale.paymentMethod)}</p></div>
             </div>
-
-            {isDeliverySale(selectedSale) && (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-3 justify-between p-4 rounded-xl border border-primary-200 bg-primary-50">
-                <div>
-                  <p className="text-xs text-primary-500 font-medium">Livraison</p>
-                  <p className="text-sm font-semibold text-surface-900">{isDeliveredSale(selectedSale) ? 'Livrée' : 'À livrer'}</p>
-                  {selectedSale.deliveryAddress && <p className="text-xs text-surface-500 mt-1">{selectedSale.deliveryAddress}</p>}
-                </div>
-                {!isDeliveredSale(selectedSale) && <Button size="sm" onClick={() => handleMarkDelivered(selectedSale)}><CheckCircle className="w-4 h-4" /> Confirmer la livraison</Button>}
-              </div>
-            )}
 
             <div>
               <h3 className="text-sm font-semibold text-surface-900 mb-3">Client</h3>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 p-4 bg-surface-50 rounded-xl">
                 <div className="flex items-center gap-2"><User className="w-4 h-4 text-surface-400" /><div><p className="text-xs text-surface-500">Nom</p><p className="text-sm font-medium text-surface-900">{selectedSale.customerName || 'Client divers'}</p></div></div>
-                <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-surface-400" /><div><p className="text-xs text-surface-500">Téléphone</p><p className="text-sm text-surface-900">{customers.find((c: any) => c.id === selectedSale.customerId)?.phone || '—'}</p></div></div>
+                <div className="flex items-center gap-2"><Phone className="w-4 h-4 text-surface-400" /><div><p className="text-xs text-surface-500">Téléphone</p><p className="text-sm text-surface-900">{selectedSale.customerPhone || customers.find((c: any) => c.id === selectedSale.customerId)?.phone || '—'}</p></div></div>
                 <div className="flex items-center gap-2"><MapPin className="w-4 h-4 text-surface-400" /><div><p className="text-xs text-surface-500">Adresse</p><p className="text-sm text-surface-900">{customers.find((c: any) => c.id === selectedSale.customerId)?.address || '—'}</p></div></div>
               </div>
             </div>
@@ -673,7 +684,7 @@ export default function SalesPage() {
                 <thead>
                   <tr className="border-b border-surface-200 bg-surface-50">
                     <th className="px-3 py-2 text-left text-xs font-medium text-surface-500">Produit</th><th className="px-3 py-2 text-center text-xs font-medium text-surface-500">Qté</th>
-                    <th className="px-3 py-2 text-center text-xs font-medium text-surface-500">Unité</th>
+                    <th className="px-3 py-2 text-center text-xs font-medium text-surface-500">Unité</th><th className="px-3 py-2 text-left text-xs font-medium text-surface-500">Source</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-surface-500">Prix unit.</th><th className="px-3 py-2 text-right text-xs font-medium text-surface-500">Remise</th>
                     <th className="px-3 py-2 text-right text-xs font-medium text-surface-500">Total</th>
                   </tr>
@@ -684,6 +695,7 @@ export default function SalesPage() {
                       <td data-label="Produit" className="px-3 py-2 font-medium text-surface-900">{item.productName}</td>
                       <td data-label="Qté" className="px-3 py-2 text-center">{item.quantity.toLocaleString('fr-FR')}</td>
                       <td data-label="Unité" className="px-3 py-2 text-center text-surface-500 text-xs">{item.unitName || 'Pièce'}</td>
+                      <td data-label="Source" className="px-3 py-2 text-left text-surface-500 text-xs">{locations.find(l => l.id === (item.locationId || selectedSale.locationId))?.type === 'shop' ? 'Boutique' : locations.find(l => l.id === (item.locationId || selectedSale.locationId))?.name || item.locationId || '—'}</td>
                       <td data-label="Prix unit." className="px-3 py-2 text-right">{formatCurrency(item.unitPrice)}</td>
                       <td data-label="Remise" className="px-3 py-2 text-right text-red-500">{item.discount > 0 ? formatCurrency(item.discount) : '—'}</td>
                       <td data-label="Total" className="px-3 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
@@ -691,10 +703,9 @@ export default function SalesPage() {
                   ))}
                 </tbody>
                 <tfoot>
-                  <tr className="bg-surface-50/50 font-semibold"><td colSpan={5} className="px-3 py-2 text-right text-surface-600">Sous-total</td><td className="px-3 py-2 text-right">{formatCurrency(selectedSale.subtotal)}</td></tr>
-                  <tr className="bg-surface-50/50 font-semibold"><td colSpan={5} className="px-3 py-2 text-right text-surface-600">Remise</td><td className="px-3 py-2 text-right text-red-500">— {formatCurrency(selectedSale.discountTotal)}</td></tr>
-                  <tr className="bg-surface-50/50 font-semibold"><td colSpan={5} className="px-3 py-2 text-right text-surface-600">Taxe</td><td className="px-3 py-2 text-right">{formatCurrency(selectedSale.taxTotal)}</td></tr>
-                  <tr className="bg-primary-50 font-bold"><td colSpan={5} className="px-3 py-3 text-right text-surface-900 text-base">Total</td><td className="px-3 py-3 text-right text-surface-900 text-base">{formatCurrency(selectedSale.total)}</td></tr>
+                   <tr className="bg-surface-50/50 font-semibold"><td colSpan={6} className="px-3 py-2 text-right text-surface-600">Sous-total</td><td className="px-3 py-2 text-right">{formatCurrency(selectedSale.subtotal)}</td></tr>
+                   <tr className="bg-surface-50/50 font-semibold"><td colSpan={6} className="px-3 py-2 text-right text-surface-600">Remise</td><td className="px-3 py-2 text-right text-red-500">— {formatCurrency(selectedSale.discountTotal)}</td></tr>
+                   <tr className="bg-primary-50 font-bold"><td colSpan={6} className="px-3 py-3 text-right text-surface-900 text-base">Total</td><td className="px-3 py-3 text-right text-surface-900 text-base">{formatCurrency(selectedSale.total)}</td></tr>
                 </tfoot>
               </table>
             </div>
@@ -739,10 +750,24 @@ export default function SalesPage() {
 
       <Modal open={editModalOpen} onClose={() => setEditModalOpen(false)} title={`Modifier la vente ${editSaleTarget?.invoiceNumber || ''}`} size="lg">
         <div className="p-6 space-y-6">
+          {editSaleTarget && (
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 p-4 bg-surface-50 rounded-xl text-sm">
+              <div><p className="text-xs text-surface-500">Numéro</p><p className="font-semibold text-surface-900">{editSaleTarget.invoiceNumber}</p></div>
+              <div><p className="text-xs text-surface-500">Statut</p><p className="font-semibold text-surface-900">{getPaymentStatusBadge(editSaleTarget)}</p></div>
+              <div><p className="text-xs text-surface-500">Payé</p><p className="font-semibold text-emerald-500">{formatCurrency(editSaleTarget.paid)}</p></div>
+              <div><p className="text-xs text-surface-500">Restant</p><p className="font-semibold text-danger">{formatCurrency(Math.max(0, editSaleTarget.total - editSaleTarget.paid))}</p></div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <div>
               <label className="block text-sm font-medium text-surface-700 mb-1.5">Client</label>
               <input type="text" value={editCustomerName} onChange={(e) => setEditCustomerName(e.target.value)}
+                className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 mb-1.5">Téléphone client</label>
+              <input type="text" value={editCustomerPhone} onChange={(e) => setEditCustomerPhone(e.target.value)}
                 className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
             <div>
@@ -751,7 +776,22 @@ export default function SalesPage() {
                 className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500">
                 <option value="cash">Espèces</option><option value="wave">Wave</option><option value="orange">Orange Money</option><option value="mobile">Mobile Money</option>
                 <option value="card">Carte</option><option value="bank">Virement</option><option value="credit">Crédit</option>
+                <option value="split">Mixte</option>
               </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-surface-700 mb-1.5">Date de vente</label>
+              <input type="datetime-local" value={editSaleDate} onChange={(e) => setEditSaleDate(e.target.value)}
+                className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-surface-700 mb-1.5">Note</label>
+              <input type="text" value={editNote} onChange={(e) => setEditNote(e.target.value)}
+                placeholder="Note éventuelle..."
+                className="w-full rounded-xl border border-surface-300 bg-surface-100 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
             </div>
           </div>
 
@@ -765,6 +805,7 @@ export default function SalesPage() {
                 <tr className="border-b border-surface-200 bg-surface-50">
                   <th className="px-3 py-2 text-left text-xs font-medium text-surface-500">Produit</th>
                   <th className="px-3 py-2 text-center text-xs font-medium text-surface-500 w-20">Qté</th>
+                  <th className="px-3 py-2 text-center text-xs font-medium text-surface-500 w-28">Unité</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-surface-500 w-28">Prix unit.</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-surface-500 w-28">Remise</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-surface-500 w-28">Total</th>
@@ -772,28 +813,42 @@ export default function SalesPage() {
                 </tr>
               </thead>
               <tbody>
-                {editItems.map((item, idx) => (
-                  <tr key={idx} className="border-b border-surface-100">
-                    <td className="px-3 py-2 min-w-[220px]">
-                      <ProductSearch
-                        products={productsList as any[]}
-                        value={item.productId}
-                        onSelect={(id) => selectProduct(idx, id)}
-                      />
-                    </td>
-                    <td className="px-3 py-2"><input type="number" value={item.quantity} min={1} onChange={(e) => updateEditItem(idx, 'quantity', Math.max(1, +e.target.value))} className="w-20 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-center" /></td>
-                    <td className="px-3 py-2"><input type="number" value={item.unitPrice} min={0} onChange={(e) => updateEditItem(idx, 'unitPrice', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
-                    <td className="px-3 py-2"><input type="number" value={item.discount} min={0} onChange={(e) => updateEditItem(idx, 'discount', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
-                    <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
-                    <td className="px-3 py-2 text-center">
-                      {editItems.length > 1 && <button onClick={() => removeEditItem(idx)} className="p-1 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400"><X className="w-4 h-4" /></button>}
-                    </td>
-                  </tr>
-                ))}
+                {editItems.map((item, idx) => {
+                  const product = productsList.find((p: any) => p.id === item.productId)
+                  const units = product ? getProductUnits(product) : undefined
+                  return (
+                    <tr key={idx} className="border-b border-surface-100">
+                      <td className="px-3 py-2 min-w-[220px]">
+                        <ProductSearch
+                          products={productsList as any[]}
+                          value={item.productId}
+                          onSelect={(id) => selectProduct(idx, id)}
+                        />
+                      </td>
+                      <td className="px-3 py-2"><NumericInput value={item.quantity} min={1} onChange={(e) => updateEditItem(idx, 'quantity', Math.max(1, +e.target.value))} className="w-20 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-center" /></td>
+                      <td className="px-3 py-2">
+                        {units ? (
+                          <select value={item.unitName || 'Pièce'} onChange={(e) => updateEditItemUnit(idx, e.target.value)}
+                            className="w-28 rounded-lg border border-surface-300 bg-surface-100 px-2 py-1.5 text-sm text-surface-700">
+                            {units.map(u => <option key={u.name} value={u.name}>{u.name}</option>)}
+                          </select>
+                        ) : (
+                          <span className="text-xs text-surface-500">{item.unitName || 'Pièce'}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2"><NumericInput value={item.unitPrice} min={0} onChange={(e) => updateEditItem(idx, 'unitPrice', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
+                      <td className="px-3 py-2"><NumericInput value={item.discount} min={0} onChange={(e) => updateEditItem(idx, 'discount', +e.target.value)} className="w-28 rounded-lg border border-surface-300 px-2 py-1.5 text-sm text-right" /></td>
+                      <td className="px-3 py-2 text-right font-semibold">{formatCurrency(item.total)}</td>
+                      <td className="px-3 py-2 text-center">
+                        {editItems.length > 1 && <button onClick={() => removeEditItem(idx)} className="p-1 rounded-lg hover:bg-red-500/15 text-surface-400 hover:text-red-400"><X className="w-4 h-4" /></button>}
+                      </td>
+                    </tr>
+                  )
+                })}
               </tbody>
               <tfoot>
                 <tr className="bg-surface-50/50 font-bold">
-                  <td colSpan={4} className="px-3 py-3 text-right">Total</td>
+                  <td colSpan={5} className="px-3 py-3 text-right">Total</td>
                   <td className="px-3 py-3 text-right">{formatCurrency(editItems.reduce((s, i) => s + i.total, 0))}</td>
                   <td></td>
                 </tr>
