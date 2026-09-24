@@ -124,14 +124,11 @@ export interface UnitInfo {
 }
 
 export function getProductUnits(product: { unit: string; packSize?: number }): UnitInfo[] {
-  const units: UnitInfo[] = [{ name: 'Pièce', quantity: 1 }]
-  units.push({ name: 'Demi-douzaine', quantity: 6 })
-  units.push({ name: 'Douzaine', quantity: 12 })
-  if (product.packSize && product.packSize > 0) {
-    units.push({ name: 'Demi-paquet', quantity: product.packSize / 2 })
-    units.push({ name: 'Paquet', quantity: product.packSize })
-  }
-  return units
+  void product
+  return [
+    { name: 'Pièce', quantity: 1 },
+    { name: 'Douzaine', quantity: 12 },
+  ]
 }
 
 export function getProductUnitInfo(product: { unit: string; packSize?: number }): UnitInfo {
@@ -141,10 +138,10 @@ export function getProductUnitInfo(product: { unit: string; packSize?: number })
 }
 
 export function getPurchaseUnits(product: { unit: string; packSize?: number }): UnitInfo[] {
+  void product
   return [
     { name: 'Pièce', quantity: 1 },
     { name: 'Douzaine', quantity: 12 },
-    { name: 'Paquet', quantity: product.packSize || 10 },
   ]
 }
 

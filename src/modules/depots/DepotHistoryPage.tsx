@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+﻿import { useMemo, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
@@ -7,20 +7,21 @@ import { formatCurrency, formatDateTime } from '@/lib/utils'
 import { ArrowLeft, History, Package, ArrowRightLeft, ShoppingCart, AlertTriangle, RefreshCw, Plus, Search } from 'lucide-react'
 import { useBusinessId } from '@/hooks/useBusinessId'
 import type { ProductHistoryAction } from '@/engine/types'
+import { useGoBack } from '@/hooks/useGoBack'
 
 const actionLabels: Record<ProductHistoryAction, { label: string; icon: any; color: string }> = {
-  created: { label: 'Création', icon: Plus, color: 'text-blue-400 bg-blue-500/15' },
-  updated: { label: 'Mise à jour', icon: RefreshCw, color: 'text-purple-600 bg-purple-50' },
+  created: { label: 'CrÃ©ation', icon: Plus, color: 'text-blue-400 bg-blue-500/15' },
+  updated: { label: 'Mise Ã  jour', icon: RefreshCw, color: 'text-purple-600 bg-purple-50' },
   deleted: { label: 'Suppression', icon: AlertTriangle, color: 'text-red-400 bg-red-500/15' },
   purchased: { label: 'Achat', icon: Package, color: 'text-green-400 bg-green-500/15' },
   sold: { label: 'Vente', icon: ShoppingCart, color: 'text-primary-400 bg-primary-50' },
   returned: { label: 'Retour', icon: RefreshCw, color: 'text-amber-400 bg-amber-500/15' },
   adjusted: { label: 'Ajustement', icon: AlertTriangle, color: 'text-orange-400 bg-orange-500/15' },
-  transferred_in: { label: 'Entrée transfert', icon: ArrowRightLeft, color: 'text-cyan-600 bg-cyan-50' },
+  transferred_in: { label: 'EntrÃ©e transfert', icon: ArrowRightLeft, color: 'text-cyan-600 bg-cyan-50' },
   transferred_out: { label: 'Sortie transfert', icon: ArrowRightLeft, color: 'text-rose-400 bg-rose-500/15' },
   price_changed: { label: 'Changement prix', icon: RefreshCw, color: 'text-violet-600 bg-violet-50' },
   inventory: { label: 'Inventaire', icon: Package, color: 'text-teal-600 bg-teal-50' },
-  supplier_entry: { label: 'Entrée fournisseur', icon: Package, color: 'text-emerald-400 bg-emerald-500/15' },
+  supplier_entry: { label: 'EntrÃ©e fournisseur', icon: Package, color: 'text-emerald-400 bg-emerald-500/15' },
   supplier_exit: { label: 'Sortie fournisseur', icon: ArrowRightLeft, color: 'text-red-400 bg-red-500/15' },
 }
 
@@ -38,6 +39,7 @@ export default function DepotHistoryPage() {
   const { locationId } = useParams()
   const businessId = useBusinessId()
   const navigate = useNavigate()
+  const goBack = useGoBack()
 
   const location = useLiveQuery(() => db.locations.get(locationId!), [locationId])
   const history = useLiveQuery(() =>
@@ -80,11 +82,11 @@ export default function DepotHistoryPage() {
   return (
     <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/depots')} className="p-2 rounded-xl hover:bg-surface-100">
+        <button onClick={goBack} className="p-2 rounded-xl hover:bg-surface-100">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div>
-          <h1 className="text-2xl font-bold text-surface-900">Mouvements — {location?.name}</h1>
+          <h1 className="text-2xl font-bold text-surface-900">Mouvements â€” {location?.name}</h1>
           <p className="text-surface-500 text-sm">Historique des mouvements de stock</p>
         </div>
       </div>
@@ -93,7 +95,7 @@ export default function DepotHistoryPage() {
         <div className="relative flex-1 max-w-md">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-surface-400" />
           <input value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Produit, commentaire, référence..."
+            placeholder="Produit, commentaire, rÃ©fÃ©rence..."
             className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-surface-300 text-sm focus:outline-none focus:ring-2 focus:ring-primary-500" />
         </div>
         <select value={actionFilter} onChange={e => setActionFilter(e.target.value)}
@@ -103,11 +105,11 @@ export default function DepotHistoryPage() {
         </select>
         <select value={periodFilter} onChange={e => setPeriodFilter(e.target.value)}
           className="px-3 py-2.5 rounded-xl border border-surface-300 text-sm bg-surface-100">
-          <option value="all">Toutes périodes</option>
+          <option value="all">Toutes pÃ©riodes</option>
           <option value="jour">Aujourd'hui</option>
           <option value="semaine">7 derniers jours</option>
           <option value="mois">Ce mois-ci</option>
-          <option value="annee">Cette année</option>
+          <option value="annee">Cette annÃ©e</option>
         </select>
       </div>
 
@@ -120,7 +122,7 @@ export default function DepotHistoryPage() {
                 <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Action</th>
                 <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Produit</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Avant</th>
-                <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Après</th>
+                <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">AprÃ¨s</th>
                 <th className="text-right text-xs font-semibold text-surface-500 uppercase px-6 py-4">Delta</th>
                 <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Utilisateur</th>
                 <th className="text-left text-xs font-semibold text-surface-500 uppercase px-6 py-4">Commentaire</th>
@@ -144,7 +146,7 @@ export default function DepotHistoryPage() {
                     </td>
                     <td data-label="Produit" className="px-6 py-4 text-sm font-medium text-surface-900">{product?.name || h.productId}</td>
                     <td data-label="Avant" className="px-6 py-4 text-right text-sm text-surface-600">{h.quantityBefore}</td>
-                    <td data-label="Après" className="px-6 py-4 text-right text-sm text-surface-600">{h.quantityAfter}</td>
+                    <td data-label="AprÃ¨s" className="px-6 py-4 text-right text-sm text-surface-600">{h.quantityAfter}</td>
                     <td data-label="Delta" className="px-6 py-4 text-right text-sm font-semibold" style={{ color: delta > 0 ? '#16a34a' : delta < 0 ? '#dc2626' : '#6b7280' }}>
                       {delta > 0 ? '+' : ''}{delta}
                     </td>
@@ -154,7 +156,7 @@ export default function DepotHistoryPage() {
                 )
               })}
               {filtered.length === 0 && (
-                <tr><td colSpan={8} className="px-6 py-8 text-center text-surface-400">Aucun mouvement trouvé</td></tr>
+                <tr><td colSpan={8} className="px-6 py-8 text-center text-surface-400">Aucun mouvement trouvÃ©</td></tr>
               )}
             </tbody>
           </table>

@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+﻿import { useState, useMemo, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { Card, CardHeader, CardTitle, Button, Badge, Modal, NumericInput } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
@@ -14,12 +14,14 @@ import { exportSupplierFichePDF, printSupplierFiche } from '@/lib/pdf'
 import { openEmail, openWhatsAppLink, shareViaWeChat } from '@/lib/share'
 import SupplierFicheComptable from '@/components/suppliers/SupplierFicheComptable'
 import type { CompanySettings } from '@/types'
+import { useGoBack } from '@/hooks/useGoBack'
 
 export default function SupplierDetailPage() {
   const { supplierId } = useParams()
   const businessId = useBusinessId()
   const userId = useAppStore((s) => s.user?.id || '')
   const navigate = useNavigate()
+  const goBack = useGoBack()
   const [searchParams] = useSearchParams()
   const supplier = useLiveQuery(() => db.suppliers.get(supplierId!), [supplierId])
   const invoices = useLiveQuery(() => db.supplierInvoices.where('supplierId').equals(supplierId!).reverse().sortBy('createdAt'), [supplierId])
@@ -75,7 +77,7 @@ export default function SupplierDetailPage() {
       const isDebit = c.direction === 'debt_to_goods'
       entries.push({
         date: c.createdAt,
-        label: `Compensation ${isDebit ? 'Dette → Marchandises' : 'Marchandises → Dette'}`,
+        label: `Compensation ${isDebit ? 'Dette â†’ Marchandises' : 'Marchandises â†’ Dette'}`,
         reference: c.referenceInvoiceId?.slice(0, 8) || '',
         debit: isDebit ? c.settledAmount : 0,
         credit: isDebit ? 0 : c.settledAmount,
@@ -103,15 +105,15 @@ export default function SupplierDetailPage() {
 
   function buildFicheText() {
     const lines = [
-      `FICHE COMPTABLE — ${supplier?.name || 'Fournisseur'}`,
-      supplier?.phone ? `Téléphone: ${supplier.phone}` : '',
-      `Générée le ${formatDateTime(new Date().toISOString())}`,
+      `FICHE COMPTABLE â€” ${supplier?.name || 'Fournisseur'}`,
+      supplier?.phone ? `TÃ©lÃ©phone: ${supplier.phone}` : '',
+      `GÃ©nÃ©rÃ©e le ${formatDateTime(new Date().toISOString())}`,
       '',
-      'Date | Libellé | Référence | Débit | Crédit | Solde',
-      ...fiche.rows.map(r => `${formatDate(r.date)} | ${r.label}${r.reference ? ` (${r.reference})` : ''} | ${r.debit ? formatCurrency(r.debit) : '—'} | ${r.credit ? formatCurrency(r.credit) : '—'} | ${formatCurrency(r.balance)}`),
+      'Date | LibellÃ© | RÃ©fÃ©rence | DÃ©bit | CrÃ©dit | Solde',
+      ...fiche.rows.map(r => `${formatDate(r.date)} | ${r.label}${r.reference ? ` (${r.reference})` : ''} | ${r.debit ? formatCurrency(r.debit) : 'â€”'} | ${r.credit ? formatCurrency(r.credit) : 'â€”'} | ${formatCurrency(r.balance)}`),
       '',
-      `Total Débits: ${formatCurrency(fiche.totals.debit)}`,
-      `Total Crédits: ${formatCurrency(fiche.totals.credit)}`,
+      `Total DÃ©bits: ${formatCurrency(fiche.totals.debit)}`,
+      `Total CrÃ©dits: ${formatCurrency(fiche.totals.credit)}`,
       `Solde: ${formatCurrency(fiche.totals.balance)}`,
     ]
     return lines.filter(Boolean).join('\n')
@@ -119,7 +121,7 @@ export default function SupplierDetailPage() {
 
   function handleFichePDF() {
     exportSupplierFichePDF(supplier?.name || 'Fournisseur', supplier?.phone, fiche.rows, fiche.totals, settings as CompanySettings | undefined, `fiche_comptable_${supplier?.name || 'fournisseur'}`)
-    toast('PDF exporté', 'success')
+    toast('PDF exportÃ©', 'success')
   }
 
   function handleFichePrint() {
@@ -127,7 +129,7 @@ export default function SupplierDetailPage() {
   }
 
   function handleFicheEmail() {
-    openEmail(supplier?.email || '', `Fiche comptable — ${supplier?.name || 'Fournisseur'}`, buildFicheText())
+    openEmail(supplier?.email || '', `Fiche comptable â€” ${supplier?.name || 'Fournisseur'}`, buildFicheText())
   }
 
   function handleFicheWhatsApp() {
@@ -139,7 +141,7 @@ export default function SupplierDetailPage() {
   }
 
   async function handleCreateInvoice() {
-    if (!invNumber || invItems.length === 0) return toast('Complétez les champs', 'warning')
+    if (!invNumber || invItems.length === 0) return toast('ComplÃ©tez les champs', 'warning')
     const items: SupplierInvoiceItem[] = invItems.map(i => {
       const p = products?.find(pr => pr.id === i.productId)
       return {
@@ -167,7 +169,7 @@ export default function SupplierDetailPage() {
       createdAt: new Date().toISOString(),
       userId,
     })
-    toast(`Facture ${invNumber} créée`, 'success')
+    toast(`Facture ${invNumber} crÃ©Ã©e`, 'success')
     setInvModal(false)
     setInvItems([])
     setInvNumber('')
@@ -175,7 +177,7 @@ export default function SupplierDetailPage() {
 
   async function handlePayInvoice() {
     if (!payModal || payAmount <= 0) return toast('Montant invalide', 'warning')
-    if (payAmount > payModal.balance) return toast('Montant supérieur au solde', 'error')
+    if (payAmount > payModal.balance) return toast('Montant supÃ©rieur au solde', 'error')
     if (payType === 'mixed' && payProductItems.length === 0) return toast('Ajoutez des produits pour le paiement en nature', 'warning')
 
     const lines: PaymentLine[] = []
@@ -201,14 +203,14 @@ export default function SupplierDetailPage() {
       userId,
       createdAt: new Date().toISOString(),
     })
-    toast('Paiement enregistré', 'success')
+    toast('Paiement enregistrÃ©', 'success')
     setPayModal(null)
     setPayAmount(0)
     setPayProductItems([])
   }
 
   async function handleCreateCompensation() {
-    if (!compAmount || compItems.length === 0) return toast('Complétez les champs', 'warning')
+    if (!compAmount || compItems.length === 0) return toast('ComplÃ©tez les champs', 'warning')
     const items: CompensationItem[] = compItems.map(i => {
       const p = products?.find(pr => pr.id === i.productId)
       return {
@@ -234,7 +236,7 @@ export default function SupplierDetailPage() {
       createdAt: new Date().toISOString(),
       userId,
     })
-    toast('Compensation enregistrée', 'success')
+    toast('Compensation enregistrÃ©e', 'success')
     setCompModal(false)
     setCompItems([])
     setCompAmount(0)
@@ -255,7 +257,7 @@ export default function SupplierDetailPage() {
   return (
     <div className="w-full h-full flex flex-col gap-6">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/suppliers')} className="p-2 rounded-xl hover:bg-surface-100">
+        <button onClick={goBack} className="p-2 rounded-xl hover:bg-surface-100">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1">
@@ -275,19 +277,19 @@ export default function SupplierDetailPage() {
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card>
           <div className="p-4 text-center">
-            <p className="text-sm text-surface-500">Total facturé</p>
+            <p className="text-sm text-surface-500">Total facturÃ©</p>
             <p className="text-2xl font-bold text-surface-900">{formatCurrency(stats.totalInvoiced)}</p>
           </div>
         </Card>
         <Card>
           <div className="p-4 text-center">
-            <p className="text-sm text-surface-500">Payé</p>
+            <p className="text-sm text-surface-500">PayÃ©</p>
             <p className="text-2xl font-bold text-success">{formatCurrency(stats.totalPaid)}</p>
           </div>
         </Card>
         <Card>
           <div className="p-4 text-center">
-            <p className="text-sm text-surface-500">Solde dû</p>
+            <p className="text-sm text-surface-500">Solde dÃ»</p>
             <p className="text-2xl font-bold text-danger">{formatCurrency(stats.balance)}</p>
           </div>
         </Card>
@@ -299,10 +301,10 @@ export default function SupplierDetailPage() {
           <table className="w-full">
             <thead>
               <tr className="border-b border-surface-200 bg-surface-50">
-                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">N°</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">NÂ°</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Date</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Total</th>
-                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Payé</th>
+                <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">PayÃ©</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Solde</th>
                 <th className="text-center px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Statut</th>
                 <th className="text-right px-4 py-3 text-xs font-semibold text-surface-500 uppercase">Action</th>
@@ -311,14 +313,14 @@ export default function SupplierDetailPage() {
             <tbody className="divide-y divide-surface-100">
               {invoices?.map(inv => (
                 <tr key={inv.id} className="hover:bg-surface-50">
-                  <td data-label="N°" className="px-4 py-3 text-sm font-medium">{inv.number}</td>
+                  <td data-label="NÂ°" className="px-4 py-3 text-sm font-medium">{inv.number}</td>
                   <td data-label="Date" className="px-4 py-3 text-sm text-surface-500">{formatDate(inv.createdAt)}</td>
                   <td data-label="Total" className="px-4 py-3 text-sm text-right font-semibold">{formatCurrency(inv.total)}</td>
-                  <td data-label="Payé" className="px-4 py-3 text-sm text-right">{formatCurrency(inv.paid)}</td>
+                  <td data-label="PayÃ©" className="px-4 py-3 text-sm text-right">{formatCurrency(inv.paid)}</td>
                   <td data-label="Solde" className="px-4 py-3 text-sm text-right font-semibold text-danger">{formatCurrency(inv.balance)}</td>
                   <td data-label="Statut" className="px-4 py-3 text-center">
                     <Badge variant={inv.status === 'paid' ? 'success' : inv.status === 'partial' ? 'warning' : inv.status === 'cancelled' ? 'danger' : 'info'}>
-                      {inv.status === 'paid' ? 'Payée' : inv.status === 'partial' ? 'Partielle' : inv.status === 'cancelled' ? 'Annulée' : 'À crédit'}
+                      {inv.status === 'paid' ? 'PayÃ©e' : inv.status === 'partial' ? 'Partielle' : inv.status === 'cancelled' ? 'AnnulÃ©e' : 'Ã€ crÃ©dit'}
                     </Badge>
                   </td>
                   <td data-label="Action" className="px-4 py-3 text-right">
@@ -344,7 +346,7 @@ export default function SupplierDetailPage() {
           {compensations?.map(c => (
             <div key={c.id} className="flex justify-between items-center p-3 rounded-xl bg-surface-50">
               <div>
-                <p className="text-sm font-medium">{c.direction === 'debt_to_goods' ? 'Dette → Marchandises' : 'Marchandises → Dette'}</p>
+                <p className="text-sm font-medium">{c.direction === 'debt_to_goods' ? 'Dette â†’ Marchandises' : 'Marchandises â†’ Dette'}</p>
                 <p className="text-xs text-surface-400">{formatDateTime(c.createdAt)}</p>
               </div>
               <div className="text-right">
@@ -373,7 +375,7 @@ export default function SupplierDetailPage() {
         <SupplierFicheComptable
           rows={fiche.rows}
           totals={fiche.totals}
-          emptyText="Aucune opération pour ce fournisseur"
+          emptyText="Aucune opÃ©ration pour ce fournisseur"
           contactName={supplier?.name || 'Fournisseur'}
           onRapport={handleFichePDF}
           onRappel={handleFicheWhatsApp}
@@ -381,15 +383,15 @@ export default function SupplierDetailPage() {
           onGive={() => {
             const inv = invoices?.find(i => i.status !== 'paid' && i.status !== 'cancelled')
             if (inv) { setPayModal(inv); setPayAmount(inv.balance); setPayType('cash'); setPayProductItems([]) }
-            else toast('Aucune facture à payer', 'info')
+            else toast('Aucune facture Ã  payer', 'info')
           }}
-          onReceive={() => toast('Enregistrez le paiement depuis la vente au fournisseur (POS dépôt)', 'info')}
+          onReceive={() => toast('Enregistrez le paiement depuis la vente au fournisseur (POS dÃ©pÃ´t)', 'info')}
         />
       </Card>
 
       <Modal open={invModal} onClose={() => setInvModal(false)} title="Nouvelle facture fournisseur" size="md">
         <div className="space-y-4 p-6">
-          <input placeholder="N° de facture" value={invNumber} onChange={e => setInvNumber(e.target.value)}
+          <input placeholder="NÂ° de facture" value={invNumber} onChange={e => setInvNumber(e.target.value)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
           {invItems.map((item, idx) => (
             <div key={idx} className="flex gap-2 items-center">
@@ -398,7 +400,7 @@ export default function SupplierDetailPage() {
               }} className="flex-1 px-3 py-2 rounded-xl border border-surface-300 text-sm">
                 {products?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-              <NumericInput placeholder="Qté" value={item.qty} onChange={e => {
+              <NumericInput placeholder="QtÃ©" value={item.qty} onChange={e => {
                 const updated = [...invItems]; updated[idx].qty = Number(e.target.value); setInvItems(updated)
               }} className="w-20 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
               <NumericInput placeholder="PU" value={item.price} onChange={e => {
@@ -407,7 +409,7 @@ export default function SupplierDetailPage() {
             </div>
           ))}
           <Button variant="outline" onClick={addInvoiceRow} className="w-full"><Plus className="w-4 h-4" /> Ajouter un produit</Button>
-          <Button onClick={handleCreateInvoice} className="w-full">Créer la facture</Button>
+          <Button onClick={handleCreateInvoice} className="w-full">CrÃ©er la facture</Button>
         </div>
       </Modal>
 
@@ -419,12 +421,12 @@ export default function SupplierDetailPage() {
           </div>
           <select value={payType} onChange={e => setPayType(e.target.value as any)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm">
-            <option value="cash">Espèces</option>
+            <option value="cash">EspÃ¨ces</option>
             <option value="bank">Banque</option>
             <option value="mobile">Mobile Money</option>
-            <option value="mixed">Mixte (espèces + produits)</option>
+            <option value="mixed">Mixte (espÃ¨ces + produits)</option>
           </select>
-          <NumericInput placeholder="Montant à payer" value={payAmount || ''} onChange={e => setPayAmount(Number(e.target.value))}
+          <NumericInput placeholder="Montant Ã  payer" value={payAmount || ''} onChange={e => setPayAmount(Number(e.target.value))}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
           {payType === 'mixed' && (
             <div className="space-y-2">
@@ -436,7 +438,7 @@ export default function SupplierDetailPage() {
                   }} className="flex-1 px-3 py-2 rounded-xl border border-surface-300 text-sm">
                     {products?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                   </select>
-                  <NumericInput placeholder="Qté" value={item.qty} onChange={e => {
+                  <NumericInput placeholder="QtÃ©" value={item.qty} onChange={e => {
                     const updated = [...payProductItems]; updated[idx].qty = Number(e.target.value); setPayProductItems(updated)
                   }} className="w-20 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
                   <NumericInput placeholder="PU" value={item.price} onChange={e => {
@@ -455,8 +457,8 @@ export default function SupplierDetailPage() {
         <div className="space-y-4 p-6">
           <select value={compDirection} onChange={e => setCompDirection(e.target.value as any)}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm">
-            <option value="debt_to_goods">Dette fournisseur → Marchandises (paiement en nature)</option>
-            <option value="goods_to_debt">Marchandises → Dette fournisseur (remboursement en stock)</option>
+            <option value="debt_to_goods">Dette fournisseur â†’ Marchandises (paiement en nature)</option>
+            <option value="goods_to_debt">Marchandises â†’ Dette fournisseur (remboursement en stock)</option>
           </select>
           <NumericInput placeholder="Montant de la dette" value={compAmount || ''} onChange={e => setCompAmount(Number(e.target.value))}
             className="w-full px-4 py-2.5 rounded-xl border border-surface-300 text-sm" />
@@ -467,7 +469,7 @@ export default function SupplierDetailPage() {
               }} className="flex-1 px-3 py-2 rounded-xl border border-surface-300 text-sm">
                 {products?.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
-                  <NumericInput placeholder="Qté" value={item.qty} onChange={e => {
+                  <NumericInput placeholder="QtÃ©" value={item.qty} onChange={e => {
                 const updated = [...compItems]; updated[idx].qty = Number(e.target.value); setCompItems(updated)
               }} className="w-20 px-3 py-2 rounded-xl border border-surface-300 text-sm text-right" />
                   <NumericInput placeholder="PU" value={item.price} onChange={e => {

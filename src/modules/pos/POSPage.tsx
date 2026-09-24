@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { useLocation, useNavigate } from 'react-router-dom'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
+import { useGoBack } from '@/hooks/useGoBack'
 import db from '@/db'
 import { usePosStore, emptyCart, type CartState } from '@/stores/posStore'
 import { generateId, formatCurrency, generateInvoiceNumber, cn, getProductUnits, getProductUnitInfo, convertToMainUnit, getUnitStep, getUnitMinQty, pickContact } from '@/lib/utils'
@@ -60,6 +61,7 @@ export default function POSPage() {
   const businessId = useBusinessId()
   const location = useLocation()
   const navigate = useNavigate()
+  const goBack = useGoBack()
   const products = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const allCustomers = useLiveQuery(() => db.customers.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
   const categories = useLiveQuery(() => db.categories.where('businessId').equals(businessId).toArray(), [businessId]) ?? []
@@ -271,6 +273,20 @@ export default function POSPage() {
     return Math.max(0, stockAt(productId, locationId) - reserved)
   }
 
+  /** Total sellable stock for a product across the shop and all active warehouses. */
+  function totalAvailableStock(productId: string) {
+    const sellable = locations.filter(l => l.type === 'shop' || l.type === 'warehouse')
+    const list = sellable.length ? sellable : (shopLocation ? [shopLocation] : [])
+    return list.reduce((sum, l) => sum + availableStockAt(productId, l.id), 0)
+  }
+
+  /** Main-unit quantity already present in the active cart for a product. */
+  function cartMainQty(productId: string) {
+    return activeCart.items
+      .filter(i => i.productId === productId)
+      .reduce((s, i) => s + i.quantity * (i.unitQuantity || 1), 0)
+  }
+
   function cartItemKey(i: SaleItem) {
     return `${i.productId}::${i.unitName || 'Pièce'}::${i.locationId || shopId}`
   }
@@ -282,6 +298,15 @@ export default function POSPage() {
     if (itemKey) {
       const unit = getProductUnits(product).find(u => u.name === unitName)
       if (!unit) return
+      const lineMainQty = quantity * unit.quantity
+      const otherLines = activeCart.items
+        .filter(i => cartItemKey(i) !== itemKey && i.productId === product.id)
+        .reduce((s, i) => s + i.quantity * (i.unitQuantity || 1), 0)
+      const available = totalAvailableStock(product.id)
+      if (otherLines + lineMainQty > available) {
+        toast(`Stock insuffisant pour "${product.name}" : ${available} disponible(s), ${otherLines + lineMainQty} demandé(s)`, 'error')
+        return
+      }
       setActiveCartItems(prev => prev.map(i =>
         cartItemKey(i) === itemKey
            ? { ...i, unitName, unitQuantity: unit.quantity, quantity, unitPrice: price, total: quantity * price - i.discount }
@@ -344,6 +369,19 @@ export default function POSPage() {
     const effectivePrice = priceOverride
 
     const requestedQuantity = Math.max(0.1, Number(quantityOverride) || 1)
+
+    const availableTotal = totalAvailableStock(product.id)
+    const alreadyInCart = cartMainQty(product.id)
+    const requestedMainQty = requestedQuantity * unitQty
+    if (alreadyInCart + requestedMainQty > availableTotal) {
+      const remaining = Math.max(0, availableTotal - alreadyInCart)
+      toast(
+        `Stock insuffisant pour "${product.name}" : ${availableTotal} disponible(s)${alreadyInCart > 0 ? ` (dont ${alreadyInCart} déjà au panier)` : ''}. Quantité maximale restante : ${remaining}`,
+        'error'
+      )
+      return
+    }
+
     const shopAvailable = stockOverride ?? availableStockFor(product.id)
     const shopCapacity = Math.floor(shopAvailable / unitQty)
     const shopKey = `${product.id}::${unit.name}::${shopId}`
@@ -408,6 +446,20 @@ export default function POSPage() {
     const minQty = getUnitMinQty(item.unitName || 'Pièce')
     const newQty = Math.max(minQty, +(value || minQty).toFixed(1))
     const unitQty = item.unitQuantity || 1
+    const otherLines = cart
+      .filter(i => i.productId === item.productId && cartItemKey(i) !== itemKey)
+      .reduce((s, i) => s + i.quantity * (i.unitQuantity || 1), 0)
+    const availableTotal = totalAvailableStock(item.productId)
+    const maxByTotal = Math.floor(Math.max(0, availableTotal - otherLines) / unitQty)
+    if (newQty * unitQty > availableTotal - otherLines) {
+      toast(`Stock insuffisant : ${availableTotal} disponible(s) au total (boutique + dépôts). Quantité maximale : ${Math.max(0, maxByTotal)}`, 'error')
+      if (maxByTotal < minQty) return
+      setActiveCartItems(prev => prev.map(i => cartItemKey(i) === itemKey
+        ? { ...i, quantity: maxByTotal, total: maxByTotal * i.unitPrice - i.discount }
+        : i
+      ))
+      return
+    }
     const sourceId = item.locationId || shopId
     const maxQuantity = Math.floor((availableStockAt(item.productId, sourceId) + item.quantity * unitQty) / unitQty)
     if (newQty > maxQuantity) {
@@ -514,6 +566,17 @@ export default function POSPage() {
 
   async function handleSaleOnce(createCustomer?: boolean) {
     if (cart.length === 0) return
+    for (const item of cart) {
+      const needed = item.quantity * (item.unitQuantity || 1)
+      const otherLines = cart
+        .filter(i => i.productId === item.productId && cartItemKey(i) !== cartItemKey(item))
+        .reduce((s, i) => s + i.quantity * (i.unitQuantity || 1), 0)
+      const available = totalAvailableStock(item.productId)
+      if (otherLines + needed > available) {
+        toast(`Stock insuffisant pour "${item.productName}" : ${available} disponible(s), ${otherLines + needed} demandé(s). Vente bloquée.`, 'error')
+        return
+      }
+    }
     if (pay.isCredit && !customerId && !customerName.trim()) {
       toast('Client requis pour une vente à crédit', 'error')
       return
@@ -603,7 +666,7 @@ export default function POSPage() {
   return (
     <div className="w-full h-full flex flex-col gap-0">
       {/* Selecteur de paniers (4 max, independants) */}
-      <div className="hidden lg:flex shrink-0 bg-surface-100 border-b border-surface-200 px-3 lg:px-4 py-2 items-center gap-2 overflow-x-auto scrollbar-none">
+      <div className="flex shrink-0 bg-surface-100 border-b border-surface-200 px-2 lg:px-4 py-2 items-center gap-2 overflow-x-auto scrollbar-none">
         {carts.map((c, idx) => {
           const isActive = idx === activeCartIndex
           const t = cartTotals[idx].total
@@ -614,42 +677,45 @@ export default function POSPage() {
               data-testid={`cart-tab-${idx}`}
               onClick={() => selectCart(idx)}
               className={cn(
-                'shrink-0 flex items-center gap-2 px-3 py-2 rounded-xl border transition-colors min-w-[165px]',
+                'shrink-0 flex items-center gap-2 px-2.5 lg:px-3 py-2 rounded-xl border transition-colors min-w-0 lg:min-w-[165px]',
                 isActive ? 'bg-primary-500 border-primary-500 text-on-accent shadow' : 'bg-surface-100 border-surface-300 hover:border-primary-300 text-surface-700'
               )}
             >
-              <span className={cn('w-8 h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0', isActive ? 'bg-white/20 text-on-accent' : 'bg-surface-200 text-surface-700')}>
+              <span className={cn('w-7 h-7 lg:w-8 lg:h-8 rounded-lg flex items-center justify-center text-sm font-bold shrink-0', isActive ? 'bg-white/20 text-on-accent' : 'bg-surface-200 text-surface-700')}>
                 {idx + 1}
               </span>
-              <span className="flex flex-col min-w-0">
+              <span className="flex flex-col min-w-0 hidden lg:flex">
                 <span className={cn('text-xs font-bold truncate leading-tight', isActive ? 'text-on-accent' : 'text-surface-900')}>{c.customerName || 'Client divers'}</span>
                 <span className={cn('text-[11px] truncate', isActive ? 'text-on-accent/85' : 'text-surface-500')}>
                   {CART_STATUS_LABELS[status]} · {c.items.length} art. · {formatCurrency(t)}
                 </span>
               </span>
+              <span className={cn('lg:hidden text-xs font-bold whitespace-nowrap', isActive ? 'text-on-accent' : 'text-surface-700')}>
+                {CART_STATUS_LABELS[status]}{t > 0 ? ` · ${formatCurrency(t)}` : ''}
+              </span>
             </button>
           )
         })}
-        <div className="shrink-0 flex items-center gap-2 lg:ml-auto">
+        <div className="shrink-0 flex items-center gap-2 ml-auto">
           <button
             onClick={holdActiveCart}
             data-testid="cart-hold"
             disabled={activeCart.items.length === 0 || activeCart.onHold}
             className={cn(
-              'px-3 py-2 rounded-xl border text-xs font-semibold transition-colors min-h-[40px] whitespace-nowrap',
+              'px-2.5 lg:px-3 py-2 rounded-xl border text-xs font-semibold transition-colors min-h-[40px] whitespace-nowrap',
               activeCart.items.length > 0 && !activeCart.onHold
                 ? 'bg-amber-500/15 border-amber-500/40 text-amber-500 hover:bg-amber-500/25'
                 : 'bg-surface-50 border-surface-200 text-surface-400 cursor-not-allowed'
             )}
           >
-            <Pause className="w-4 h-4 inline mr-1" /> Mettre en attente
+            <Pause className="w-4 h-4 lg:inline lg:mr-1" /><span className="hidden lg:inline">Mettre en attente</span>
           </button>
           <button
             onClick={newCart}
             data-testid="cart-new"
-            className="px-3 py-2 rounded-xl bg-primary-500 text-on-accent text-xs font-semibold hover:bg-primary-600 transition-colors min-h-[40px] whitespace-nowrap shadow shadow-primary-200"
+            className="px-2.5 lg:px-3 py-2 rounded-xl bg-primary-500 text-on-accent text-xs font-semibold hover:bg-primary-600 transition-colors min-h-[40px] whitespace-nowrap shadow shadow-primary-200"
           >
-            <Plus className="w-4 h-4 inline mr-1" /> Nouveau panier
+            <Plus className="w-4 h-4 lg:inline lg:mr-1" /><span className="hidden lg:inline">Nouveau panier</span>
           </button>
         </div>
       </div>
@@ -663,7 +729,7 @@ export default function POSPage() {
             <div className="flex items-center justify-between lg:hidden">
               <div className="flex items-center gap-2">
                 <button
-                  onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/treasury')}
+                  onClick={goBack}
                   className="w-10 h-10 rounded-xl bg-surface-100 border border-surface-200 flex items-center justify-center text-surface-500"
                   title="Retour"
                   aria-label="Retour"
@@ -689,6 +755,17 @@ export default function POSPage() {
                   className="w-full pl-11 pr-4 py-3 rounded-2xl bg-surface-100 border border-surface-300 text-base text-surface-900 placeholder-surface-400 focus:outline-none focus:ring-2 focus:ring-primary-500 min-h-[48px]"
                 />
               </div>
+              {can('products', 'create') && (
+                <button
+                  onClick={openQuickProduct}
+                  data-testid="quick-product"
+                  title="Ajouter un nouveau produit"
+                  className="shrink-0 flex items-center justify-center gap-1.5 px-3 lg:px-4 py-3 rounded-2xl bg-primary-500 text-on-accent text-sm font-bold shadow shadow-primary-200 hover:bg-primary-600 transition-colors min-h-[48px]"
+                >
+                  <Plus className="w-5 h-5" />
+                  <span className="hidden sm:inline">Nouveau</span>
+                </button>
+              )}
             </div>
 
             {/* Mobile: catégories en chips */}
@@ -1209,7 +1286,6 @@ export default function POSPage() {
                 >
                   <option value="piece">Pièce</option>
                   <option value="dozen">Douzaine</option>
-                  <option value="pack">Paquet</option>
                 </select>
               </label>
               {quickProductForm.unit === 'pack' && (

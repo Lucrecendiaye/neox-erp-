@@ -1,5 +1,6 @@
-import { useState, useMemo } from 'react'
+﻿import { useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
+import { useGoBack } from '@/hooks/useGoBack'
 import { Card } from '@/components/ui'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
@@ -11,6 +12,7 @@ import { cn } from '@/lib/utils'
 export default function DepotGlobalStockPage() {
   const businessId = useBusinessId()
   const navigate = useNavigate()
+  const goBack = useGoBack()
   const allProducts = useLiveQuery(() => db.products.where('businessId').equals(businessId).toArray(), [businessId])
   const allStocks = useLiveQuery(() => db.productStocks.where('businessId').equals(businessId).toArray(), [businessId])
   const locations = useLiveQuery(() => db.locations.where('businessId').equals(businessId).filter(l => l.type === 'warehouse').toArray(), [businessId])
@@ -47,18 +49,18 @@ export default function DepotGlobalStockPage() {
   return (
     <div className="w-full h-full flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
-        <button onClick={() => navigate('/depots')} className="p-2 rounded-xl hover:bg-surface-100">
+        <button onClick={goBack} className="p-2 rounded-xl hover:bg-surface-100">
           <ArrowLeft className="w-5 h-5" />
         </button>
         <div className="flex-1">
           <h1 className="text-2xl font-bold text-surface-900">Stock global</h1>
-          <p className="text-surface-500 text-sm">Tous les dépôts · {stats.totalProducts} produits · {stats.totalStock} pièces</p>
+          <p className="text-surface-500 text-sm">Tous les dÃ©pÃ´ts Â· {stats.totalProducts} produits Â· {stats.totalStock} piÃ¨ces</p>
         </div>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-primary-50 flex items-center justify-center text-primary-400"><Package className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Produits</p><p className="text-lg font-bold">{stats.totalProducts}</p></div></div></div></Card>
-        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400"><Warehouse className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Dépôts</p><p className="text-lg font-bold">{locations?.length || 0}</p></div></div></div></Card>
+        <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-amber-500/15 flex items-center justify-center text-amber-400"><Warehouse className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">DÃ©pÃ´ts</p><p className="text-lg font-bold">{locations?.length || 0}</p></div></div></div></Card>
         <Card><div className="p-4"><div className="flex items-center gap-3"><div className="w-10 h-10 rounded-xl bg-green-500/15 flex items-center justify-center text-green-400"><DollarSign className="w-5 h-5" /></div><div><p className="text-xs text-surface-500">Valeur stock</p><p className="text-lg font-bold">{formatCurrency(stats.totalValue)}</p></div></div></div></Card>
       </div>
 
@@ -77,8 +79,8 @@ export default function DepotGlobalStockPage() {
             <Card key={p.id} className="overflow-hidden p-0">
               <div className="p-4">
                 <h3 className="text-sm font-semibold text-surface-900 truncate">{p.name}</h3>
-                <p className="text-sm font-bold text-primary-400 mt-1">Prix à définir à la vente</p>
-                <p className="text-sm text-surface-500 mt-1">Total: <strong>{totalQty}</strong> pièces</p>
+                <p className="text-sm font-bold text-primary-400 mt-1">Prix Ã  dÃ©finir Ã  la vente</p>
+                <p className="text-sm text-surface-500 mt-1">Total: <strong>{totalQty}</strong> piÃ¨ces</p>
                 <div className="mt-2 space-y-1">
                   {productStocks.filter(s => s.quantity > 0).map(s => (
                     <div key={s.id} className="flex items-center justify-between text-xs">
@@ -97,7 +99,7 @@ export default function DepotGlobalStockPage() {
         {filteredProducts.length === 0 && (
           <div className="col-span-full flex flex-col items-center justify-center py-16 text-surface-400">
             <Package className="w-12 h-12 mb-3 text-surface-500" />
-            <p className="text-sm">Aucun produit trouvé</p>
+            <p className="text-sm">Aucun produit trouvÃ©</p>
           </div>
         )}
       </div>

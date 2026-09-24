@@ -9,11 +9,13 @@ import { LogOut, Settings, User, Palette, Bell, ArrowLeft } from 'lucide-react'
 import { useTheme, THEMES } from '@/providers/theme-provider'
 import { useLiveQuery } from '@/hooks/useLiveQuery'
 import { useBusinessId } from '@/hooks/useBusinessId'
+import { useGoBack } from '@/hooks/useGoBack'
 import db from '@/db'
 
 export default function Header() {
   const navigate = useNavigate()
   const location = useLocation()
+  const goBack = useGoBack()
   const { sidebarOpen, setSidebarOpen, settings, currentBusiness, user } = useAppStore()
   const { lastSync } = useSyncStore()
   const { theme, setTheme } = useTheme()
@@ -54,7 +56,7 @@ export default function Header() {
           </button>
           {location.pathname !== '/treasury' && location.pathname !== '/' && (
             <button
-              onClick={() => window.history.length > 1 ? navigate(-1) : navigate('/treasury')}
+              onClick={goBack}
               className="flex items-center justify-center w-11 h-11 rounded-xl hover:bg-surface-100 text-surface-500 transition-colors"
               title="Retour"
               aria-label="Retour"
