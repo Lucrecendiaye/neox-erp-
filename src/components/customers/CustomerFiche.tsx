@@ -7,10 +7,13 @@ import db from '@/db'
 import { formatCurrency, formatDateTime, openWhatsApp } from '@/lib/utils'
 import { toast } from '@/lib/toast'
 import { createLoan, repayLoan, partyLoanSummary, listLoans } from '@/engine/loan'
+import { addCustomerEntry, refundAdvance, buildCustomerStatement } from '@/engine/customerAccount'
 import { ensureReminder, markReminderDone, postponeReminder, computeReminderStatus } from '@/engine/reminders'
+import { exportCustomerStatementPDF } from '@/lib/pdf'
 import {
   Phone, Mail, MapPin, X, Wallet, ShoppingBag, CreditCard, HandCoins,
-  BellRing, History as HistoryIcon, User as UserIcon, Truck, Banknote, Plus, ChevronRight, Check,
+  BellRing, History as HistoryIcon, Banknote, Plus, ChevronRight, Check,
+  FileText, ArrowDownCircle, ArrowUpCircle,
 } from 'lucide-react'
 import type { Customer } from '@/types'
 
@@ -30,6 +33,7 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
   const businessId = useBusinessId()
   const navigate = useNavigate()
   const [tab, setTab] = useState<Tab>('overview')
+  const settings = useLiveQuery(() => db.settings.get('default'), [])
 
   const sales = useLiveQuery(() => db.sales.where('businessId').equals(businessId).filter(s => s.customerId === customer.id).toArray(), [businessId, customer.id]) ?? []
   const credits = useLiveQuery(() => db.credits.where('businessId').equals(businessId).filter(c => c.customerId === customer.id).toArray(), [businessId, customer.id]) ?? []
@@ -37,6 +41,7 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
   const loans = useLiveQuery(() => db.loans.where('partyId').equals(customer.id).toArray(), [customer.id]) ?? []
   const loanPayments = useLiveQuery(() => db.loanPayments.where('partyId').equals(customer.id).toArray(), [customer.id]) ?? []
   const reminders = useLiveQuery(() => db.reminders.where('customerId').equals(customer.id).toArray(), [customer.id]) ?? []
+  const customerEntries = useLiveQuery(() => db.customerEntries.where('customerId').equals(customer.id).toArray(), [customer.id]) ?? []
   const reports = useLiveQuery(() => db.auditLogs.where('businessId').equals(businessId).filter(l => l.action === 'edit' && l.entity === 'sale').toArray(), [businessId]) ?? []
   const users = useLiveQuery(() => db.users.toArray(), []) ?? []
 
@@ -45,7 +50,13 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
   const totalPaid = soldSales.reduce((s, x) => s + (x.paid || 0), 0)
   const creditBalance = credits.filter(c => c.status !== 'paid').reduce((s, c) => s + Math.max(0, c.balance), 0)
   const loanSummary = useMemo(() => ({ totalLoaned: loans.reduce((s, l) => s + (l.status === 'cancelled' ? 0 : l.amount), 0), totalPaid: loans.reduce((s, l) => s + l.paid, 0), balance: loans.reduce((s, l) => s + (l.status === 'cancelled' ? 0 : l.balance), 0) }), [loans])
-  const totalOps = soldSales.length + creditPayments.length + loanPayments.length + loans.length + reminders.length
+
+  const advanceBalance = customerEntries.reduce((s, e) => {
+    if (e.type === 'advance_received') return s + e.amount
+    if (e.type === 'advance_used' || e.type === 'advance_refunded') return s - e.amount
+    return s
+  }, 0)
+  const netBalance = Math.round(creditBalance + loanSummary.balance - Math.max(0, advanceBalance))
 
   const timeline = useMemo(() => {
     const events: { id: string; date: string; kind: string; label: string; ref: string; amount?: number; status?: string }[] = []
@@ -106,6 +117,55 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
   const [remDue, setRemDue] = useState('')
   const openReminders = reminders.filter(r => r.status !== 'done').map(r => ({ ...r, status: computeReminderStatus(r) }))
 
+  // --- Actions avance ---
+  const [advanceAmount, setAdvanceAmount] = useState('')
+  const [advanceModalOpen, setAdvanceModalOpen] = useState(false)
+
+  async function handleAddAdvance() {
+    const amount = parseFloat(advanceAmount) || 0
+    if (amount <= 0) { toast('Montant invalide', 'warning'); return }
+    try {
+      await addCustomerEntry({
+        customerId: customer.id,
+        customerName: customer.name,
+        type: 'advance_received',
+        amount,
+        note: 'Avance enregistrée manuellement',
+        category: 'Avance déposée',
+      })
+      toast(`Avance de ${formatCurrency(amount)} enregistrée`, 'success')
+      setAdvanceAmount(''); setAdvanceModalOpen(false)
+    } catch (e: any) { toast(e?.message || 'Erreur', 'error') }
+  }
+
+  async function handleRefundAdvance() {
+    const amount = parseFloat(advanceAmount) || 0
+    if (amount <= 0) { toast('Montant invalide', 'warning'); return }
+    try {
+      await refundAdvance({ customerId: customer.id, customerName: customer.name, amount, method: 'cash' })
+      toast(`Avance de ${formatCurrency(amount)} remboursée`, 'success')
+      setAdvanceAmount(''); setAdvanceModalOpen(false)
+    } catch (e: any) { toast(e?.message || 'Erreur', 'error') }
+  }
+
+  const [statementLoading, setStatementLoading] = useState(false)
+  async function handleDownloadStatement() {
+    setStatementLoading(true)
+    try {
+      const { lines, summary } = await buildCustomerStatement(customer.id)
+      exportCustomerStatementPDF(
+        customer.name,
+        customer.phone,
+        lines.map(l => ({ date: l.date, label: l.label, reference: l.reference, debit: l.debit, credit: l.credit, balance: l.running })),
+        { debt: summary.debt, advance: summary.advance, loanBalance: summary.loanBalance, net: summary.net },
+        settings || undefined,
+        `releve_${customer.name.replace(/\s+/g, '_')}`,
+      )
+      toast('Relevé téléchargé', 'success')
+    } catch (e: any) { toast(e?.message || 'Erreur', 'error') }
+    finally { setStatementLoading(false) }
+  }
+
   async function handleNewReminder() {
     const balance = creditBalance
     const firstCredit = credits.find(c => c.status !== 'paid')
@@ -152,6 +212,12 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
             >
               <ShoppingBag className="w-4 h-4" /> Nouvelle vente
             </Button>
+            <Button size="sm" variant="outline" onClick={handleDownloadStatement} loading={statementLoading}>
+              <FileText className="w-4 h-4" /> Relevé
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => { setAdvanceAmount(''); setAdvanceModalOpen(true) }}>
+              <Wallet className="w-4 h-4" /> Avance
+            </Button>
             {customer.phone && (
               <Button variant="outline" size="sm" onClick={() => openWhatsApp(customer.phone)}><Phone className="w-4 h-4" /> WhatsApp</Button>
             )}
@@ -159,12 +225,18 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
         </div>
 
         {/* Résumé financier */}
-        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-4">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mt-4">
           <div className="p-3 rounded-xl bg-surface-100 border border-surface-200"><p className="text-[11px] text-surface-400">Total ventes</p><p className="font-bold text-surface-900">{formatCurrency(totalSales)}</p></div>
           <div className="p-3 rounded-xl bg-surface-100 border border-surface-200"><p className="text-[11px] text-surface-400">Total payé</p><p className="font-bold text-emerald-500">{formatCurrency(totalPaid)}</p></div>
-          <div className="p-3 rounded-xl bg-danger/10 border border-danger/20"><p className="text-[11px] text-surface-400">Dette actuelle</p><p className="font-bold text-danger">{formatCurrency(creditBalance)}</p></div>
-          <div className="p-3 rounded-xl bg-surface-100 border border-surface-200"><p className="text-[11px] text-surface-400">Opérations</p><p className="font-bold text-surface-900">{totalOps}</p></div>
+          <div className="p-3 rounded-xl bg-danger/10 border border-danger/20"><p className="text-[11px] text-surface-400">Dette client</p><p className="font-bold text-danger">{formatCurrency(creditBalance)}</p></div>
           <div className="p-3 rounded-xl bg-info/10 border border-info/20"><p className="text-[11px] text-surface-400">Prêts (reste)</p><p className="font-bold text-info">{formatCurrency(loanSummary.balance)}</p></div>
+          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20"><p className="text-[11px] text-surface-400">Avance détenue</p><p className="font-bold text-emerald-600">{formatCurrency(Math.max(0, advanceBalance))}</p></div>
+          <div className={`p-3 rounded-xl border ${netBalance > 0 ? 'bg-danger/10 border-danger/20' : netBalance < 0 ? 'bg-emerald-500/10 border-emerald-500/20' : 'bg-surface-100 border-surface-200'}`}>
+            <p className="text-[11px] text-surface-400">Solde net</p>
+            <p className={`font-bold ${netBalance > 0 ? 'text-danger' : netBalance < 0 ? 'text-emerald-600' : 'text-surface-900'}`}>
+              {netBalance > 0 ? `Doit ${formatCurrency(netBalance)}` : netBalance < 0 ? `J'ai ${formatCurrency(Math.abs(netBalance))}` : 'À jour'}
+            </p>
+          </div>
         </div>
 
         {/* Onglets */}
@@ -185,10 +257,17 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
                 <div className="space-y-2 text-sm">
                   <div className="flex justify-between"><span className="text-surface-500">Total des achats (ventes)</span><span className="font-semibold">{formatCurrency(totalSales)}</span></div>
                   <div className="flex justify-between"><span className="text-surface-500">Montant payé</span><span className="font-semibold text-emerald-500">{formatCurrency(totalPaid)}</span></div>
-                  <div className="flex justify-between"><span className="text-surface-500">Dette actuelle (crédits)</span><span className="font-semibold text-danger">{formatCurrency(creditBalance)}</span></div>
+                  <div className="flex justify-between"><span className="text-surface-500">Dette client (crédits)</span><span className="font-semibold text-danger">{formatCurrency(creditBalance)}</span></div>
+                  <div className="flex justify-between"><span className="text-surface-500">Avance détenue pour le client</span><span className="font-semibold text-emerald-600">{formatCurrency(Math.max(0, advanceBalance))}</span></div>
                   <div className="flex justify-between border-t border-surface-200 pt-2"><span className="text-surface-500">Prêts accordés</span><span className="font-semibold">{formatCurrency(loanSummary.totalLoaned)}</span></div>
-                  <div className="flex justify-between"><span className="text-surface-500">Remboursé</span><span className="font-semibold text-emerald-500">{formatCurrency(loanSummary.totalPaid)}</span></div>
-                  <div className="flex justify-between"><span className="text-surface-500">Solde restant (solde total des prêts)</span><span className="font-semibold text-info">{formatCurrency(loanSummary.balance)}</span></div>
+                  <div className="flex justify-between"><span className="text-surface-500">Remboursé (prêts)</span><span className="font-semibold text-emerald-500">{formatCurrency(loanSummary.totalPaid)}</span></div>
+                  <div className="flex justify-between"><span className="text-surface-500">Prêt en cours</span><span className="font-semibold text-info">{formatCurrency(loanSummary.balance)}</span></div>
+                  <div className="flex justify-between border-t border-surface-200 pt-2">
+                    <span className="font-semibold text-surface-700">Solde net</span>
+                    <span className={`font-bold ${netBalance > 0 ? 'text-danger' : netBalance < 0 ? 'text-emerald-600' : 'text-surface-900'}`}>
+                      {netBalance > 0 ? `Le client doit ${formatCurrency(netBalance)}` : netBalance < 0 ? `La boutique détient ${formatCurrency(Math.abs(netBalance))}` : 'À jour'}
+                    </span>
+                  </div>
                 </div>
               </div>
               <div className="p-4 rounded-2xl bg-surface-100 border border-surface-200 space-y-2">
@@ -386,6 +465,21 @@ export default function CustomerFiche({ customer, onClose }: { customer: Custome
           )}
         </div>
       </div>
+      <Modal open={advanceModalOpen} onClose={() => setAdvanceModalOpen(false)} title={`Avance — ${customer.name}`} size="sm">
+        <div className="p-6 space-y-4">
+          <div className="p-3 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-sm">
+            <p className="text-surface-500 text-xs">Avance actuellement détenue</p>
+            <p className="font-bold text-emerald-600">{formatCurrency(Math.max(0, advanceBalance))}</p>
+          </div>
+          <Input label="Montant (FCFA)" type="number" min="0" value={advanceAmount} onChange={e => setAdvanceAmount(e.target.value)} />
+          <div className="flex gap-2">
+            <Button className="flex-1" onClick={handleAddAdvance}><ArrowDownCircle className="w-4 h-4" /> Enregistrer</Button>
+            <Button variant="outline" className="flex-1" onClick={handleRefundAdvance} disabled={advanceBalance <= 0}><ArrowUpCircle className="w-4 h-4" /> Rembourser</Button>
+          </div>
+          <p className="text-xs text-surface-400">L'avance est l'argent du client que vous détenez. Elle n'est pas comptée comme chiffre d'affaires.</p>
+        </div>
+      </Modal>
+
       <div className="flex justify-end p-6 border-t border-surface-200">
         <Button variant="ghost" onClick={onClose}>Fermer</Button>
       </div>

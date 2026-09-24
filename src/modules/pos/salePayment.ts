@@ -36,6 +36,8 @@ export function useSalePayment(total: number) {
   const [amountReceived, setAmountReceived] = useState(0)
   const [dueDate, setDueDate] = useState('')
   const [splitPaymentsState, setSplitPaymentsState] = useState<SplitPaymentEntry[]>([])
+  /** 'change' = rendre la monnaie ; 'advance' = garder le trop-perçu en avance client. */
+  const [overpayAction, setOverpayAction] = useState<'change' | 'advance'>('change')
 
   useEffect(() => {
     setAmountReceived(a => {
@@ -86,6 +88,9 @@ export function useSalePayment(total: number) {
       : 0
   ), [paymentType, payMethodState, amountReceived, total])
 
+  /** Trop-perçu conservé comme avance client (au lieu d'être rendu). */
+  const advanceKept = useMemo(() => (overpayAction === 'advance' ? change : 0), [overpayAction, change])
+
   const creditAmount = paymentType === 'complet' ? 0 : Math.max(0, total - paid)
   const isCredit = paymentType === 'partiel' || paymentType === 'credit' || (paymentType === 'split' && splitPaid < total)
   const isShort = paymentType === 'complet' && payMethodState === 'cash' && (amountReceived || 0) < total
@@ -113,6 +118,7 @@ export function useSalePayment(total: number) {
     setAmountReceived(0)
     setDueDate('')
     setSplitPaymentsState([])
+    setOverpayAction('change')
   }
 
   return {
@@ -121,6 +127,7 @@ export function useSalePayment(total: number) {
     amountReceived, setAmountReceived,
     dueDate, setDueDate,
     paid, change, creditAmount, isCredit, isShort, reset,
+    overpayAction, setOverpayAction, advanceKept,
     splitPayments: splitPaymentsState,
     splitPaid,
     isSplit,

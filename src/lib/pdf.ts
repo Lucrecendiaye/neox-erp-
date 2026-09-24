@@ -810,6 +810,98 @@ export function exportSupplierFichePDF(
   doc.save(`${filename || 'fiche_comptable'}.pdf`)
 }
 
+export function exportCustomerStatementPDF(
+  customerName: string,
+  phone: string | undefined,
+  rows: SupplierFicheRow[],
+  summary: { debt: number; advance: number; loanBalance: number; net: number },
+  settings?: CompanySettings,
+  filename?: string,
+) {
+  const doc = new jsPDF()
+  const s = settings || {} as CompanySettings
+
+  rect(doc, 0, 0, 210, 30, BLUE)
+  let lx = 14
+  if (s.logo) { try { doc.addImage(s.logo, 'JPEG', 14, 5, 20, 20) } catch { try { doc.addImage(s.logo, 'PNG', 14, 5, 20, 20) } catch {} } lx = s.logo ? 40 : 14 }
+  doc.setTextColor(255, 255, 255)
+  doc.setFontSize(13)
+  doc.setFont('helvetica', 'bold')
+  doc.text(s.name || 'Entreprise', lx, 12)
+  doc.setFontSize(7)
+  doc.setFont('helvetica', 'normal')
+  let ly = 18
+  if (s.address) { doc.text(s.address, lx, ly); ly += 4 }
+  if (s.phone) { doc.text(`Tel: ${s.phone}`, lx, ly); ly += 4 }
+  if (s.email) { doc.text(s.email, lx, ly); ly += 4 }
+  doc.setFontSize(15)
+  doc.setFont('helvetica', 'bold')
+  doc.text('RELEVÉ DE COMPTE CLIENT', 210 - 14, 14, { align: 'right' })
+  doc.setFontSize(9)
+  doc.text(customerName, 210 - 14, 22, { align: 'right' })
+  if (phone) { doc.setFontSize(7); doc.text(`Tel: ${phone}`, 210 - 14, 27, { align: 'right' }) }
+
+  let y = 36
+  doc.setFontSize(8)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(80, 80, 80)
+  const now = new Date()
+  doc.text(`Généré le ${now.toLocaleDateString('fr-FR')} à ${now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`, 14, y)
+  y += 5
+  doc.text(`Client : ${customerName}`, 14, y)
+
+  autoTable(doc, {
+    startY: y + 4,
+    head: [['Date', 'Libellé', 'Référence', 'Débit', 'Crédit', 'Solde']],
+    body: rows.map(r => [
+      new Date(r.date).toLocaleDateString('fr-FR'),
+      r.label,
+      r.reference,
+      r.debit > 0 ? fmt(r.debit) : '—',
+      r.credit > 0 ? fmt(r.credit) : '—',
+      fmt(r.balance),
+    ]),
+    theme: 'grid',
+    headStyles: { fillColor: hexToRgb(BLUE), textColor: 255, fontSize: 8, fontStyle: 'bold' },
+    bodyStyles: { fontSize: 8 },
+    margin: { top: 40, left: 14, right: 14 },
+    columnStyles: {
+      0: { cellWidth: 28 },
+      2: { cellWidth: 28 },
+      3: { halign: 'right', cellWidth: 32 },
+      4: { halign: 'right', cellWidth: 32 },
+      5: { halign: 'right', cellWidth: 34 },
+    },
+    tableLineColor: hexToRgb(LIGHT_GRAY),
+    tableLineWidth: 0.4,
+  })
+
+  const finalY = (doc as any).lastAutoTable.finalY + 6
+  doc.setFontSize(9)
+  doc.setFont('helvetica', 'bold')
+  doc.setTextColor(15, 23, 42)
+  doc.text(`Dette (crédits) : ${fmt(summary.debt)}`, 14, finalY)
+  doc.text(`Avance client détenue : ${fmt(summary.advance)}`, 14, finalY + 5)
+  doc.text(`Prêt en cours : ${fmt(summary.loanBalance)}`, 14, finalY + 10)
+  const netLabel = summary.net > 0
+    ? `SOLDE NET — le client doit ${fmt(summary.net)}`
+    : summary.net < 0
+      ? `SOLDE NET — la boutique détient ${fmt(Math.abs(summary.net))} pour le client`
+      : 'SOLDE NET — à jour'
+  doc.setTextColor(summary.net > 0 ? '#dc2626' : '#059669')
+  doc.text(netLabel, 14, finalY + 17)
+
+  const pageH = 297
+  rect(doc, 0, pageH - 14, 210, 14, BLUE)
+  doc.setFontSize(7)
+  doc.setFont('helvetica', 'normal')
+  doc.setTextColor(255, 255, 255)
+  doc.text(`Relevé client ${customerName} — ${now.toLocaleDateString('fr-FR')}`, 14, pageH - 5)
+  doc.text('NeoX ERP', 210 - 14, pageH - 5, { align: 'right' })
+
+  doc.save(`${filename || 'releve_client'}.pdf`)
+}
+
 export function buildSupplierFicheHTML(
   supplierName: string,
   phone: string | undefined,

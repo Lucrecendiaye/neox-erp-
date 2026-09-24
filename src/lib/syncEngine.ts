@@ -39,6 +39,7 @@ const TABLES: { name: TableName; supabaseName: string }[] = [
   { name: 'settings', supabaseName: 'settings' },
   { name: 'businesses', supabaseName: 'businesses' },
   { name: 'users', supabaseName: 'profiles' },
+  { name: 'customerEntries', supabaseName: 'customer_entries' },
 ]
 
 const TENANT_TABLES: Set<string> = new Set([
@@ -49,6 +50,7 @@ const TENANT_TABLES: Set<string> = new Set([
   'stock_movements', 'invoices', 'accounts', 'credit_payments', 'bon_sorties',
   'cash_operations', 'cash_categories',
   'deliveries', 'business_cards', 'settings', 'profiles',
+  'customer_entries',
 ])
 
 const SMALL_TABLES = new Set([

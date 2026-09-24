@@ -262,6 +262,37 @@ create policy "tenant_access_transfers" on transfers for all using (
 );
 
 -- ============================================================
+-- Compte client : avances + grand livre (customer_entries)
+-- ============================================================
+alter table customers add column if not exists advance_balance numeric not null default 0;
+
+create table if not exists customer_entries (
+  id uuid primary key default gen_random_uuid(),
+  business_id uuid not null references businesses on delete cascade,
+  customer_id uuid not null references customers on delete cascade,
+  customer_name text,
+  type text not null,
+  amount numeric not null default 0,
+  date timestamptz not null default now(),
+  reference text,
+  note text,
+  linked_id uuid,
+  category text,
+  user_id uuid references profiles on delete set null,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists idx_customer_entries_business on customer_entries(business_id);
+create index if not exists idx_customer_entries_customer on customer_entries(customer_id);
+create index if not exists idx_customer_entries_date on customer_entries(date);
+
+alter table customer_entries enable row level security;
+drop policy if exists "tenant_access_customer_entries" on customer_entries;
+create policy "tenant_access_customer_entries" on customer_entries for all using (
+  business_id in (select business_id from profiles where auth_user_id = auth.uid())
+);
+
+-- ============================================================
 -- Storage : bucket "erp-images" pour les photos produits / logos
 -- (re-executable : idempotent)
 -- ============================================================

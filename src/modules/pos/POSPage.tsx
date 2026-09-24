@@ -21,6 +21,7 @@ import type { ProductStock } from '@/engine/types'
 import { useAppStore } from '@/stores/appStore'
 import { usePermission } from '@/hooks/usePermission'
 import { processSale } from '@/engine/operations'
+import { addCustomerEntry } from '@/engine/customerAccount'
 import { nextInvoiceNumber } from '@/engine/invoiceNumbers'
 import { useSalePayment, ensureCustomer } from './salePayment'
 import { SalePaymentPanel } from './SalePaymentPanel'
@@ -658,6 +659,43 @@ export default function POSPage() {
     setSaleSuccess(true)
     setPaymentOpen(false)
     setCartSheetOpen(false)
+
+    if (pay.advanceKept > 0 && resolved.id) {
+      try {
+        await addCustomerEntry({
+          customerId: resolved.id,
+          customerName: sale.customerName || resolved.name || 'Client',
+          type: 'advance_received',
+          amount: pay.advanceKept,
+          reference: invNum,
+          linkedId: sale.id,
+          note: `Trop-perçu conservé sur la vente ${invNum}`,
+          category: 'Avance déposée',
+          sideEffects: async () => {
+            await db.cashBook.add({
+              id: generateId(),
+              businessId,
+              date: saleDate,
+              type: 'in',
+              category: 'Avance client',
+              amount: pay.advanceKept!,
+              description: `Avance client (trop-perçu) — vente ${invNum}`,
+              partyId: resolved.id,
+              partyName: sale.customerName || resolved.name || 'Client',
+              paymentMethod: pay.payMethod,
+              reference: invNum,
+              linkedId: sale.id,
+              createdAt: saleDate,
+              userId,
+            })
+          },
+        })
+        toast(`Avance client de ${formatCurrency(pay.advanceKept)} enregistrée`, 'success')
+      } catch (e: any) {
+        toast(e?.message || "Avance non enregistrée", 'error')
+      }
+    }
+
     resetCart(activeCartIndex)
   }
 

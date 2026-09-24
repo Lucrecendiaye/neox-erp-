@@ -63,11 +63,55 @@ export interface Customer {
   address?: string
   creditLimit: number
   currentBalance: number
+  advanceBalance?: number
   notes?: string
   photo?: string
   createdAt: string
   updatedAt: string
 }
+
+/**
+ * Grand livre du compte client — chaque ligne est un mouvement immuable.
+ * Le solde (avance / dette / prêt) est toujours recalculé depuis ces entrées,
+ * jamais stocké de façon mutable.
+ *
+ * - advance_received : le client a déposé de l'argent en trop (son argent chez moi)
+ * - advance_used     : l'avance a servi à payer une vente
+ * - advance_refunded : j'ai rendu l'avance au client
+ * - loan_given       : je lui ai prêté de l'argent (mon argent chez lui)
+ * - loan_repaid      : il m'a remboursé un prêt
+ * - credit_created   : dette née d'une vente à crédit
+ * - credit_paid      : paiement d'une dette
+ */
+export type CustomerEntryType =
+  | 'advance_received'
+  | 'advance_used'
+  | 'advance_refunded'
+  | 'loan_given'
+  | 'loan_repaid'
+  | 'credit_created'
+  | 'credit_paid'
+
+export interface CustomerEntry {
+  id: string
+  businessId: string
+  customerId: string
+  customerName: string
+  type: CustomerEntryType
+  /** Montant en FCFA (toujours positif ; le sens est donné par `type`). */
+  amount: number
+  date: string
+  /** Référence libre (n° facture, n° prêt, etc.). */
+  reference?: string
+  note?: string
+  /** Id de l'objet lié (sale, loan, credit, ...). */
+  linkedId?: string
+  /** Catégorie d'affichage pour le relevé. */
+  category?: string
+  userId: string
+  createdAt: string
+}
+
 
 export interface Supplier {
   id: string

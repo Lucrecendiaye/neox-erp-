@@ -4,7 +4,7 @@ import type {
   Sale, Purchase, Invoice, AccountingEntry, Account,
   Credit, CreditPayment, CreditModification, AuditLog, User, CompanySettings, Notification, Business,
   Employee, Attendance, Payroll, CashBookEntry, CashOperation, CashCategory, Lead, BusinessCard,
-  AuthSession, Delivery, Loan, LoanPayment, DebtReminder,
+  AuthSession, Delivery, Loan, LoanPayment, DebtReminder, CustomerEntry,
 } from '@/types'
 import type {
   Location, ProductStock, ProductHistory,
@@ -53,6 +53,7 @@ class NeoXDB extends Dexie {
   deliveries!: EntityTable<Delivery, 'id'>
   deletedRecords!: EntityTable<DeletedRecord, 'id'>
   sessions!: EntityTable<AuthSession, 'id'>
+  customerEntries!: EntityTable<CustomerEntry, 'id'>
 
   constructor() {
     super('neox_erp')
@@ -93,7 +94,12 @@ class NeoXDB extends Dexie {
       bonSorties: 'id, businessId, number, status, fromLocationId, toLocationId, transferId, createdAt',
       deletedRecords: 'id, businessId, entity, entityId, deletedAt',
       sessions: 'id, userId, businessId, revoked, expiresAt',
+      customerEntries: 'id, businessId, customerId, type, date, createdAt',
     }
+    this.version(15).stores({
+      ...fullSchema,
+      customerEntries: 'id, businessId, customerId, type, date, createdAt',
+    })
     this.version(10).stores({
       ...fullSchema,
       sessions: 'id, userId, businessId, revoked, expiresAt',

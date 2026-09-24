@@ -134,9 +134,47 @@ export function SalePaymentPanel({ pay, customerName, total }: {
 
         {/* Monnaie / Crédit / Manque */}
         {pay.paymentType === 'complet' && pay.payMethod === 'cash' && (pay.change > 0 || pay.isShort) && (
-          <p className={cn('text-xs font-semibold', pay.change > 0 ? 'text-emerald-400' : 'text-red-400')}>
-            {pay.change > 0 ? `Monnaie à rendre : ${formatCurrency(pay.change)}` : `Manque : ${formatCurrency(total - pay.amountReceived)}`}
-          </p>
+          <div className="space-y-1.5">
+            {pay.change > 0 ? (
+              <>
+                <div className="grid grid-cols-2 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => pay.setOverpayAction('change')}
+                    className={cn(
+                      'py-2 rounded-lg text-xs font-semibold border transition-colors',
+                      pay.overpayAction === 'change'
+                        ? 'bg-primary-500 text-on-accent border-primary-500'
+                        : 'bg-surface-50 border-surface-300 text-surface-600'
+                    )}
+                  >
+                    Rendre la monnaie
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => pay.setOverpayAction('advance')}
+                    className={cn(
+                      'py-2 rounded-lg text-xs font-semibold border transition-colors',
+                      pay.overpayAction === 'advance'
+                        ? 'bg-emerald-500 text-white border-emerald-500'
+                        : 'bg-surface-50 border-surface-300 text-surface-600'
+                    )}
+                  >
+                    Garder en avance
+                  </button>
+                </div>
+                <p className={cn('text-xs font-semibold', pay.overpayAction === 'advance' ? 'text-emerald-400' : 'text-surface-500')}>
+                  {pay.overpayAction === 'advance'
+                    ? `Avance client conservée : ${formatCurrency(pay.change)} (hors chiffre d'affaires)`
+                    : `Monnaie à rendre : ${formatCurrency(pay.change)}`}
+                </p>
+              </>
+            ) : (
+              <p className="text-xs font-semibold text-red-400">
+                Manque : {formatCurrency(total - pay.amountReceived)}
+              </p>
+            )}
+          </div>
         )}
         {pay.paymentType === 'complet' && pay.payMethod !== 'cash' && (
           <p className="text-xs text-surface-400">Montant encaissé : {formatCurrency(total)}</p>
