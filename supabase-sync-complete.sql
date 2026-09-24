@@ -14,17 +14,17 @@ alter table customers add column if not exists "advanceBalance" numeric not null
 
 create table if not exists customer_entries (
   id uuid primary key default gen_random_uuid(),
-  "businessId" uuid not null references businesses on delete cascade,
-  "customerId" uuid not null,
+  "businessId" text not null,
+  "customerId" text not null,
   "customerName" text,
   type text not null,
   amount numeric not null default 0,
   date timestamptz not null default now(),
   reference text,
   note text,
-  "linkedId" uuid,
+  "linkedId" text,
   category text,
-  "userId" uuid,
+  "userId" text,
   "createdAt" timestamptz not null default now()
 );
 
