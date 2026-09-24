@@ -527,7 +527,7 @@ export default function DepotStockPage() {
               <Select label="UnitÃ©" value={createForm.unit} onChange={(e) => {
                 const unit = e.target.value as 'piece' | 'dozen' | 'pack'
                 setCreateForm(prev => ({ ...prev, unit, purchaseCost: 0, packSize: 0 }))
-              }} options={[{ value: 'piece', label: 'PiÃ¨ce' }, { value: 'dozen', label: 'Douzaine' }, { value: 'pack', label: 'Paquet' }]} />
+              }} options={[{ value: 'piece', label: 'PiÃ¨ce' }, { value: 'dozen', label: 'Douzaine' }]} />
             </div>
             {createForm.unit === 'pack' && (
               <div className="bg-surface-50 rounded-xl p-4 space-y-3 mt-4">
@@ -599,7 +599,7 @@ export default function DepotStockPage() {
               <Select label="UnitÃ©" value={editForm.unit} onChange={(e) => {
                 const unit = e.target.value as 'piece' | 'dozen' | 'pack'
                 setEditForm(prev => ({ ...prev, unit, purchaseCost: 0, packSize: 0 }))
-              }} options={[{ value: 'piece', label: 'PiÃ¨ce' }, { value: 'dozen', label: 'Douzaine' }, { value: 'pack', label: 'Paquet' }]} />
+              }} options={[{ value: 'piece', label: 'PiÃ¨ce' }, { value: 'dozen', label: 'Douzaine' }]} />
             </div>
             {editForm.unit === 'pack' && (
               <div className="bg-surface-50 rounded-xl p-4 space-y-3 mt-4">

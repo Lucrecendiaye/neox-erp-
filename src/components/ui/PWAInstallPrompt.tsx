@@ -5,6 +5,7 @@ import { Download, X } from 'lucide-react'
 export default function PWAInstallPrompt() {
   const [show, setShow] = useState(false)
   const [dismissed, setDismissed] = useState(false)
+  const [modalOpen, setModalOpen] = useState(false)
 
   useEffect(() => {
     if (isStandalone()) return
@@ -16,13 +17,27 @@ export default function PWAInstallPrompt() {
     return unsub
   }, [])
 
-  if (!show || dismissed) return null
+  // Hide the banner whenever a modal / dialog / overlay is open so it can never
+  // cover an action button (panier, Créer, Valider, ...).
+  useEffect(() => {
+    if (!show) return
+    const check = () => {
+      const dialog = document.querySelector('[role="dialog"][aria-modal="true"], [role="dialog"]')
+      setModalOpen(!!dialog)
+    }
+    check()
+    const observer = new MutationObserver(check)
+    observer.observe(document.body, { childList: true, subtree: true })
+    return () => observer.disconnect()
+  }, [show])
+
+  if (!show || dismissed || modalOpen) return null
 
   return (
-    <div className="fixed bottom-20 left-4 right-4 z-50 lg:bottom-6 lg:left-auto lg:right-6 lg:w-80 animate-slide-up">
-      <div className="glass-dark rounded-2xl p-4 shadow-2xl border border-surface-200">
+    <div className="fixed left-4 right-4 z-50 top-20 lg:top-auto lg:bottom-6 lg:left-auto lg:right-6 lg:w-80 animate-slide-up">
+      <div className="glass-dark rounded-2xl p-3 lg:p-4 shadow-2xl border border-surface-200">
         <div className="flex items-start gap-3">
-          <div className="w-10 h-10 bg-primary-500 rounded-xl flex items-center justify-center shrink-0">
+          <div className="w-9 h-9 lg:w-10 lg:h-10 bg-primary-500 rounded-xl flex items-center justify-center shrink-0">
             <Download className="w-5 h-5 text-on-accent" />
           </div>
           <div className="flex-1 min-w-0">
@@ -41,7 +56,7 @@ export default function PWAInstallPrompt() {
             const ok = await installApp()
             if (ok) setShow(false)
           }}
-          className="mt-3 w-full py-2.5 bg-primary-500 hover:bg-primary-400 text-on-accent font-semibold rounded-xl text-sm transition-colors active:scale-[0.98]"
+          className="mt-2.5 w-full py-2.5 bg-primary-500 hover:bg-primary-400 text-on-accent font-semibold rounded-xl text-sm transition-colors active:scale-[0.98]"
         >
           Installer
         </button>

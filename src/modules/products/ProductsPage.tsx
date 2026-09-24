@@ -613,7 +613,6 @@ export default function ProductsPage() {
                 options={[
                   { value: 'piece', label: 'Pièce' },
                   { value: 'dozen', label: 'Douzaine' },
-                  { value: 'pack', label: 'Paquet' },
                 ]}
               />
             </div>
