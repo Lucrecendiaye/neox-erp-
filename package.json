@@ -9,7 +9,9 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test": "vitest run",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "keep-alive": "node scripts/keep-alive.mjs",
+    "quota-check": "node scripts/quota-check.mjs"
   },
   "dependencies": {
     "@capacitor/android": "^8.4.2",

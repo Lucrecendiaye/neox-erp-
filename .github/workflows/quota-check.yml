@@ -1,0 +1,25 @@
+name: Quota check
+
+# Audit hebdomadaire du quota Supabase (plan Free).
+# Alerte (échec du job) si une ressource dépasse 80% de sa limite.
+
+on:
+  schedule:
+    - cron: '0 8 * * 1'   # chaque lundi à 08:00 UTC
+  workflow_dispatch: {}
+
+jobs:
+  quota:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Audit quota Supabase
+        env:
+          SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+          SUPABASE_PROJECT_REF: ${{ secrets.SUPABASE_PROJECT_REF }}
+        run: node scripts/quota-check.mjs

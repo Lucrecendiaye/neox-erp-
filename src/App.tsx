@@ -14,7 +14,7 @@ import { useAppStore, useSyncStore } from '@/stores/appStore'
 import { initDB } from '@/db'
 import type { Business } from '@/types'
 import { isLoggedIn, getCurrentSession, onAuthChange, startAuthGuard, signOut } from '@/lib/auth'
-import { isSupabaseConfigured } from '@/lib/supabase'
+import { isSupabaseConfigured, startCloudHealthMonitor } from '@/lib/supabase'
 import { registerSW } from '@/lib/pwa'
 import { startNotificationEngine } from '@/engine/notifications'
 import { subscribeAll } from '@/lib/realtime'
@@ -179,6 +179,7 @@ export default function App() {
     startNotificationEngine()
     if (isSupabaseConfigured()) {
       subscribeAll()
+      startCloudHealthMonitor()
     }
 
     guardCleanup = startAuthGuard(() => {

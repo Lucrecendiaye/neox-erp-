@@ -1,0 +1,27 @@
+name: Keep-alive
+
+# Empêche la mise en pause du projet Supabase (plan Free : pause après 7 jours
+# d'inactivité) et vérifie que l'app Vercel répond.
+# Le cron GitHub peut être retardé de quelques minutes : sans impact ici.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # toutes les 10 minutes
+  workflow_dispatch: {}       # exécution manuelle possible
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Keep-alive Supabase + Vercel
+        env:
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          APP_URL: ${{ vars.APP_URL || 'https://neox-erp-alpha.vercel.app' }}
+        run: node scripts/keep-alive.mjs

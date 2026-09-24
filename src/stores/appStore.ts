@@ -11,6 +11,8 @@ interface AppState {
   notifications: Notification[]
   sidebarOpen: boolean
   isOnline: boolean
+  /** 'ok' = cloud joignable, 'down' = cloud injoignable (quota, pause, réseau), 'unknown' = pas encore testé */
+  cloudStatus: 'ok' | 'down' | 'unknown'
   currentBusiness: Business | null
 
   init: () => Promise<void>
@@ -19,6 +21,7 @@ interface AppState {
   setSettings: (settings: CompanySettings) => Promise<void>
   setSidebarOpen: (open: boolean) => void
   setIsOnline: (online: boolean) => void
+  setCloudStatus: (status: 'ok' | 'down' | 'unknown') => void
   addNotification: (n: Notification) => Promise<void>
   markNotificationRead: (id: string) => Promise<void>
   unreadCount: () => number
@@ -33,6 +36,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   notifications: [],
   sidebarOpen: window.innerWidth >= 1024,
   isOnline: navigator.onLine,
+  cloudStatus: 'unknown',
   currentBusiness: null,
 
   init: async () => {
@@ -123,6 +127,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   setSidebarOpen: (open) => set({ sidebarOpen: open }),
   setIsOnline: (online) => set({ isOnline: online }),
+  setCloudStatus: (status) => set({ cloudStatus: status }),
   setCurrentBusiness: (biz) => {
     if (biz?.id) {
       localStorage.setItem('neox-current-business-id', biz.id)
