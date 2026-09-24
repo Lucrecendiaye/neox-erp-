@@ -28,7 +28,7 @@ import {
 
 type TabKey = 'active' | 'paid' | 'partial' | 'cancelled'
 type SaleType = 'shop' | 'delivery'
-type PeriodKey = 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'custom'
+type PeriodKey = 'all' | 'today' | 'yesterday' | 'week' | 'month' | 'quarter' | 'semester' | 'year' | 'custom'
 
 const TABS: { key: TabKey; label: string }[] = [
   { key: 'active', label: 'Ventes' },
@@ -38,6 +38,7 @@ const TABS: { key: TabKey; label: string }[] = [
 ]
 
 const PERIOD_OPTIONS: { value: PeriodKey; label: string }[] = [
+  { value: 'all', label: 'Toutes les dates' },
   { value: 'today', label: "Aujourd'hui" },
   { value: 'yesterday', label: 'Hier' },
   { value: 'week', label: 'Cette semaine' },
@@ -170,7 +171,7 @@ export default function SalesPage() {
 
   const [tab, setTab] = useState<TabKey>('active')
   const [search, setSearch] = useState('')
-  const [period, setPeriod] = useState<PeriodKey>('month')
+  const [period, setPeriod] = useState<PeriodKey>('all')
   const [customStart, setCustomStart] = useState('')
   const [customEnd, setCustomEnd] = useState('')
   const [locationFilter, setLocationFilter] = useState('')
@@ -215,10 +216,10 @@ export default function SalesPage() {
         s.items.some(i => i.productName.toLowerCase().includes(q))
       )
     }
-    if (period !== 'custom') {
+    if (period !== 'custom' && period !== 'all') {
       const range = getDateRange(period)
       if (range) result = result.filter(s => { const d = new Date(s.createdAt); return d >= range.start && d <= range.end })
-    } else if (customStart && customEnd) {
+    } else if (period === 'custom' && customStart && customEnd) {
       const start = new Date(customStart); const end = new Date(customEnd); end.setHours(23, 59, 59, 999)
       result = result.filter(s => { const d = new Date(s.createdAt); return d >= start && d <= end })
     }
@@ -478,7 +479,7 @@ export default function SalesPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 w-full">
+      <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-5 gap-2.5 w-full">
         <Card className="p-3"><p className="text-xs text-surface-500">Chiffre d'affaires</p><p className="text-base font-bold text-surface-900">{formatCurrency(kpiStats.totalRevenue)}</p></Card>
         <Card className="p-3"><p className="text-xs text-surface-500">Ventes</p><p className="text-base font-bold text-surface-900">{kpiStats.totalSales}</p></Card>
         <Card className="p-3"><p className="text-xs text-surface-500">Bénéfice brut</p><p className="text-base font-bold text-emerald-400">{formatCurrency(kpiStats.grossProfit)}</p></Card>
@@ -577,13 +578,10 @@ export default function SalesPage() {
               <thead>
                 <tr className="border-b border-surface-200 bg-surface-50/80">
                   <Th onClick={() => toggleSort('invoiceNumber')}><SortIcon field="invoiceNumber" /> Facture</Th>
-                  <Th onClick={() => toggleSort('createdAt')}><SortIcon field="createdAt" /> Date/Heure</Th>
+                  <Th onClick={() => toggleSort('createdAt')}><SortIcon field="createdAt" /> Date</Th>
                   <Th onClick={() => toggleSort('customerName')}><SortIcon field="customerName" /> Client</Th>
-                  <Th>Téléphone</Th>
                   <Th>Type</Th>
                   <Th>Paiement</Th>
-                  <Th>Vendeur</Th>
-                  <Th>Boutique</Th>
                   <Th onClick={() => toggleSort('total')} className="text-right"><SortIcon field="total" /> Total</Th>
                   <Th className="text-right">Bénéfice</Th>
                   <Th>Statut</Th>
@@ -594,24 +592,18 @@ export default function SalesPage() {
                 {paginatedSales.map((sale) => {
                   const ratio = sale.total > 0 ? sale.paid / sale.total : 1
                   const profit = (sale.total - getSaleCost(sale)) * ratio
-                  const phone = sale.customerPhone || customers.find((c: any) => c.id === sale.customerId)?.phone || ''
-                  const seller = resolveUser(users, sale.userId)?.name || '—'
-                  const locName = locations.find(l => l.id === sale.locationId)?.name || '—'
                   return (
                     <tr key={sale.id} className="border-b border-surface-100 hover:bg-surface-50/50 transition-colors cursor-pointer group" onClick={() => openDetail(sale)}>
-                      <td data-label="Facture" className="px-4 py-3 font-medium text-primary-400">{sale.invoiceNumber || '—'}</td>
-                      <td data-label="Date/Heure" className="px-4 py-3 text-surface-600 whitespace-nowrap"><div className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-surface-400 shrink-0" /><span>{formatDateTime(sale.createdAt)}</span></div></td>
-                      <td data-label="Client" className="px-4 py-3"><div className="flex items-center gap-2">{sale.supplierId ? <Truck className="w-3.5 h-3.5 text-amber-500 shrink-0" /> : <User className="w-3.5 h-3.5 text-surface-400 shrink-0" />}<span className="font-medium text-surface-900 truncate max-w-[120px]">{sale.supplierName || sale.customerName || 'Client divers'}</span></div></td>
-                      <td data-label="Téléphone" className="px-4 py-3 text-surface-500 text-xs">{phone || '—'}</td>
-                      <td data-label="Type" className="px-4 py-3"><Badge variant={getSaleType(sale, locations, deliverySaleIds) === 'delivery' ? 'warning' : 'info'}>{getSaleType(sale, locations, deliverySaleIds) === 'delivery' ? 'Livraison' : 'Boutique'}</Badge></td>
-                      <td data-label="Paiement" className="px-4 py-3"><div className="flex items-center gap-1"><Wallet className="w-3 h-3 text-surface-400" /><span className="text-xs">{formatPaymentMethod(sale.paymentMethod)}</span></div></td>
-                      <td data-label="Vendeur" className="px-4 py-3 text-xs text-surface-600">{seller}</td>
-                      <td data-label="Boutique" className="px-4 py-3 text-xs text-surface-600">{locName}</td>
-                      <td data-label="Total" className="px-4 py-3 text-right font-semibold text-surface-900">{formatCurrency(sale.total)}</td>
-                      <td data-label="Bénéfice" className={cn('px-4 py-3 text-right font-semibold', profit >= 0 ? 'text-emerald-400' : 'text-red-400')}>{formatCurrency(profit)}</td>
-                      <td data-label="Statut" className="px-4 py-3">{getPaymentStatusBadge(sale)}</td>
-                      <td data-label="Actions" className="px-4 py-3">
-                        <div className="flex items-center justify-end gap-0.5" onClick={(e) => e.stopPropagation()}>
+                      <td data-label="Facture" className="px-3 py-3 font-medium text-primary-400 whitespace-nowrap">{sale.invoiceNumber || '—'}</td>
+                      <td data-label="Date" className="px-3 py-3 text-surface-600 whitespace-nowrap"><div className="flex items-center gap-1.5"><Clock className="w-3 h-3 text-surface-400 shrink-0" /><span>{formatDateTime(sale.createdAt)}</span></div></td>
+                      <td data-label="Client" className="px-3 py-3"><div className="flex items-center gap-2">{sale.supplierId ? <Truck className="w-3.5 h-3.5 text-amber-500 shrink-0" /> : <User className="w-3.5 h-3.5 text-surface-400 shrink-0" />}<span className="font-medium text-surface-900 truncate max-w-[140px] block">{sale.supplierName || sale.customerName || 'Client divers'}</span></div></td>
+                      <td data-label="Type" className="px-3 py-3"><Badge variant={getSaleType(sale, locations, deliverySaleIds) === 'delivery' ? 'warning' : 'info'}>{getSaleType(sale, locations, deliverySaleIds) === 'delivery' ? 'Livraison' : 'Boutique'}</Badge></td>
+                      <td data-label="Paiement" className="px-3 py-3 whitespace-nowrap"><div className="flex items-center gap-1"><Wallet className="w-3 h-3 text-surface-400 shrink-0" /><span className="text-xs">{formatPaymentMethod(sale.paymentMethod)}</span></div></td>
+                      <td data-label="Total" className="px-3 py-3 text-right font-semibold text-surface-900 whitespace-nowrap">{formatCurrency(sale.total)}</td>
+                      <td data-label="Bénéfice" className={cn('px-3 py-3 text-right font-semibold whitespace-nowrap', profit >= 0 ? 'text-emerald-400' : 'text-red-400')}>{formatCurrency(profit)}</td>
+                      <td data-label="Statut" className="px-3 py-3">{getPaymentStatusBadge(sale)}</td>
+                      <td data-label="Actions" className="px-3 py-3">
+                        <div className="flex items-center justify-end gap-0.5 flex-wrap" onClick={(e) => e.stopPropagation()}>
                           <button onClick={() => openDetail(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-primary-400 transition-colors" title="Détails"><Eye className="w-4 h-4" /></button>
                           <button onClick={() => handlePrintPDF(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-blue-400 transition-colors" title="PDF"><FileText className="w-4 h-4" /></button>
                           <button onClick={() => handleWhatsApp(sale)} className="touch-target-sm rounded-lg hover:bg-surface-100 text-surface-400 hover:text-green-400 transition-colors" title="WhatsApp"><Send className="w-4 h-4" /></button>

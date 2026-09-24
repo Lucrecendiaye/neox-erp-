@@ -14,9 +14,9 @@ export default function MobileSaleCard({ sale, onTap }: { sale: Sale; onTap: () 
   const st = statusVariant(sale)
   return (
     <div onClick={onTap} className="bg-surface-100 rounded-2xl border border-surface-200 shadow-sm p-4 active:bg-surface-50 transition-colors cursor-pointer">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-sm font-bold text-primary-400">{sale.invoiceNumber || '—'}</span>
-        <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full', st.badge)}>{st.label}</span>
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <span className="text-sm font-bold text-primary-400 truncate min-w-0">{sale.invoiceNumber || '—'}</span>
+        <span className={cn('text-xs font-semibold px-2.5 py-1 rounded-full shrink-0', st.badge)}>{st.label}</span>
       </div>
       <div className="flex items-center gap-2 text-sm text-surface-700 mb-1">
         <ShoppingBag className="w-3.5 h-3.5 text-surface-400 shrink-0" />
