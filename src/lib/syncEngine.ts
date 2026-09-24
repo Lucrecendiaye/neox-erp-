@@ -56,6 +56,7 @@ const TENANT_TABLES: Set<string> = new Set([
 const SMALL_TABLES = new Set([
   'categories', 'locations', 'employees', 'attendance', 'payrolls', 'leads',
   'notifications', 'audit_logs', 'settings', 'profiles', 'cash_categories',
+  'customer_entries', 'reminders', 'loans', 'loan_payments',
 ])
 
 const PULL_ONLY_TABLES = new Set([
